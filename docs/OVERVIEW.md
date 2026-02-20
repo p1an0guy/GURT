@@ -114,6 +114,7 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
   - GET `/study/today?courseId=...&examId=...`
   - POST `/study/review`
   - GET `/study/mastery?courseId=...&examId=...`
+  - Note: the repository currently includes an internal pure FSRS module foundation; endpoint responses are still driven by existing fixture/mock flows until study lambdas are wired.
 
 - Calendar:
   - GET `/calendar/{token}.ics`
