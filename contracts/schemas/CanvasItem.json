@@ -10,7 +10,11 @@
     "courseId": {"type": "string", "minLength": 1},
     "title": {"type": "string", "minLength": 1},
     "itemType": {"type": "string", "enum": ["assignment", "exam", "quiz"]},
-    "dueAt": {"type": "string", "format": "date-time"},
+    "dueAt": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+    },
     "pointsPossible": {"type": "number", "minimum": 0}
   }
 }

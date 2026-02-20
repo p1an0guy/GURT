@@ -1,0 +1,2 @@
+"""StudyBuddy backend domain package."""
+
