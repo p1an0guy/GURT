@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "Course.json",
+  "title": "Course",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "name", "term", "color"],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "name": {"type": "string", "minLength": 1},
+    "term": {"type": "string", "minLength": 1},
+    "color": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"}
+  }
+}

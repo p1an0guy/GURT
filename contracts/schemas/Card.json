@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "Card.json",
+  "title": "Card",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "courseId", "topicId", "prompt", "answer"],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "courseId": {"type": "string", "minLength": 1},
+    "topicId": {"type": "string", "minLength": 1},
+    "prompt": {"type": "string", "minLength": 1},
+    "answer": {"type": "string", "minLength": 1}
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "CalendarFeedMetadata.json",
+  "title": "CalendarFeedMetadata",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["token", "courseId", "lastGeneratedAt"],
+  "properties": {
+    "token": {"type": "string", "minLength": 1},
+    "courseId": {"type": "string", "minLength": 1},
+    "lastGeneratedAt": {"type": "string", "format": "date-time"}
+  }
+}

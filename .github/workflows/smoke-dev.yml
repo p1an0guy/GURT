@@ -1,0 +1,40 @@
+name: Smoke Dev
+
+on:
+  workflow_dispatch:
+
+jobs:
+  smoke-dev:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run smoke tests against dev
+        id: smoke
+        env:
+          BASE_URL: ${{ secrets.DEV_BASE_URL }}
+          CALENDAR_TOKEN: ${{ secrets.DEV_CALENDAR_TOKEN }}
+          COURSE_ID: ${{ secrets.DEV_COURSE_ID }}
+        run: python scripts/run_smoke_tests.py
+
+      - name: Summary
+        if: always()
+        run: |
+          if [ "${{ steps.smoke.outcome }}" = "success" ]; then
+            echo "✅ Smoke tests passed against dev stage"
+          else
+            echo "❌ Smoke tests failed against dev stage"
+            exit 1
+          fi

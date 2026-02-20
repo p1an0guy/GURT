@@ -1,0 +1,12 @@
+{
+  "courseId": "course-psych-101",
+  "generatedAt": "2026-09-02T08:30:00Z",
+  "questions": [
+    {
+      "id": "q-01",
+      "prompt": "Which process moves information into long-term memory?",
+      "choices": ["Encoding", "Retrieval", "Rehearsal", "Recognition"],
+      "answerIndex": 0
+    }
+  ]
+}

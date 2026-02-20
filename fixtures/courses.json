@@ -1,0 +1,14 @@
+[
+  {
+    "id": "course-psych-101",
+    "name": "PSYCH 101",
+    "term": "Fall 2026",
+    "color": "#3366FF"
+  },
+  {
+    "id": "course-bio-220",
+    "name": "BIO 220",
+    "term": "Fall 2026",
+    "color": "#22AA88"
+  }
+]
