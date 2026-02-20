@@ -28,6 +28,7 @@ class ApiStack(Stack):
         calendar_token_minting_path: str,
         calendar_token: str,
         calendar_token_user_id: str,
+        calendar_fixture_fallback: str,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -38,6 +39,7 @@ class ApiStack(Stack):
             exclude=[
                 ".git",
                 ".github",
+                ".next",
                 "infra",
                 "node_modules",
                 "cdk.out",
@@ -58,6 +60,7 @@ class ApiStack(Stack):
             "UPLOADS_BUCKET": data_stack.uploads_bucket.bucket_name,
             "CALENDAR_TOKEN": calendar_token,
             "CALENDAR_TOKEN_USER_ID": calendar_token_user_id,
+            "CALENDAR_FIXTURE_FALLBACK": calendar_fixture_fallback,
         }
 
         app_api_handler = lambda_.Function(

@@ -47,6 +47,11 @@ def _is_demo_mode() -> bool:
     return raw.strip().lower() in _DEMO_MODE_TRUE_VALUES
 
 
+def _calendar_fixture_fallback_enabled() -> bool:
+    raw = os.getenv("CALENDAR_FIXTURE_FALLBACK", "false")
+    return raw.strip().lower() in _DEMO_MODE_TRUE_VALUES
+
+
 def _json_response(status_code: int, payload: Mapping[str, Any]) -> Dict[str, Any]:
     return {
         "statusCode": status_code,
@@ -359,6 +364,9 @@ def _load_schedule_items_for_user(user_id: str) -> list[dict[str, Any]]:
     items = _scan_canvas_items_for_user(user_id)
     if items:
         return items
+
+    if not _calendar_fixture_fallback_enabled():
+        return []
 
     fixtures = _load_fixtures()
     return [

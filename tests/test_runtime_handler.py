@@ -265,11 +265,38 @@ class RuntimeHandlerTests(unittest.TestCase):
                     "path": "/calendar/token-any-user.ics",
                     "pathParameters": {"token": "token-any-user"},
                 },
-                env={"DEMO_MODE": "false"},
+                env={"DEMO_MODE": "false", "CALENDAR_FIXTURE_FALLBACK": "true"},
             )
 
         self.assertEqual(response["statusCode"], 200)
         self.assertIn("BEGIN:VEVENT", response["body"])
+
+    def test_calendar_route_skips_fixture_fallback_when_flag_is_disabled(self) -> None:
+        store = _MemoryCalendarTokenStore()
+        store.save(
+            CalendarTokenRecord.mint(
+                token="token-no-fallback",
+                user_id="arn:aws:iam::123456789012:user/demo",
+                created_at="2026-09-01T10:15:00Z",
+            )
+        )
+
+        with (
+            patch("backend.runtime._calendar_token_store", return_value=store),
+            patch("backend.runtime._scan_canvas_items_for_user", return_value=[]),
+        ):
+            response = self._invoke(
+                {
+                    "httpMethod": "GET",
+                    "path": "/calendar/token-no-fallback.ics",
+                    "pathParameters": {"token": "token-no-fallback"},
+                },
+                env={"DEMO_MODE": "false", "CALENDAR_FIXTURE_FALLBACK": "false"},
+            )
+
+        self.assertEqual(response["statusCode"], 200)
+        self.assertIn("BEGIN:VCALENDAR", response["body"])
+        self.assertNotIn("BEGIN:VEVENT", response["body"])
 
     def test_calendar_route_returns_500_when_token_table_is_unavailable(self) -> None:
         with patch(
