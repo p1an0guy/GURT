@@ -88,6 +88,18 @@ Or use one command from repo root (build + CDK checks + bootstrap + deploy):
 ./scripts/deploy.sh
 ```
 
+Recommended usage with AWS SSO profile:
+
+```bash
+AWS_PROFILE=<your-sso-profile> ./scripts/deploy.sh
+```
+
+Optional override for CDK CLI package/version:
+
+```bash
+CDK_CLI_PACKAGE=aws-cdk@latest ./scripts/deploy.sh
+```
+
 Key stack outputs to use for smoke/dev secrets:
 
 - `ApiBaseUrl` (or `SuggestedSmokeBaseUrlSecret`) -> `DEV_BASE_URL`

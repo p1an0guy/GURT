@@ -26,7 +26,6 @@ class DataStack(Stack):
 
         table_kwargs = {
             "billing_mode": dynamodb.BillingMode.PAY_PER_REQUEST,
-            "point_in_time_recovery": False,
             "removal_policy": RemovalPolicy.DESTROY,
         }
 
