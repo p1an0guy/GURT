@@ -55,6 +55,33 @@
         }
       }
     },
+    "/uploads": {
+      "post": {
+        "operationId": "createUpload",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created upload metadata for document ingestion",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/courses/{courseId}/items": {
       "get": {
         "operationId": "listCourseItems",
@@ -232,6 +259,12 @@
       },
       "CalendarFeedMetadata": {
         "$ref": "./schemas/CalendarFeedMetadata.json"
+      },
+      "UploadRequest": {
+        "$ref": "./schemas/UploadRequest.json"
+      },
+      "UploadResponse": {
+        "$ref": "./schemas/UploadResponse.json"
       }
     }
   }
