@@ -251,8 +251,8 @@ def main() -> None:
     if not base_url:
         raise RuntimeError("BASE_URL is required unless SMOKE_MOCK_MODE=1")
 
-    course_id = os.getenv("COURSE_ID", "course-psych-101")
-    calendar_token = os.getenv("CALENDAR_TOKEN", "demo-calendar-token")
+    course_id = os.getenv("COURSE_ID", "").strip() or "course-psych-101"
+    calendar_token = os.getenv("CALENDAR_TOKEN", "").strip() or "demo-calendar-token"
     ctx = SmokeContext(base_url=base_url, calendar_token=calendar_token, course_id=course_id)
 
     try:
