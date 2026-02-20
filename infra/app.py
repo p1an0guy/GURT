@@ -23,6 +23,7 @@ bedrock_model_id = app.node.try_get_context("bedrockModelId") or "amazon.nova-li
 calendar_token_minting_path = app.node.try_get_context("calendarTokenMintingPath") or "endpoint"
 calendar_token = app.node.try_get_context("calendarToken") or "demo-calendar-token"
 calendar_token_user_id = app.node.try_get_context("calendarTokenUserId") or "demo-user"
+calendar_fixture_fallback = app.node.try_get_context("calendarFixtureFallback") or "1"
 
 data_stack = DataStack(
     app,
@@ -41,6 +42,7 @@ api_stack = ApiStack(
     calendar_token_minting_path=calendar_token_minting_path,
     calendar_token=calendar_token,
     calendar_token_user_id=calendar_token_user_id,
+    calendar_fixture_fallback=calendar_fixture_fallback,
 )
 api_stack.add_dependency(data_stack)
 

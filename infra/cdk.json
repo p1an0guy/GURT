@@ -6,6 +6,7 @@
     "bedrockModelId": "amazon.nova-lite-v1:0",
     "calendarTokenMintingPath": "endpoint",
     "calendarToken": "demo-calendar-token",
-    "calendarTokenUserId": "demo-user"
+    "calendarTokenUserId": "demo-user",
+    "calendarFixtureFallback": "1"
   }
 }
