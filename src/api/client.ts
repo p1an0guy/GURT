@@ -1,5 +1,6 @@
 import {
   getFixtureCalendarIcs,
+  getFixtureCalendarTokenResponse,
   getFixtureCourseItems,
   getFixtureCourses,
   getFixtureHealth,
@@ -8,6 +9,7 @@ import {
   getFixtureStudyToday,
 } from "./fixtures.ts";
 import type {
+  CalendarTokenResponse,
   CanvasItem,
   Card,
   Course,
@@ -34,6 +36,7 @@ export interface ApiClient {
   postStudyReview(reviewEvent: ReviewEvent): Promise<StudyReviewAck>;
   getStudyMastery(courseId: string): Promise<TopicMastery[]>;
   getCalendarIcs(token: string): Promise<string>;
+  createCalendarToken(): Promise<CalendarTokenResponse>;
 }
 
 export interface CreateApiClientOptions {
@@ -207,6 +210,16 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
       }
 
       return requestText(`/calendar/${encodeURIComponent(token)}.ics`);
+    },
+
+    async createCalendarToken(): Promise<CalendarTokenResponse> {
+      if (useFixtures) {
+        return getFixtureCalendarTokenResponse(options.baseUrl);
+      }
+
+      return requestJson<CalendarTokenResponse>("/calendar/token", {
+        method: "POST",
+      });
     },
   };
 }

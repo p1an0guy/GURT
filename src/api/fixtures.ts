@@ -3,6 +3,7 @@ import canvasItemsRaw from "../../fixtures/canvas_items.json" with { type: "json
 import coursesRaw from "../../fixtures/courses.json" with { type: "json" };
 import topicsRaw from "../../fixtures/topics.json" with { type: "json" };
 import type {
+  CalendarTokenResponse,
   CanvasItem,
   Card,
   Course,
@@ -91,4 +92,17 @@ export function getFixtureCalendarIcs(token: string): string {
   lines.push("END:VCALENDAR");
 
   return `${lines.join("\r\n")}\r\n`;
+}
+
+export function getFixtureCalendarTokenResponse(baseUrl: string): CalendarTokenResponse {
+  const normalized = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
+  const token = "demo-calendar-token";
+  const feedUrl = normalized
+    ? `${normalized}/calendar/${token}.ics`
+    : `/calendar/${token}.ics`;
+  return {
+    token,
+    feedUrl,
+    createdAt: "2026-09-02T09:00:00Z",
+  };
 }

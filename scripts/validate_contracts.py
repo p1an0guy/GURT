@@ -23,6 +23,7 @@ EXAMPLE_SCHEMA_MAP = {
     "TopicMastery.example.json": "TopicMastery.json",
     "PracticeExam.example.json": "PracticeExam.json",
     "CalendarFeedMetadata.example.json": "CalendarFeedMetadata.json",
+    "CalendarTokenResponse.example.json": "CalendarTokenResponse.json",
     "UploadRequest.example.json": "UploadRequest.json",
     "UploadResponse.example.json": "UploadResponse.json",
 }

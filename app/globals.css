@@ -1,0 +1,179 @@
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap");
+
+:root {
+  --bg-a: #f8f5ec;
+  --bg-b: #d8ebf2;
+  --ink: #17202a;
+  --ink-soft: #394b5e;
+  --card: rgba(255, 255, 255, 0.86);
+  --line: rgba(23, 32, 42, 0.14);
+  --accent: #c44723;
+  --accent-soft: #ffe6dc;
+  --ok: #1a7f59;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 12% 10%, rgba(196, 71, 35, 0.16), transparent 35%),
+    radial-gradient(circle at 88% 4%, rgba(34, 106, 181, 0.2), transparent 38%),
+    linear-gradient(135deg, var(--bg-a), var(--bg-b));
+}
+
+a {
+  color: inherit;
+}
+
+.page {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 2rem 1rem 3rem;
+}
+
+.hero {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: clamp(1.8rem, 4vw, 3rem);
+  letter-spacing: -0.02em;
+}
+
+.hero p {
+  margin: 0;
+  color: var(--ink-soft);
+  max-width: 60ch;
+}
+
+.panel-grid {
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.panel {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  padding: 1rem;
+  backdrop-filter: blur(8px);
+}
+
+.panel h2 {
+  margin: 0 0 0.8rem;
+  font-size: 1.05rem;
+}
+
+.controls {
+  display: grid;
+  gap: 0.65rem;
+}
+
+label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+input,
+select,
+button,
+textarea {
+  font: inherit;
+}
+
+input,
+select {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  padding: 0.55rem 0.7rem;
+  background: #fff;
+}
+
+button {
+  border: 0;
+  border-radius: 0.65rem;
+  padding: 0.62rem 0.9rem;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button:hover {
+  filter: brightness(0.95);
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 700;
+}
+
+.status.ok {
+  color: var(--ok);
+}
+
+.status.warn {
+  color: var(--accent);
+}
+
+.stack {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.list {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.list li {
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  padding: 0.6rem 0.7rem;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.tag {
+  display: inline-block;
+  margin-left: 0.45rem;
+  font-size: 0.75rem;
+  border-radius: 999px;
+  padding: 0.12rem 0.45rem;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.mono {
+  font-family: "SFMono-Regular", Menlo, Monaco, monospace;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.small {
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+@media (max-width: 720px) {
+  .page {
+    padding-top: 1.25rem;
+  }
+}
