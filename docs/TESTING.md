@@ -7,6 +7,7 @@ This repository includes contract-first API assets, deterministic fixtures, and 
 ```bash
 python -m pip install --upgrade pip
 pip install -r requirements-dev.txt
+npm install
 ```
 
 ## Contract checks (local)
@@ -89,3 +90,15 @@ Runs typed API client tests and lightweight source linting for `src/api`.
 npm run lint
 npm test
 ```
+
+## Frontend browser shell (local)
+
+Run the Next.js demo shell that calls the typed API client:
+
+```bash
+export NEXT_PUBLIC_API_BASE_URL="https://<api-id>.execute-api.<region>.amazonaws.com/dev"
+export NEXT_PUBLIC_USE_FIXTURES="true"   # switch to false for live API calls
+npm run dev
+```
+
+Then open `http://localhost:3000`.
