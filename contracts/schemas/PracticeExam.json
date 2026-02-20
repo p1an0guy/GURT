@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "PracticeExam.json",
+  "title": "PracticeExam",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["courseId", "generatedAt", "questions"],
+  "properties": {
+    "courseId": {"type": "string", "minLength": 1},
+    "generatedAt": {"type": "string", "format": "date-time"},
+    "questions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "prompt", "choices", "answerIndex"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "prompt": {"type": "string", "minLength": 1},
+          "choices": {
+            "type": "array",
+            "minItems": 2,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "answerIndex": {"type": "integer", "minimum": 0}
+        }
+      }
+    }
+  }
+}

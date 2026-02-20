@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "CanvasItem.json",
+  "title": "CanvasItem",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "courseId", "title", "itemType", "dueAt", "pointsPossible"],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "courseId": {"type": "string", "minLength": 1},
+    "title": {"type": "string", "minLength": 1},
+    "itemType": {"type": "string", "enum": ["assignment", "exam", "quiz"]},
+    "dueAt": {"type": "string", "format": "date-time"},
+    "pointsPossible": {"type": "number", "minimum": 0}
+  }
+}

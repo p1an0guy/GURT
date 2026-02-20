@@ -1,0 +1,238 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Serverless Study API Contract",
+    "version": "0.1.0"
+  },
+  "servers": [
+    {
+      "url": "https://example.execute-api.region.amazonaws.com/dev"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "description": "Service health status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["status"],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["ok"]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/courses": {
+      "get": {
+        "operationId": "listCourses",
+        "responses": {
+          "200": {
+            "description": "List courses",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Course"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/courses/{courseId}/items": {
+      "get": {
+        "operationId": "listCourseItems",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "courseId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List Canvas items by course",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CanvasItem"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/study/today": {
+      "get": {
+        "operationId": "getStudyToday",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "courseId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Due cards for today",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Card"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/study/review": {
+      "post": {
+        "operationId": "postStudyReview",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewEvent"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Acknowledged review event",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["accepted"],
+                  "properties": {
+                    "accepted": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/study/mastery": {
+      "get": {
+        "operationId": "getStudyMastery",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "courseId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Topic mastery list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TopicMastery"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/calendar/{token}.ics": {
+      "get": {
+        "operationId": "getCalendarIcs",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "iCalendar feed",
+            "content": {
+              "text/calendar": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Course": {
+        "$ref": "./schemas/Course.json"
+      },
+      "CanvasItem": {
+        "$ref": "./schemas/CanvasItem.json"
+      },
+      "Topic": {
+        "$ref": "./schemas/Topic.json"
+      },
+      "Card": {
+        "$ref": "./schemas/Card.json"
+      },
+      "ReviewEvent": {
+        "$ref": "./schemas/ReviewEvent.json"
+      },
+      "TopicMastery": {
+        "$ref": "./schemas/TopicMastery.json"
+      },
+      "PracticeExam": {
+        "$ref": "./schemas/PracticeExam.json"
+      },
+      "CalendarFeedMetadata": {
+        "$ref": "./schemas/CalendarFeedMetadata.json"
+      }
+    }
+  }
+}

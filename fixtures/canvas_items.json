@@ -1,0 +1,26 @@
+[
+  {
+    "id": "item-assignment-1",
+    "courseId": "course-psych-101",
+    "title": "Week 1 Reflection",
+    "itemType": "assignment",
+    "dueAt": "2026-09-05T23:59:00Z",
+    "pointsPossible": 20
+  },
+  {
+    "id": "item-exam-1",
+    "courseId": "course-psych-101",
+    "title": "Midterm Exam",
+    "itemType": "exam",
+    "dueAt": "2026-10-15T17:00:00Z",
+    "pointsPossible": 100
+  },
+  {
+    "id": "item-quiz-1",
+    "courseId": "course-bio-220",
+    "title": "Cell Structure Quiz",
+    "itemType": "quiz",
+    "dueAt": "2026-09-12T18:00:00Z",
+    "pointsPossible": 25
+  }
+]
