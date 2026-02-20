@@ -53,6 +53,15 @@ Run the **Smoke Dev** workflow manually (`workflow_dispatch`) with these reposit
 - `DEV_CALENDAR_TOKEN` (required)
 - `DEV_COURSE_ID` (optional; defaults to `course-psych-101` when empty)
 
+How to get `DEV_CALENDAR_TOKEN`:
+
+1. Call `POST <DEV_BASE_URL>/calendar/token` as an authenticated caller.
+2. Copy the `token` from the JSON response.
+3. Save that token in GitHub Actions secret `DEV_CALENDAR_TOKEN`.
+
+In the current CDK scaffold, `POST /calendar/token` uses IAM auth (`AuthorizationType.IAM`),
+so call it with AWS credentials that can sign SigV4 requests.
+
 ## CDK infra synth and deploy (demo scaffold)
 
 Infrastructure is scaffolded in `infra/` with `GurtDataStack` and `GurtApiStack`.
@@ -68,7 +77,7 @@ cdk deploy GurtDataStack GurtApiStack
 Key stack outputs to use for smoke/dev secrets:
 
 - `ApiBaseUrl` (or `SuggestedSmokeBaseUrlSecret`) -> `DEV_BASE_URL`
-- `SuggestedSmokeCalendarTokenSecret` -> `DEV_CALENDAR_TOKEN` (defaults to `demo-calendar-token`)
+- `CalendarTokenMintEndpoint` -> call this endpoint to mint `DEV_CALENDAR_TOKEN`
 - `SuggestedSmokeCourseIdSecret` -> `DEV_COURSE_ID` (defaults to `course-psych-101`)
 
 CDK context defaults for demo deploys (`infra/cdk.json`):

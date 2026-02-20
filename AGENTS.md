@@ -95,4 +95,5 @@ When modifying API behavior or shapes, update all relevant files in one PR:
 - `GET /study/today?courseId=...`
 - `POST /study/review`
 - `GET /study/mastery?courseId=...`
+- `POST /calendar/token`
 - `GET /calendar/{token}.ics`
