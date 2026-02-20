@@ -1,1 +1,1 @@
-# No external dependencies required for scaffold scripts.
+pytest>=8.0,<9
