@@ -99,6 +99,8 @@ When modifying API behavior or shapes, update all relevant files in one PR:
 
 ## Current API Surface (High-level)
 - `GET /health`
+- `POST /canvas/connect`
+- `POST /canvas/sync`
 - `GET /courses`
 - `GET /courses/{courseId}/items`
 - `GET /study/today?courseId=...`

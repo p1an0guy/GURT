@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "CanvasConnectRequest.json",
+  "title": "CanvasConnectRequest",
+  "description": "Request payload for storing Canvas connection settings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["canvasBaseUrl", "accessToken"],
+  "properties": {
+    "canvasBaseUrl": {
+      "type": "string",
+      "minLength": 1
+    },
+    "accessToken": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

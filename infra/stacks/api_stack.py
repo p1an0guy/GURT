@@ -121,6 +121,12 @@ class ApiStack(Stack):
         course_items = course_id.add_resource("items")
         course_items.add_method("GET", app_integration)
 
+        canvas = self.rest_api.root.add_resource("canvas")
+        canvas_connect = canvas.add_resource("connect")
+        canvas_connect.add_method("POST", app_integration, authorization_type=apigateway.AuthorizationType.IAM)
+        canvas_sync = canvas.add_resource("sync")
+        canvas_sync.add_method("POST", app_integration, authorization_type=apigateway.AuthorizationType.IAM)
+
         uploads = self.rest_api.root.add_resource("uploads")
         uploads.add_method("POST", uploads_integration)
 

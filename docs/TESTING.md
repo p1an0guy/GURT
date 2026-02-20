@@ -78,6 +78,13 @@ How to get `DEV_CALENDAR_TOKEN`:
 In the current CDK scaffold, `POST /calendar/token` uses IAM auth (`AuthorizationType.IAM`),
 so call it with AWS credentials that can sign SigV4 requests.
 
+Canvas bootstrap for demo schedule rows (also IAM-authenticated):
+
+1. `POST <DEV_BASE_URL>/canvas/connect` with JSON body:
+   `{"canvasBaseUrl":"https://canvas.example.edu","accessToken":"demo-token"}`
+2. `POST <DEV_BASE_URL>/canvas/sync`
+3. Mint calendar token and fetch `/calendar/{token}.ics`.
+
 ## CDK infra synth and deploy (demo scaffold)
 
 Infrastructure is scaffolded in `infra/` with `GurtDataStack` and `GurtApiStack`.

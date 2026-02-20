@@ -157,6 +157,71 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertEqual(response["statusCode"], 401)
         self.assertIn("authenticated principal", json.loads(response["body"])["error"])
 
+    def test_canvas_connect_requires_authenticated_principal(self) -> None:
+        response = self._invoke(
+            {
+                "httpMethod": "POST",
+                "path": "/canvas/connect",
+                "body": json.dumps({"canvasBaseUrl": "https://canvas.example.edu", "accessToken": "x"}),
+            }
+        )
+
+        self.assertEqual(response["statusCode"], 401)
+        self.assertIn("authenticated principal", json.loads(response["body"])["error"])
+
+    def test_canvas_connect_persists_connection(self) -> None:
+        event = {
+            "httpMethod": "POST",
+            "path": "/canvas/connect",
+            "body": json.dumps({"canvasBaseUrl": "https://canvas.example.edu", "accessToken": "secret-token"}),
+            "requestContext": {"authorizer": {"principalId": "demo-user"}},
+        }
+
+        with patch("backend.runtime._upsert_canvas_connection") as upsert:
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 200)
+        body = json.loads(response["body"])
+        self.assertEqual(body["connected"], True)
+        upsert.assert_called_once()
+        call_kwargs = upsert.call_args.kwargs
+        self.assertEqual(call_kwargs["user_id"], "demo-user")
+        self.assertEqual(call_kwargs["canvas_base_url"], "https://canvas.example.edu")
+        self.assertEqual(call_kwargs["access_token"], "secret-token")
+
+    def test_canvas_sync_requires_existing_connection(self) -> None:
+        event = {
+            "httpMethod": "POST",
+            "path": "/canvas/sync",
+            "requestContext": {"authorizer": {"principalId": "demo-user"}},
+        }
+
+        with patch("backend.runtime._read_canvas_connection", return_value=None):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 400)
+        self.assertIn("canvas connection not found", json.loads(response["body"])["error"])
+
+    def test_canvas_sync_upserts_fixture_rows(self) -> None:
+        event = {
+            "httpMethod": "POST",
+            "path": "/canvas/sync",
+            "requestContext": {"authorizer": {"principalId": "demo-user"}},
+        }
+
+        with (
+            patch("backend.runtime._read_canvas_connection", return_value={"userId": "demo-user"}),
+            patch("backend.runtime._upsert_fixture_canvas_rows_for_user", return_value=(2, 3)) as upsert_rows,
+        ):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 200)
+        body = json.loads(response["body"])
+        self.assertEqual(body["synced"], True)
+        self.assertEqual(body["coursesUpserted"], 2)
+        self.assertEqual(body["itemsUpserted"], 3)
+        upsert_rows.assert_called_once()
+
     def test_calendar_token_create_persists_token_and_returns_feed_url(self) -> None:
         store = _MemoryCalendarTokenStore()
         event = {
