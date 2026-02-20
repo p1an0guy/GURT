@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ReviewEvent.json",
+  "title": "ReviewEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["cardId", "courseId", "rating", "reviewedAt"],
+  "properties": {
+    "cardId": {"type": "string", "minLength": 1},
+    "courseId": {"type": "string", "minLength": 1},
+    "rating": {"type": "integer", "minimum": 1, "maximum": 5},
+    "reviewedAt": {"type": "string", "format": "date-time"}
+  }
+}

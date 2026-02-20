@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "Topic.json",
+  "title": "Topic",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "courseId", "name", "masteryLevel"],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "courseId": {"type": "string", "minLength": 1},
+    "name": {"type": "string", "minLength": 1},
+    "masteryLevel": {"type": "number", "minimum": 0, "maximum": 1}
+  }
+}

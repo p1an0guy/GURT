@@ -1,0 +1,24 @@
+{
+  "courseId": "course-psych-101",
+  "generatedAt": "2026-09-02T08:30:00Z",
+  "questions": [
+    {
+      "id": "q-01",
+      "prompt": "Which process moves information into long-term memory?",
+      "choices": ["Encoding", "Retrieval", "Recognition", "Inhibition"],
+      "answerIndex": 0
+    },
+    {
+      "id": "q-02",
+      "prompt": "Classical conditioning is most associated with:",
+      "choices": ["Skinner", "Piaget", "Pavlov", "Bandura"],
+      "answerIndex": 2
+    },
+    {
+      "id": "q-03",
+      "prompt": "Spaced repetition primarily improves:",
+      "choices": ["Short-term fatigue", "Long-term retention", "Sensory overload", "Motor learning"],
+      "answerIndex": 1
+    }
+  ]
+}

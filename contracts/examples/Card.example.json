@@ -1,0 +1,7 @@
+{
+  "id": "card-001",
+  "courseId": "course-psych-101",
+  "topicId": "topic-memory",
+  "prompt": "What does working memory primarily do?",
+  "answer": "Temporarily holds and manipulates information for active tasks."
+}
