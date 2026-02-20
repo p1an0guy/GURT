@@ -121,6 +121,12 @@ CDK context defaults for demo deploys (`infra/cdk.json`):
 - `calendarToken`: default seeded token used by `/calendar/{token}.ics`
 - `calendarTokenUserId`: optional seeded user lock for calendar feed requests
 
+Where to add them in GitHub:
+
+1. Open the repo on GitHub.
+2. Go to **Settings** -> **Secrets and variables** -> **Actions**.
+3. Under **Repository secrets**, click **New repository secret** and add each value above.
+
 ## Fixture usage before full implementation
 
 - `fixtures/*.json` is the shared deterministic data layer for frontend stubs and backend placeholder handlers.
