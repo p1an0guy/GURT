@@ -1,0 +1,10 @@
+{
+  "app": "python app.py",
+  "context": {
+    "stageName": "dev",
+    "demoMode": "1",
+    "bedrockModelId": "amazon.nova-lite-v1:0",
+    "calendarToken": "demo-calendar-token",
+    "calendarTokenUserId": "demo-user"
+  }
+}
