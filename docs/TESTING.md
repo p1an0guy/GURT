@@ -50,7 +50,30 @@ Run the **Smoke Dev** workflow manually (`workflow_dispatch`) with these reposit
 
 - `DEV_BASE_URL` (required)
 - `DEV_CALENDAR_TOKEN` (required)
-- `DEV_COURSE_ID` (optional)
+- `DEV_COURSE_ID` (optional; defaults to `course-psych-101` when empty)
+
+## CDK infra synth and deploy (demo scaffold)
+
+Infrastructure is scaffolded in `infra/` with `GurtDataStack` and `GurtApiStack`.
+
+```bash
+python -m pip install --upgrade pip
+pip install -r infra/requirements.txt
+cd infra
+cdk synth
+cdk deploy GurtDataStack GurtApiStack
+```
+
+Key stack outputs to use for smoke/dev secrets:
+
+- `ApiBaseUrl` (or `SuggestedSmokeBaseUrlSecret`) -> `DEV_BASE_URL`
+- `SuggestedSmokeCalendarTokenSecret` -> `DEV_CALENDAR_TOKEN` (defaults to `demo-calendar-token`)
+- `SuggestedSmokeCourseIdSecret` -> `DEV_COURSE_ID` (defaults to `course-psych-101`)
+
+CDK context defaults for demo deploys (`infra/cdk.json`):
+
+- `calendarToken`: default seeded token used by `/calendar/{token}.ics`
+- `calendarTokenUserId`: optional seeded user lock for calendar feed requests
 
 ## Fixture usage before full implementation
 
