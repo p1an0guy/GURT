@@ -12,10 +12,17 @@ from pathlib import Path
 from typing import Any, Dict, Mapping
 
 from backend import uploads
+from gurt.calendar_tokens.minting import (
+    CalendarTokenMintingError,
+    MintingConfig,
+    mint_calendar_token,
+)
+from gurt.calendar_tokens.repository import DynamoDbCalendarTokenStore
 
 _ROOT_DIR = Path(__file__).resolve().parent.parent
 _FIXTURES_DIR = _ROOT_DIR / "fixtures"
 _DEMO_MODE_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
+_ENTITY_CANVAS_ITEM = "CanvasItem"
 
 
 @lru_cache(maxsize=1)
@@ -124,6 +131,18 @@ def _path_params(event: Mapping[str, Any]) -> dict[str, str]:
     return params
 
 
+def _headers(event: Mapping[str, Any]) -> dict[str, str]:
+    raw = event.get("headers")
+    if not isinstance(raw, dict):
+        return {}
+
+    normalized: dict[str, str] = {}
+    for key, value in raw.items():
+        if isinstance(key, str) and isinstance(value, str):
+            normalized[key.lower()] = value
+    return normalized
+
+
 def _parse_json_body(event: Mapping[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
     body = event.get("body")
 
@@ -176,19 +195,44 @@ def _extract_calendar_token(path: str, path_params: Mapping[str, str]) -> str | 
     return match.group(1)
 
 
-def _extract_principal_id(event: Mapping[str, Any]) -> str | None:
+def _extract_authenticated_user_id(event: Mapping[str, Any]) -> str | None:
     context = event.get("requestContext")
     if not isinstance(context, dict):
         return None
 
     authorizer = context.get("authorizer")
-    if not isinstance(authorizer, dict):
-        return None
+    if isinstance(authorizer, dict):
+        principal_id = authorizer.get("principalId")
+        if isinstance(principal_id, str) and principal_id.strip():
+            return principal_id.strip()
 
-    principal_id = authorizer.get("principalId")
-    if isinstance(principal_id, str) and principal_id.strip():
-        return principal_id.strip()
+        claims = authorizer.get("claims")
+        if isinstance(claims, dict):
+            sub = claims.get("sub")
+            if isinstance(sub, str) and sub.strip():
+                return sub.strip()
+
+        jwt = authorizer.get("jwt")
+        if isinstance(jwt, dict):
+            jwt_claims = jwt.get("claims")
+            if isinstance(jwt_claims, dict):
+                sub = jwt_claims.get("sub")
+                if isinstance(sub, str) and sub.strip():
+                    return sub.strip()
+
+    identity = context.get("identity")
+    if isinstance(identity, dict):
+        user_arn = identity.get("userArn")
+        if isinstance(user_arn, str) and user_arn.strip():
+            return user_arn.strip()
     return None
+
+
+def _require_authenticated_user_id(event: Mapping[str, Any]) -> tuple[str | None, Dict[str, Any] | None]:
+    user_id = _extract_authenticated_user_id(event)
+    if user_id is None:
+        return None, _json_response(401, {"error": "authenticated principal is required"})
+    return user_id, None
 
 
 def _require_demo_mode() -> Dict[str, Any] | None:
@@ -257,22 +301,147 @@ def _build_ics_payload(*, user_id: str, items: list[dict[str, Any]]) -> str:
     return "\r\n".join(lines) + "\r\n"
 
 
-def _handle_calendar(event: Mapping[str, Any], token: str) -> Dict[str, Any]:
-    configured_token = os.getenv("CALENDAR_TOKEN", "").strip()
-    if not configured_token:
-        return _json_response(500, {"error": "server misconfiguration: CALENDAR_TOKEN missing"})
+def _dynamodb_table(table_name: str) -> Any:
+    import boto3
 
-    if token != configured_token:
+    return boto3.resource("dynamodb").Table(table_name)
+
+
+def _calendar_token_store() -> DynamoDbCalendarTokenStore:
+    table_name = os.getenv("CALENDAR_TOKENS_TABLE", "").strip()
+    if not table_name:
+        raise RuntimeError("server misconfiguration: CALENDAR_TOKENS_TABLE missing")
+    return DynamoDbCalendarTokenStore(_dynamodb_table(table_name))
+
+
+def _scan_canvas_items_for_user(user_id: str) -> list[dict[str, Any]]:
+    table_name = os.getenv("CANVAS_DATA_TABLE", "").strip()
+    if not table_name:
+        return []
+
+    table = _dynamodb_table(table_name)
+    response = table.scan()
+    rows = list(response.get("Items", []))
+
+    while "LastEvaluatedKey" in response:
+        response = table.scan(ExclusiveStartKey=response["LastEvaluatedKey"])
+        rows.extend(response.get("Items", []))
+
+    items: list[dict[str, Any]] = []
+    for row in rows:
+        if row.get("entityType") != _ENTITY_CANVAS_ITEM:
+            continue
+        if row.get("userId") != user_id:
+            continue
+
+        course_id = row.get("courseId")
+        item_id = row.get("id")
+        title = row.get("title")
+        due_at = row.get("dueAt")
+
+        if not all(isinstance(value, str) and value for value in (course_id, item_id, title, due_at)):
+            continue
+
+        items.append(
+            {
+                "id": item_id,
+                "courseId": course_id,
+                "title": title,
+                "dueAt": due_at,
+            }
+        )
+
+    items.sort(key=lambda row: str(row.get("dueAt", "")))
+    return items
+
+
+def _load_schedule_items_for_user(user_id: str) -> list[dict[str, Any]]:
+    items = _scan_canvas_items_for_user(user_id)
+    if items:
+        return items
+
+    demo_user_id = os.getenv("DEMO_USER_ID", "demo-user").strip() or "demo-user"
+    if _is_demo_mode() and user_id == demo_user_id:
+        fixtures = _load_fixtures()
+        return [
+            {
+                "id": str(row["id"]),
+                "courseId": str(row["courseId"]),
+                "title": str(row["title"]),
+                "dueAt": str(row["dueAt"]),
+            }
+            for row in fixtures["items"]
+        ]
+
+    return []
+
+
+def _public_base_url(event: Mapping[str, Any]) -> str:
+    configured = os.getenv("PUBLIC_BASE_URL", "").strip()
+    if configured:
+        return configured.rstrip("/")
+
+    headers = _headers(event)
+    host = headers.get("host", "").strip()
+    if not host:
+        return ""
+
+    scheme = headers.get("x-forwarded-proto", "https").strip() or "https"
+    stage = ""
+    context = event.get("requestContext")
+    if isinstance(context, dict):
+        stage_raw = context.get("stage")
+        if isinstance(stage_raw, str) and stage_raw.strip():
+            stage = f"/{stage_raw.strip()}"
+
+    return f"{scheme}://{host}{stage}"
+
+
+def _handle_calendar_token_create(event: Mapping[str, Any]) -> Dict[str, Any]:
+    user_id, auth_error = _require_authenticated_user_id(event)
+    if auth_error is not None or user_id is None:
+        return auth_error or _json_response(401, {"error": "authenticated principal is required"})
+
+    try:
+        store = _calendar_token_store()
+        record = mint_calendar_token(
+            user_id=user_id,
+            store=store,
+            config=MintingConfig.from_env(),
+        )
+    except CalendarTokenMintingError as exc:
+        return _json_response(400, {"error": str(exc)})
+    except RuntimeError as exc:
+        return _json_response(500, {"error": str(exc)})
+    except Exception as exc:  # pragma: no cover - defensive runtime guard
+        return _json_response(500, {"error": f"unable to mint calendar token: {exc}"})
+
+    base_url = _public_base_url(event)
+    feed_url = f"{base_url}/calendar/{record.token}.ics" if base_url else f"/calendar/{record.token}.ics"
+    return _json_response(
+        201,
+        {
+            "token": record.token,
+            "feedUrl": feed_url,
+            "createdAt": record.created_at,
+        },
+    )
+
+
+def _handle_calendar(token: str) -> Dict[str, Any]:
+    try:
+        store = _calendar_token_store()
+    except RuntimeError as exc:
+        return _json_response(500, {"error": str(exc)})
+    except Exception as exc:  # pragma: no cover - defensive runtime guard
+        return _json_response(500, {"error": f"unable to read calendar token store: {exc}"})
+
+    record = store.get(token)
+    if record is None or record.revoked:
         return _json_response(404, {"error": "calendar token not found"})
 
-    expected_user_id = os.getenv("CALENDAR_TOKEN_USER_ID", "").strip()
-    principal_id = _extract_principal_id(event)
-    if expected_user_id and principal_id and principal_id != expected_user_id:
-        return _json_response(403, {"error": "calendar token is not valid for this user"})
-
-    fixtures = _load_fixtures()
-    user_id = expected_user_id or principal_id or "demo-user"
-    payload = _build_ics_payload(user_id=user_id, items=fixtures["items"])
+    items = _load_schedule_items_for_user(record.user_id)
+    payload = _build_ics_payload(user_id=record.user_id, items=items)
     return _text_response(200, payload, content_type="text/calendar")
 
 
@@ -287,6 +456,14 @@ def lambda_handler(event: Mapping[str, Any], context: Any) -> Dict[str, Any]:
 
     if method == "GET" and path == "/health":
         return _json_response(200, {"status": "ok"})
+
+    if method == "POST" and path == "/calendar/token":
+        return _handle_calendar_token_create(event)
+
+    if method == "GET":
+        token = _extract_calendar_token(path, path_params)
+        if token is not None:
+            return _handle_calendar(token)
 
     demo_guard = _require_demo_mode()
     if demo_guard is not None:
@@ -346,10 +523,5 @@ def lambda_handler(event: Mapping[str, Any], context: Any) -> Dict[str, Any]:
             if topic.get("courseId") == course_id
         ]
         return _text_response(200, json.dumps(rows), content_type="application/json")
-
-    if method == "GET":
-        token = _extract_calendar_token(path, path_params)
-        if token is not None:
-            return _handle_calendar(event, token)
 
     return _json_response(404, {"error": "not found"})

@@ -25,6 +25,7 @@ class ApiStack(Stack):
         stage_name: str,
         demo_mode: str,
         bedrock_model_id: str,
+        calendar_token_minting_path: str,
         calendar_token: str,
         calendar_token_user_id: str,
         **kwargs,
@@ -49,6 +50,7 @@ class ApiStack(Stack):
         env = {
             "DEMO_MODE": demo_mode,
             "BEDROCK_MODEL_ID": bedrock_model_id,
+            "CALENDAR_TOKEN_MINTING_PATH": calendar_token_minting_path,
             "CANVAS_DATA_TABLE": data_stack.canvas_data_table.table_name,
             "CALENDAR_TOKENS_TABLE": data_stack.calendar_tokens_table.table_name,
             "DOCS_TABLE": data_stack.docs_table.table_name,
@@ -128,6 +130,12 @@ class ApiStack(Stack):
         study_mastery.add_method("GET", app_integration)
 
         calendar = self.rest_api.root.add_resource("calendar")
+        calendar_token = calendar.add_resource("token")
+        calendar_token.add_method(
+            "POST",
+            app_integration,
+            authorization_type=apigateway.AuthorizationType.IAM,
+        )
         calendar_feed = calendar.add_resource("{token_ics}")
         calendar_feed.add_method("GET", app_integration)
 
@@ -146,9 +154,21 @@ class ApiStack(Stack):
         )
         CfnOutput(
             self,
+            "CalendarTokenMintEndpoint",
+            value=f"{api_base_url}/calendar/token",
+            description="Mint endpoint for obtaining DEV_CALENDAR_TOKEN",
+        )
+        CfnOutput(
+            self,
             "SuggestedSmokeCalendarTokenSecret",
-            value=calendar_token,
-            description="Suggested value for DEV_CALENDAR_TOKEN",
+            value=(
+                calendar_token
+                if calendar_token_minting_path.strip().lower() == "env"
+                else "mint-via-POST-/calendar/token"
+            ),
+            description=(
+                "Suggested value for DEV_CALENDAR_TOKEN (or mint one via POST /calendar/token)"
+            ),
         )
         CfnOutput(
             self,

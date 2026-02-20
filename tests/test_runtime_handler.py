@@ -6,7 +6,19 @@ import json
 import unittest
 from unittest.mock import patch
 
+from gurt.calendar_tokens.model import CalendarTokenRecord
 from backend.runtime import lambda_handler
+
+
+class _MemoryCalendarTokenStore:
+    def __init__(self) -> None:
+        self.rows: dict[str, CalendarTokenRecord] = {}
+
+    def save(self, record: CalendarTokenRecord) -> None:
+        self.rows[record.token] = record
+
+    def get(self, token: str) -> CalendarTokenRecord | None:
+        return self.rows.get(token)
 
 
 class RuntimeHandlerTests(unittest.TestCase):
@@ -137,72 +149,164 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertEqual(by_topic["topic-memory"]["dueCards"], 3)
         self.assertEqual(by_topic["topic-conditioning"]["dueCards"], 3)
 
-    def test_calendar_route_requires_configured_token(self) -> None:
+    def test_calendar_token_create_requires_authenticated_principal(self) -> None:
         response = self._invoke(
-            {"httpMethod": "GET", "path": "/calendar/demo.ics", "pathParameters": {"token": "demo"}},
-            env={"CALENDAR_TOKEN": ""},
+            {"httpMethod": "POST", "path": "/calendar/token"},
         )
 
-        self.assertEqual(response["statusCode"], 500)
-        self.assertIn("CALENDAR_TOKEN", json.loads(response["body"])["error"])
+        self.assertEqual(response["statusCode"], 401)
+        self.assertIn("authenticated principal", json.loads(response["body"])["error"])
 
-    def test_calendar_route_rejects_incorrect_token(self) -> None:
-        response = self._invoke(
-            {"httpMethod": "GET", "path": "/calendar/wrong.ics", "pathParameters": {"token": "wrong"}},
-            env={"CALENDAR_TOKEN": "demo-calendar-token"},
+    def test_calendar_token_create_persists_token_and_returns_feed_url(self) -> None:
+        store = _MemoryCalendarTokenStore()
+        event = {
+            "httpMethod": "POST",
+            "path": "/calendar/token",
+            "headers": {"host": "api.example.test", "x-forwarded-proto": "https"},
+            "requestContext": {"stage": "dev", "authorizer": {"principalId": "demo-user"}},
+        }
+        with patch("backend.runtime._calendar_token_store", return_value=store):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 201)
+        body = json.loads(response["body"])
+        self.assertIn("token", body)
+        self.assertEqual(body["createdAt"], store.get(body["token"]).created_at)  # type: ignore[union-attr]
+        self.assertEqual(
+            body["feedUrl"],
+            f"https://api.example.test/dev/calendar/{body['token']}.ics",
         )
 
-        self.assertEqual(response["statusCode"], 404)
-
-    def test_calendar_route_enforces_optional_user_id_when_principal_present(self) -> None:
-        response = self._invoke(
-            {
-                "httpMethod": "GET",
-                "path": "/calendar/demo-calendar-token.ics",
-                "pathParameters": {"token": "demo-calendar-token"},
-                "requestContext": {"authorizer": {"principalId": "other-user"}},
-            },
-            env={
-                "CALENDAR_TOKEN": "demo-calendar-token",
-                "CALENDAR_TOKEN_USER_ID": "demo-user",
-            },
+    def test_calendar_route_looks_up_token_and_uses_associated_user(self) -> None:
+        store = _MemoryCalendarTokenStore()
+        store.save(
+            CalendarTokenRecord.mint(
+                token="calendar-token-1",
+                user_id="demo-user",
+                created_at="2026-09-01T10:15:00Z",
+            )
         )
+        event = {
+            "httpMethod": "GET",
+            "path": "/calendar/calendar-token-1.ics",
+            "pathParameters": {"token": "calendar-token-1"},
+        }
 
-        self.assertEqual(response["statusCode"], 403)
-
-    def test_calendar_route_returns_ics_for_valid_token(self) -> None:
-        response = self._invoke(
-            {
-                "httpMethod": "GET",
-                "path": "/calendar/demo-calendar-token.ics",
-                "pathParameters": {"token": "demo-calendar-token"},
-            },
-            env={
-                "CALENDAR_TOKEN": "demo-calendar-token",
-                "CALENDAR_TOKEN_USER_ID": "demo-user",
-            },
-        )
+        with (
+            patch("backend.runtime._calendar_token_store", return_value=store),
+            patch(
+                "backend.runtime._load_schedule_items_for_user",
+                return_value=[
+                    {
+                        "id": "item-123",
+                        "courseId": "course-psych-101",
+                        "title": "Midterm Exam",
+                        "dueAt": "2026-10-15T17:00:00Z",
+                    }
+                ],
+            ) as load_items,
+        ):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
 
         self.assertEqual(response["statusCode"], 200)
         self.assertEqual(response["headers"]["Content-Type"], "text/calendar")
         self.assertIn("BEGIN:VCALENDAR", response["body"])
-        self.assertIn("UID:studybuddy:demo-user", response["body"])
+        self.assertIn("SUMMARY:Midterm Exam", response["body"])
+        load_items.assert_called_once_with("demo-user")
+
+    def test_calendar_route_returns_404_for_unknown_token(self) -> None:
+        store = _MemoryCalendarTokenStore()
+        with patch("backend.runtime._calendar_token_store", return_value=store):
+            response = self._invoke(
+                {"httpMethod": "GET", "path": "/calendar/missing.ics", "pathParameters": {"token": "missing"}},
+                env={"DEMO_MODE": "false"},
+            )
+
+        self.assertEqual(response["statusCode"], 404)
 
     def test_calendar_route_accepts_stage_prefixed_path(self) -> None:
-        response = self._invoke(
-            {
-                "httpMethod": "GET",
-                "path": "/dev/calendar/demo-calendar-token.ics",
-                "requestContext": {"stage": "dev"},
-            },
-            env={
-                "CALENDAR_TOKEN": "demo-calendar-token",
-                "CALENDAR_TOKEN_USER_ID": "demo-user",
-            },
+        store = _MemoryCalendarTokenStore()
+        store.save(
+            CalendarTokenRecord.mint(
+                token="demo-calendar-token",
+                user_id="demo-user",
+                created_at="2026-09-01T10:15:00Z",
+            )
         )
+        response_event = {
+            "httpMethod": "GET",
+            "path": "/dev/calendar/demo-calendar-token.ics",
+            "requestContext": {"stage": "dev"},
+            "pathParameters": {"token_ics": "demo-calendar-token.ics"},
+        }
+        with patch("backend.runtime._calendar_token_store", return_value=store):
+            response = self._invoke(response_event, env={"DEMO_MODE": "false"})
 
         self.assertEqual(response["statusCode"], 200)
         self.assertIn("BEGIN:VCALENDAR", response["body"])
+
+    def test_calendar_route_returns_500_when_token_table_is_unavailable(self) -> None:
+        with patch(
+            "backend.runtime._calendar_token_store",
+            side_effect=RuntimeError("server misconfiguration: CALENDAR_TOKENS_TABLE missing"),
+        ):
+            response = self._invoke(
+                {
+                    "httpMethod": "GET",
+                    "path": "/calendar/demo-calendar-token.ics",
+                    "pathParameters": {"token": "demo-calendar-token"},
+                },
+                env={"DEMO_MODE": "false"},
+            )
+
+        self.assertEqual(response["statusCode"], 500)
+        self.assertIn("CALENDAR_TOKENS_TABLE", json.loads(response["body"])["error"])
+
+    def test_calendar_token_create_accepts_claims_sub_principal(self) -> None:
+        store = _MemoryCalendarTokenStore()
+        event = {
+            "httpMethod": "POST",
+            "path": "/calendar/token",
+            "headers": {"host": "api.example.test", "x-forwarded-proto": "https"},
+            "requestContext": {
+                "stage": "dev",
+                "authorizer": {"claims": {"sub": "claims-user"}},
+            },
+        }
+
+        with patch("backend.runtime._calendar_token_store", return_value=store):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 201)
+        body = json.loads(response["body"])
+        record = store.get(body["token"])
+        self.assertIsNotNone(record)
+        if record is None:
+            self.fail("Expected token to be stored")
+        self.assertEqual(record.user_id, "claims-user")
+
+    def test_calendar_token_create_accepts_iam_identity_user_arn(self) -> None:
+        store = _MemoryCalendarTokenStore()
+        event = {
+            "httpMethod": "POST",
+            "path": "/calendar/token",
+            "headers": {"host": "api.example.test", "x-forwarded-proto": "https"},
+            "requestContext": {
+                "stage": "dev",
+                "identity": {"userArn": "arn:aws:iam::123456789012:user/demo"},
+            },
+        }
+
+        with patch("backend.runtime._calendar_token_store", return_value=store):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 201)
+        body = json.loads(response["body"])
+        record = store.get(body["token"])
+        self.assertIsNotNone(record)
+        if record is None:
+            self.fail("Expected token to be stored")
+        self.assertEqual(record.user_id, "arn:aws:iam::123456789012:user/demo")
 
     def test_uploads_route_delegates_to_uploads_handler(self) -> None:
         event = {"httpMethod": "POST", "path": "/uploads", "body": "{}"}

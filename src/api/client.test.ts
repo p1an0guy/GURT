@@ -28,10 +28,12 @@ test("uses fixture mode when explicitly enabled", async () => {
   const courses = await client.listCourses();
   const cards = await client.getStudyToday("course-psych-101");
   const mastery = await client.getStudyMastery("course-psych-101");
+  const calendarToken = await client.createCalendarToken();
 
   assert.equal(fetchCalled, false);
   assert.equal(courses.length, 2);
   assert.ok(cards.length > 0);
+  assert.equal(calendarToken.token, "demo-calendar-token");
   assert.deepEqual(
     mastery,
     [
@@ -156,6 +158,14 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
       });
     }
 
+    if (url.endsWith("/calendar/token")) {
+      return jsonResponse({
+        token: "minted-token",
+        feedUrl: "https://api.example.dev/calendar/minted-token.ics",
+        createdAt: "2026-09-02T09:00:00Z",
+      });
+    }
+
     return new Response("not found", { status: 404 });
   };
 
@@ -179,9 +189,11 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
   await client.getStudyMastery("course/1");
   await client.postStudyReview(reviewEvent);
   const ics = await client.getCalendarIcs("demo/token");
+  const tokenResponse = await client.createCalendarToken();
 
   assert.match(ics, /BEGIN:VCALENDAR/);
-  assert.equal(calls.length, 7);
+  assert.equal(tokenResponse.token, "minted-token");
+  assert.equal(calls.length, 8);
   assert.ok(calls.some((call) => call.url === "https://api.example.dev/courses/course%2F1/items"));
   assert.ok(calls.some((call) => call.url === "https://api.example.dev/study/today?courseId=course%2F1"));
   assert.ok(calls.some((call) => call.url === "https://api.example.dev/study/mastery?courseId=course%2F1"));
@@ -198,4 +210,8 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
       reviewedAt: "2026-09-01T10:15:00Z",
     }),
   );
+
+  const calendarTokenCall = calls.find((call) => call.url === "https://api.example.dev/calendar/token");
+  assert.ok(calendarTokenCall);
+  assert.equal(calendarTokenCall.init?.method, "POST");
 });

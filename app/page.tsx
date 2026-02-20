@@ -78,6 +78,18 @@ export default function HomePage() {
     }
   }
 
+  async function handleMintCalendarToken(): Promise<void> {
+    setMessage("");
+    try {
+      const minted = await client.createCalendarToken();
+      setCalendarToken(minted.token);
+      setCalendarUrl(minted.feedUrl);
+      setMessage(`Minted calendar token at ${minted.createdAt}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unknown error");
+    }
+  }
+
   return (
     <main className="page">
       <section className="hero">
@@ -129,6 +141,9 @@ export default function HomePage() {
             </button>
             <button type="button" onClick={handleSubmitReview}>
               Send Review Event
+            </button>
+            <button type="button" onClick={handleMintCalendarToken}>
+              Mint Calendar Token
             </button>
           </div>
         </article>

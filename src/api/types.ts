@@ -39,6 +39,12 @@ export interface StudyReviewAck {
   accepted: boolean;
 }
 
+export interface CalendarTokenResponse {
+  token: string;
+  feedUrl: string;
+  createdAt: string;
+}
+
 export interface TopicMastery {
   topicId: string;
   courseId: string;
