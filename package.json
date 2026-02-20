@@ -1,0 +1,9 @@
+{
+  "name": "gurt-frontend-foundation",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "node scripts/lint.mjs",
+    "test": "node --experimental-strip-types --test src/api/client.test.ts"
+  }
+}

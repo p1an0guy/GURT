@@ -57,3 +57,12 @@ Run the **Smoke Dev** workflow manually (`workflow_dispatch`) with these reposit
 - `fixtures/*.json` is the shared deterministic data layer for frontend stubs and backend placeholder handlers.
 - Smoke tests and mock mode use the same fixture files to keep integration behavior stable.
 - This avoids product logic coupling while teams build lambdas independently.
+
+## Frontend client checks (local)
+
+Runs typed API client tests and lightweight source linting for `src/api`.
+
+```bash
+npm run lint
+npm test
+```
