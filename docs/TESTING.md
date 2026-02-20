@@ -2,11 +2,15 @@
 
 This repository includes contract-first API assets, deterministic fixtures, and smoke tooling for parallel backend/frontend development.
 
+Python workflow policy: always use a local virtual environment (`.venv`) for this repository. Do not install Python dependencies globally.
+
 ## Local setup
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
 python -m pip install --upgrade pip
-pip install -r requirements-dev.txt
+python -m pip install -r requirements-dev.txt
 npm install
 ```
 
@@ -15,6 +19,7 @@ npm install
 Runs OpenAPI syntax validation and example-vs-schema validation.
 
 ```bash
+source .venv/bin/activate
 python scripts/validate_contracts.py
 ```
 
@@ -31,6 +36,7 @@ Run this whenever files under `infra/` change:
 Run focused unit tests for backend validation and wiring.
 
 ```bash
+source .venv/bin/activate
 python scripts/test_uploads.py
 ```
 
@@ -39,6 +45,7 @@ python scripts/test_uploads.py
 Runs the full smoke sequence without deployed lambdas by serving fixture-backed endpoints from an in-process mock server.
 
 ```bash
+source .venv/bin/activate
 SMOKE_MOCK_MODE=1 python scripts/run_smoke_tests.py
 ```
 
@@ -47,6 +54,7 @@ SMOKE_MOCK_MODE=1 python scripts/run_smoke_tests.py
 Use this mode against API Gateway/Lambda environments.
 
 ```bash
+source .venv/bin/activate
 export BASE_URL="https://<api-id>.execute-api.<region>.amazonaws.com/dev"
 export CALENDAR_TOKEN="<calendar-token>"
 export COURSE_ID="course-psych-101"  # optional
@@ -75,8 +83,10 @@ so call it with AWS credentials that can sign SigV4 requests.
 Infrastructure is scaffolded in `infra/` with `GurtDataStack` and `GurtApiStack`.
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
 python -m pip install --upgrade pip
-pip install -r infra/requirements.txt
+python -m pip install -r infra/requirements.txt
 cd infra
 cdk synth
 cdk deploy GurtDataStack GurtApiStack
