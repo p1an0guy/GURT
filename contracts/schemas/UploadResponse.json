@@ -1,0 +1,30 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["docId", "key", "uploadUrl", "expiresInSeconds", "contentType"],
+  "properties": {
+    "docId": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^doc-[A-Za-z0-9-]+$"
+    },
+    "key": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^uploads/[A-Za-z0-9._-]+/doc-[A-Za-z0-9-]+/[^/\\\\]+$"
+    },
+    "uploadUrl": {
+      "type": "string",
+      "minLength": 1
+    },
+    "expiresInSeconds": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "contentType": {
+      "type": "string",
+      "enum": ["application/pdf", "text/plain"]
+    }
+  }
+}
+

@@ -17,6 +17,14 @@ Runs OpenAPI syntax validation and example-vs-schema validation.
 python scripts/validate_contracts.py
 ```
 
+## Unit tests (local)
+
+Run focused unit tests for backend validation and wiring.
+
+```bash
+python scripts/test_uploads.py
+```
+
 ## Smoke tests (local, mock mode)
 
 Runs the full smoke sequence without deployed lambdas by serving fixture-backed endpoints from an in-process mock server.
