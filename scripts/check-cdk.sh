@@ -8,6 +8,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INFRA_DIR="$ROOT_DIR/infra"
 VENV_DIR="$INFRA_DIR/.venv"
+CDK_CLI_PACKAGE="${CDK_CLI_PACKAGE:-aws-cdk@latest}"
 
 STAGE_NAME="${STAGE_NAME:-dev}"
 DEMO_MODE="${DEMO_MODE:-1}"
@@ -28,7 +29,9 @@ pip install -r "$INFRA_DIR/requirements.txt"
 python -m compileall "$INFRA_DIR"
 
 pushd "$INFRA_DIR" > /dev/null
-npx --yes aws-cdk@2 synth \
+echo "Using CDK CLI package: $CDK_CLI_PACKAGE"
+npx --yes "$CDK_CLI_PACKAGE" --version
+npx --yes "$CDK_CLI_PACKAGE" synth \
   --context "stageName=$STAGE_NAME" \
   --context "demoMode=$DEMO_MODE" \
   --context "bedrockModelId=$BEDROCK_MODEL_ID" \

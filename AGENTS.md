@@ -42,11 +42,14 @@ This file is strict policy for all contributors and agents working in parallel o
 ## Test and Merge Gates (Non-Negotiable)
 - Smoke tests are required before merge.
 - Contract checks are required before merge.
+- Python dependencies must be installed into a local virtual environment (`.venv`); do not install Python deps globally for this repo.
 - Minimum local verification commands:
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
 python -m pip install --upgrade pip
-pip install -r requirements-dev.txt
+python -m pip install -r requirements-dev.txt
 python scripts/validate_contracts.py
 SMOKE_MOCK_MODE=1 python scripts/run_smoke_tests.py
 ```

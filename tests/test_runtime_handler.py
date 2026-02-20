@@ -245,6 +245,32 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertEqual(response["statusCode"], 200)
         self.assertIn("BEGIN:VCALENDAR", response["body"])
 
+    def test_calendar_route_uses_fixture_events_for_any_user_when_schedule_is_empty(self) -> None:
+        store = _MemoryCalendarTokenStore()
+        store.save(
+            CalendarTokenRecord.mint(
+                token="token-any-user",
+                user_id="arn:aws:iam::123456789012:user/demo",
+                created_at="2026-09-01T10:15:00Z",
+            )
+        )
+
+        with (
+            patch("backend.runtime._calendar_token_store", return_value=store),
+            patch("backend.runtime._scan_canvas_items_for_user", return_value=[]),
+        ):
+            response = self._invoke(
+                {
+                    "httpMethod": "GET",
+                    "path": "/calendar/token-any-user.ics",
+                    "pathParameters": {"token": "token-any-user"},
+                },
+                env={"DEMO_MODE": "false"},
+            )
+
+        self.assertEqual(response["statusCode"], 200)
+        self.assertIn("BEGIN:VEVENT", response["body"])
+
     def test_calendar_route_returns_500_when_token_table_is_unavailable(self) -> None:
         with patch(
             "backend.runtime._calendar_token_store",
