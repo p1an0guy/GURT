@@ -245,7 +245,7 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertEqual(response["statusCode"], 200)
         self.assertIn("BEGIN:VCALENDAR", response["body"])
 
-    def test_calendar_route_uses_fixture_events_for_any_user_in_demo_mode(self) -> None:
+    def test_calendar_route_uses_fixture_events_for_any_user_when_schedule_is_empty(self) -> None:
         store = _MemoryCalendarTokenStore()
         store.save(
             CalendarTokenRecord.mint(
@@ -265,7 +265,7 @@ class RuntimeHandlerTests(unittest.TestCase):
                     "path": "/calendar/token-any-user.ics",
                     "pathParameters": {"token": "token-any-user"},
                 },
-                env={"DEMO_MODE": "true"},
+                env={"DEMO_MODE": "false"},
             )
 
         self.assertEqual(response["statusCode"], 200)

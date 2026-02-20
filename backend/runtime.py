@@ -360,19 +360,16 @@ def _load_schedule_items_for_user(user_id: str) -> list[dict[str, Any]]:
     if items:
         return items
 
-    if _is_demo_mode():
-        fixtures = _load_fixtures()
-        return [
-            {
-                "id": str(row["id"]),
-                "courseId": str(row["courseId"]),
-                "title": str(row["title"]),
-                "dueAt": str(row["dueAt"]),
-            }
-            for row in fixtures["items"]
-        ]
-
-    return []
+    fixtures = _load_fixtures()
+    return [
+        {
+            "id": str(row["id"]),
+            "courseId": str(row["courseId"]),
+            "title": str(row["title"]),
+            "dueAt": str(row["dueAt"]),
+        }
+        for row in fixtures["items"]
+    ]
 
 
 def _public_base_url(event: Mapping[str, Any]) -> str:
