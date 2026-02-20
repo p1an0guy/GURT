@@ -11,6 +11,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Detect CDK infra changes
+        id: cdk_changes
+        run: |
+          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+          if git diff --name-only "origin/${{ github.base_ref }}...HEAD" | grep -qE '^infra/'; then
+            echo "has_cdk_changes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_cdk_changes=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -23,6 +33,16 @@ jobs:
 
       - name: Validate API contracts
         run: python scripts/validate_contracts.py
+
+      - name: Set up Node.js for CDK checks
+        if: steps.cdk_changes.outputs.has_cdk_changes == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run CDK synth checks (when infra changes)
+        if: steps.cdk_changes.outputs.has_cdk_changes == 'true'
+        run: ./scripts/check-cdk.sh
 
       - name: Run unit tests (if any)
         run: |
