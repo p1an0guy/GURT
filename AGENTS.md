@@ -5,8 +5,11 @@ This file is strict policy for all contributors and agents working in parallel o
 
 ## Stack Context
 - Backend: Python with `boto3`, deployed on AWS serverless infrastructure (API Gateway + Lambda).
+- IaC: AWS CDK in Python (`infra/`).
 - Data/storage: DynamoDB + S3.
 - Frontend: React/Next.js, deployed on AWS services.
+- AI provider: Amazon Bedrock.
+- Hackathon auth scope: no end-user login yet; Canvas token auth for data sync remains in scope.
 
 ## Source of Truth
 - Architecture and scope source of truth: `docs/OVERVIEW.md`.
@@ -54,6 +57,12 @@ SMOKE_MOCK_MODE=1 python scripts/run_smoke_tests.py
 python -m pytest -q
 ```
 
+- If any CDK/infra code changes (`infra/**`), run:
+
+```bash
+./scripts/check-cdk.sh
+```
+
 - CI workflows:
   - `.github/workflows/ci.yml`
   - `.github/workflows/smoke-dev.yml`
@@ -92,4 +101,5 @@ When modifying API behavior or shapes, update all relevant files in one PR:
 - `GET /study/today?courseId=...`
 - `POST /study/review`
 - `GET /study/mastery?courseId=...`
+- `POST /calendar/token`
 - `GET /calendar/{token}.ics`

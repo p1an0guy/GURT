@@ -1,0 +1,5 @@
+{
+  "token": "demo-calendar-token",
+  "feedUrl": "https://example.execute-api.region.amazonaws.com/dev/calendar/demo-calendar-token.ics",
+  "createdAt": "2026-09-02T09:00:00Z"
+}

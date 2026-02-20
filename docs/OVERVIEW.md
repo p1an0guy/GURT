@@ -8,6 +8,10 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 
 - **Client:** Web app (no desktop app).
 - **Backend:** AWS **API Gateway + Lambda** (Lambda proxy integration).
+- **IaC scaffold:** AWS CDK (Python) under `infra/` with split stacks:
+  - `GurtDataStack` for S3 + DynamoDB.
+  - `GurtApiStack` for API Gateway + Lambda wiring.
+- **Deploy automation:** `./scripts/deploy.sh` runs build + CDK checks + bootstrap + deploy in one command.
 - **Storage:**
   - DynamoDB for app state (courses/assignments, cards, reviews, topics, tokens).
   - S3 for uploaded source files.
@@ -15,6 +19,7 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
   - Fast path: PDF text extraction
   - Fallback: AWS Textract for scanned PDFs/images
 - **AI features:**
+  - Model provider: **Amazon Bedrock**.
   - RAG index over uploaded sources (chunk + embeddings + retrieval).
   - Generate:
     - Flashcards (<=100 for demo)
@@ -25,6 +30,9 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
   - **Canvas** is source of truth for _dates/deadlines_.
   - **Syllabus** is source of truth for _topic coverage_ (exam → topics), because coverage is stable even if dates shift.
 - **Calendar integration:** Provide a private **ICS subscription feed**. (Google Calendar refresh timing is controlled by Google; not instant.)
+- **Authentication for hackathon demo:**
+  - No end-user login/auth for now.
+  - Canvas token connectivity remains in scope for Canvas data sync.
 
 ## Demo scope (strict)
 
@@ -80,15 +88,17 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 
 ### Flow E — Calendar subscription (ICS)
 
-1. User clicks “Subscribe calendar”
-2. UI shows URL: `/calendar/<token>.ics`
-3. User adds calendar by URL in Google Calendar.
-4. Feed includes:
+1. Authenticated caller requests a feed token via `POST /calendar/token`.
+2. Backend mints token, stores token metadata in DynamoDB, and returns feed URL.
+3. User clicks “Subscribe calendar”.
+4. UI shows URL: `/calendar/<token>.ics`.
+5. User adds calendar by URL in Google Calendar.
+6. Feed includes:
    - assignments + due dates
    - exams
    - office hours (from syllabus parsing and/or manual entry)
    - optional: study blocks (stretch)
-5. If Canvas dates change, the backend updates stored Canvas items; ICS reflects updates on next fetch.
+7. If Canvas dates change, the backend updates stored Canvas items; ICS reflects updates on next fetch.
 
 ## API contract (high-level endpoints)
 
@@ -114,8 +124,10 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
   - GET `/study/today?courseId=...&examId=...`
   - POST `/study/review`
   - GET `/study/mastery?courseId=...&examId=...`
+  - Note: the repository currently includes an internal pure FSRS module foundation; endpoint responses are still driven by existing fixture/mock flows until study lambdas are wired.
 
 - Calendar:
+  - POST `/calendar/token` (mint token for authenticated caller)
   - GET `/calendar/{token}.ics`
 
 ## Data model (conceptual)
@@ -137,7 +149,7 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 ## Non-goals / out of scope for hackathon
 
 - Google Calendar OAuth write sync (use ICS subscription instead).
-- Multi-user production auth (demo token-based).
+- Multi-user production account auth/login.
 - Mobile clients.
 - Perfect syllabus parsing across all formats (provide manual override for topic mapping).
 - Real-time ICS refresh in Google Calendar (cannot force; depends on Google polling).

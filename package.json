@@ -1,0 +1,22 @@
+{
+  "name": "gurt-frontend-foundation",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "node scripts/lint.mjs",
+    "test": "node --experimental-strip-types --test src/api/client.test.ts"
+  },
+  "dependencies": {
+    "next": "^15.2.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.5",
+    "@types/react": "^19.0.10",
+    "typescript": "^5.8.2"
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["courseId", "filename", "contentType"],
+  "properties": {
+    "courseId": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._-]+$"
+    },
+    "filename": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^/\\\\]+$"
+    },
+    "contentType": {
+      "type": "string",
+      "enum": ["application/pdf", "text/plain"]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": ["contentType"],
+        "properties": {
+          "contentType": {
+            "const": "application/pdf"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "filename": {
+            "pattern": "^[^/\\\\]+\\.[Pp][Dd][Ff]$"
+          }
+        }
+      }
+    }
+  ]
+}

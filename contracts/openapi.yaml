@@ -55,6 +55,33 @@
         }
       }
     },
+    "/uploads": {
+      "post": {
+        "operationId": "createUpload",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created upload metadata for document ingestion",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/courses/{courseId}/items": {
       "get": {
         "operationId": "listCourseItems",
@@ -205,6 +232,24 @@
           }
         }
       }
+    },
+    "/calendar/token": {
+      "post": {
+        "operationId": "createCalendarToken",
+        "description": "Requires an authenticated caller identity and mints a private ICS token.",
+        "responses": {
+          "201": {
+            "description": "Minted private calendar token for authenticated user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarTokenResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -232,6 +277,15 @@
       },
       "CalendarFeedMetadata": {
         "$ref": "./schemas/CalendarFeedMetadata.json"
+      },
+      "CalendarTokenResponse": {
+        "$ref": "./schemas/CalendarTokenResponse.json"
+      },
+      "UploadRequest": {
+        "$ref": "./schemas/UploadRequest.json"
+      },
+      "UploadResponse": {
+        "$ref": "./schemas/UploadResponse.json"
       }
     }
   }
