@@ -5,8 +5,11 @@ This file is strict policy for all contributors and agents working in parallel o
 
 ## Stack Context
 - Backend: Python with `boto3`, deployed on AWS serverless infrastructure (API Gateway + Lambda).
+- IaC: AWS CDK in Python.
 - Data/storage: DynamoDB + S3.
 - Frontend: React/Next.js, deployed on AWS services.
+- AI provider: Amazon Bedrock.
+- Hackathon auth scope: no end-user login/auth yet; Canvas token auth for data sync remains in scope.
 
 ## Source of Truth
 - Architecture and scope source of truth: `docs/OVERVIEW.md`.

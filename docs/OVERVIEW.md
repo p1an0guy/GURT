@@ -8,6 +8,7 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 
 - **Client:** Web app (no desktop app).
 - **Backend:** AWS **API Gateway + Lambda** (Lambda proxy integration).
+- **Infrastructure as Code:** AWS CDK in **Python**.
 - **Storage:**
   - DynamoDB for app state (courses/assignments, cards, reviews, topics, tokens).
   - S3 for uploaded source files.
@@ -15,6 +16,7 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
   - Fast path: PDF text extraction
   - Fallback: AWS Textract for scanned PDFs/images
 - **AI features:**
+  - Model provider: **Amazon Bedrock**.
   - RAG index over uploaded sources (chunk + embeddings + retrieval).
   - Generate:
     - Flashcards (<=100 for demo)
@@ -25,6 +27,9 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
   - **Canvas** is source of truth for _dates/deadlines_.
   - **Syllabus** is source of truth for _topic coverage_ (exam → topics), because coverage is stable even if dates shift.
 - **Calendar integration:** Provide a private **ICS subscription feed**. (Google Calendar refresh timing is controlled by Google; not instant.)
+- **Authentication for hackathon demo:**
+  - Skip end-user account login/auth for now.
+  - Keep Canvas token-based connectivity for pulling Canvas data.
 
 ## Demo scope (strict)
 
@@ -137,7 +142,7 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 ## Non-goals / out of scope for hackathon
 
 - Google Calendar OAuth write sync (use ICS subscription instead).
-- Multi-user production auth (demo token-based).
+- Multi-user production account auth/login.
 - Mobile clients.
 - Perfect syllabus parsing across all formats (provide manual override for topic mapping).
 - Real-time ICS refresh in Google Calendar (cannot force; depends on Google polling).

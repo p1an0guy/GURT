@@ -44,6 +44,12 @@ Run the **Smoke Dev** workflow manually (`workflow_dispatch`) with these reposit
 - `DEV_CALENDAR_TOKEN` (required)
 - `DEV_COURSE_ID` (optional)
 
+Where to add them in GitHub:
+
+1. Open the repo on GitHub.
+2. Go to **Settings** -> **Secrets and variables** -> **Actions**.
+3. Under **Repository secrets**, click **New repository secret** and add each value above.
+
 ## Fixture usage before full implementation
 
 - `fixtures/*.json` is the shared deterministic data layer for frontend stubs and backend placeholder handlers.
