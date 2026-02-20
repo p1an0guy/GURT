@@ -360,8 +360,7 @@ def _load_schedule_items_for_user(user_id: str) -> list[dict[str, Any]]:
     if items:
         return items
 
-    demo_user_id = os.getenv("DEMO_USER_ID", "demo-user").strip() or "demo-user"
-    if _is_demo_mode() and user_id == demo_user_id:
+    if _is_demo_mode():
         fixtures = _load_fixtures()
         return [
             {
