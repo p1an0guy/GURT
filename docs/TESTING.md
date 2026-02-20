@@ -18,6 +18,14 @@ Runs OpenAPI syntax validation and example-vs-schema validation.
 python scripts/validate_contracts.py
 ```
 
+## CDK checks (local, when infra changes)
+
+Run this whenever files under `infra/` change:
+
+```bash
+./scripts/check-cdk.sh
+```
+
 ## Unit tests (local)
 
 Run focused unit tests for backend validation and wiring.
@@ -72,6 +80,12 @@ pip install -r infra/requirements.txt
 cd infra
 cdk synth
 cdk deploy GurtDataStack GurtApiStack
+```
+
+Or use one command from repo root (build + CDK checks + bootstrap + deploy):
+
+```bash
+./scripts/deploy.sh
 ```
 
 Key stack outputs to use for smoke/dev secrets:

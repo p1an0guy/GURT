@@ -57,6 +57,12 @@ SMOKE_MOCK_MODE=1 python scripts/run_smoke_tests.py
 python -m pytest -q
 ```
 
+- If any CDK/infra code changes (`infra/**`), run:
+
+```bash
+./scripts/check-cdk.sh
+```
+
 - CI workflows:
   - `.github/workflows/ci.yml`
   - `.github/workflows/smoke-dev.yml`

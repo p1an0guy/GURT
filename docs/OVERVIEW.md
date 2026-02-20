@@ -11,6 +11,7 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 - **IaC scaffold:** AWS CDK (Python) under `infra/` with split stacks:
   - `GurtDataStack` for S3 + DynamoDB.
   - `GurtApiStack` for API Gateway + Lambda wiring.
+- **Deploy automation:** `./scripts/deploy.sh` runs build + CDK checks + bootstrap + deploy in one command.
 - **Storage:**
   - DynamoDB for app state (courses/assignments, cards, reviews, topics, tokens).
   - S3 for uploaded source files.
