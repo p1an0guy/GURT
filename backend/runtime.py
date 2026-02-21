@@ -534,18 +534,25 @@ def _material_s3_key(*, user_id: str, course_id: str, canvas_file_id: str, displ
     return f"uploads/canvas-materials/{user_id}/{course_id}/{canvas_file_id}/{safe_name}"
 
 
-def _start_knowledge_base_ingestion() -> tuple[bool, str]:
+def _start_knowledge_base_ingestion() -> tuple[bool, str, str]:
     knowledge_base_id = os.getenv("KNOWLEDGE_BASE_ID", "").strip()
     data_source_id = os.getenv("KNOWLEDGE_BASE_DATA_SOURCE_ID", "").strip()
     if not knowledge_base_id or not data_source_id:
+        missing_vars: list[str] = []
+        if not knowledge_base_id:
+            missing_vars.append("KNOWLEDGE_BASE_ID")
+        if not data_source_id:
+            missing_vars.append("KNOWLEDGE_BASE_DATA_SOURCE_ID")
+        error_message = f"missing required env var(s): {', '.join(missing_vars)}"
         print(
             "KB ingestion skipped: missing configuration",
             {
                 "hasKnowledgeBaseId": bool(knowledge_base_id),
                 "hasDataSourceId": bool(data_source_id),
+                "error": error_message,
             },
         )
-        return False, ""
+        return False, "", error_message
 
     try:
         response = _bedrock_agent_client().start_ingestion_job(
@@ -554,23 +561,24 @@ def _start_knowledge_base_ingestion() -> tuple[bool, str]:
             clientToken=str(uuid4()),
         )
     except Exception as exc:
+        error_message = str(exc)
         print(
             "KB ingestion start failed",
             {
                 "knowledgeBaseId": knowledge_base_id,
                 "dataSourceId": data_source_id,
-                "error": str(exc),
+                "error": error_message,
             },
         )
-        return False, ""
+        return False, "", error_message
     ingestion_job = response.get("ingestionJob")
     if not isinstance(ingestion_job, dict):
-        return True, ""
+        return True, "", ""
 
     job_id = ingestion_job.get("ingestionJobId")
     if isinstance(job_id, str):
-        return True, job_id
-    return True, ""
+        return True, job_id, ""
+    return True, "", ""
 
 
 def _sync_canvas_assignments_for_user(
@@ -808,8 +816,9 @@ def _handle_canvas_sync(event: Mapping[str, Any]) -> Dict[str, Any]:
         )
         kb_ingestion_started = False
         kb_ingestion_job_id = ""
+        kb_ingestion_error = ""
         if materials_mirrored > 0:
-            kb_ingestion_started, kb_ingestion_job_id = _start_knowledge_base_ingestion()
+            kb_ingestion_started, kb_ingestion_job_id, kb_ingestion_error = _start_knowledge_base_ingestion()
     except CanvasApiError as exc:
         return _json_response(502, {"error": str(exc)})
     except RuntimeError as exc:
@@ -829,6 +838,7 @@ def _handle_canvas_sync(event: Mapping[str, Any]) -> Dict[str, Any]:
             "materialsMirrored": materials_mirrored,
             "knowledgeBaseIngestionStarted": kb_ingestion_started,
             "knowledgeBaseIngestionJobId": kb_ingestion_job_id,
+            "knowledgeBaseIngestionError": kb_ingestion_error,
             "failedCourseIds": failed_course_ids,
             "updatedAt": updated_at,
         },
@@ -986,12 +996,14 @@ def _handle_scheduled_canvas_sync() -> Dict[str, Any]:
 
     kb_ingestion_started = False
     kb_ingestion_job_id = ""
+    kb_ingestion_error = ""
     if materials_mirrored_total > 0:
         try:
-            kb_ingestion_started, kb_ingestion_job_id = _start_knowledge_base_ingestion()
+            kb_ingestion_started, kb_ingestion_job_id, kb_ingestion_error = _start_knowledge_base_ingestion()
         except RuntimeError:
             kb_ingestion_started = False
             kb_ingestion_job_id = ""
+            kb_ingestion_error = "unable to start KB ingestion"
 
     return _json_response(
         200,
@@ -1006,6 +1018,7 @@ def _handle_scheduled_canvas_sync() -> Dict[str, Any]:
             "materialsMirrored": materials_mirrored_total,
             "knowledgeBaseIngestionStarted": kb_ingestion_started,
             "knowledgeBaseIngestionJobId": kb_ingestion_job_id,
+            "knowledgeBaseIngestionError": kb_ingestion_error,
             "failedCourseIdsByUser": failed_course_ids_by_user,
             "userErrors": user_errors,
             "updatedAt": updated_at,
