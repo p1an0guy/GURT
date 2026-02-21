@@ -14,6 +14,7 @@ from uuid import uuid4
 from typing import Any, Dict, Mapping
 
 from backend.canvas_client import (
+    CanvasAccessDeniedError,
     CanvasApiError,
     fetch_active_courses,
     fetch_course_assignments,
@@ -332,8 +333,18 @@ def _validate_review_payload(payload: Mapping[str, Any]) -> str | None:
 
 
 def _to_ics_datetime(value: str) -> str:
-    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    return parsed.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    parsed = _parse_rfc3339_utc(value)
+    if parsed is None:
+        raise ValueError(f"invalid RFC3339 timestamp: {value}")
+    return parsed.strftime("%Y%m%dT%H%M%SZ")
+
+
+def _parse_rfc3339_utc(value: str) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.astimezone(timezone.utc)
 
 
 def _parse_rfc3339_utc(value: str) -> datetime | None:
@@ -686,7 +697,11 @@ def _sync_canvas_assignments_for_user(
                     course_id=course.id,
                     user_agent=user_agent,
                 )
-            except CanvasApiError:
+            except CanvasAccessDeniedError:
+                print("Canvas assignments access denied", {"courseId": course.id})
+                continue
+            except CanvasApiError as exc:
+                print("Canvas assignments fetch failed", {"courseId": course.id, "error": str(exc)})
                 failed_course_ids.append(course.id)
                 continue
 
@@ -744,10 +759,13 @@ def _sync_canvas_materials_for_user(
                     course_id=course.id,
                     user_agent=user_agent,
                 )
-            except CanvasApiError:
+            except CanvasAccessDeniedError:
+                print("Canvas materials access denied", {"courseId": course.id})
+                continue
+            except CanvasApiError as exc:
                 print(
                     "Canvas materials course fetch failed",
-                    {"courseId": course.id},
+                    {"courseId": course.id, "error": str(exc)},
                 )
                 failed_course_ids.append(course.id)
                 failed_course_set.add(course.id)

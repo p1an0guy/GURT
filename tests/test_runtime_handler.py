@@ -1202,7 +1202,6 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertEqual(response["statusCode"], 200)
         self.assertIn("DTSTART:20261015T170000Z", response["body"])
         self.assertIn("DTEND:20261015T180000Z", response["body"])
-
     def test_calendar_route_skips_invalid_due_at_and_keeps_valid_events(self) -> None:
         store = _MemoryCalendarTokenStore()
         store.save(
@@ -1212,7 +1211,6 @@ class RuntimeHandlerTests(unittest.TestCase):
                 created_at="2026-09-01T10:15:00Z",
             )
         )
-
         event = {
             "httpMethod": "GET",
             "path": "/calendar/calendar-token-invalid-due-at.ics",
@@ -1242,6 +1240,7 @@ class RuntimeHandlerTests(unittest.TestCase):
             response = self._invoke(event, env={"DEMO_MODE": "false"})
 
         self.assertEqual(response["statusCode"], 200)
+        self.assertEqual(response["headers"]["Content-Type"], "text/calendar")
         self.assertIn("BEGIN:VCALENDAR", response["body"])
         self.assertIn("SUMMARY:Valid dueAt", response["body"])
         self.assertNotIn("SUMMARY:Invalid dueAt", response["body"])
