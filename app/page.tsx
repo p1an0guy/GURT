@@ -239,14 +239,6 @@ export default function HomePage() {
 
   return (
     <>
-      {ingestLoading && (
-        <div className="loading-screen" role="status" aria-live="polite">
-          <div className="loading-card">
-            <h2>Processing Document</h2>
-            <p>Waiting for ingest workflow to finish...</p>
-          </div>
-        </div>
-      )}
       <main className="page">
         <section className="hero">
           <h1>StudyBuddy Demo Console</h1>
