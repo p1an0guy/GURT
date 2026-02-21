@@ -52,6 +52,8 @@ class ApiStack(Stack):
         env = {
             "DEMO_MODE": demo_mode,
             "BEDROCK_MODEL_ID": bedrock_model_id,
+            "BEDROCK_MODEL_ARN": "arn:aws:bedrock:us-west-2:457651165565:inference-profile/us.anthropic.claude-3-5-haiku-20241022-v1:0",
+            "KNOWLEDGE_BASE_ID": "AOKQR2EWNF",
             "CALENDAR_TOKEN_MINTING_PATH": calendar_token_minting_path,
             "CANVAS_DATA_TABLE": data_stack.canvas_data_table.table_name,
             "CALENDAR_TOKENS_TABLE": data_stack.calendar_tokens_table.table_name,
@@ -69,7 +71,7 @@ class ApiStack(Stack):
             runtime=lambda_.Runtime.PYTHON_3_12,
             code=lambda_code,
             handler="backend.runtime.lambda_handler",
-            timeout=Duration.seconds(15),
+            timeout=Duration.seconds(30),
             memory_size=256,
             environment=env,
         )
@@ -93,11 +95,14 @@ class ApiStack(Stack):
         data_stack.docs_table.grant_read_write_data(app_api_handler)
         data_stack.cards_table.grant_read_write_data(app_api_handler)
 
-        # Bedrock integration is implemented in later handlers, but grant now so
-        # those code paths can be added without reshaping IAM in a follow-up.
         app_api_handler.add_to_role_policy(
             iam.PolicyStatement(
-                actions=["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+                actions=[
+                    "bedrock:InvokeModel",
+                    "bedrock:InvokeModelWithResponseStream",
+                    "bedrock:Retrieve",
+                    "bedrock:RetrieveAndGenerate",
+                ],
                 resources=["*"],
             )
         )
@@ -120,6 +125,9 @@ class ApiStack(Stack):
         course_id = courses.add_resource("{courseId}")
         course_items = course_id.add_resource("items")
         course_items.add_method("GET", app_integration)
+
+        chat = self.rest_api.root.add_resource("chat")
+        chat.add_method("POST", app_integration)
 
         uploads = self.rest_api.root.add_resource("uploads")
         uploads.add_method("POST", uploads_integration)

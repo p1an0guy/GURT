@@ -449,11 +449,70 @@ def _handle_calendar(token: str) -> Dict[str, Any]:
     return _text_response(200, payload, content_type="text/calendar")
 
 
+def _handle_chat(event: Mapping[str, Any]) -> Dict[str, Any]:
+    """Handle POST /chat — answer student questions using Bedrock Knowledge Base."""
+    payload, error = _parse_json_body(event)
+    if error is not None:
+        return _json_response(400, {"error": error})
+
+    question = (payload.get("question") or "").strip()
+    course_id = (payload.get("courseId") or "").strip()
+
+    if not course_id:
+        return _json_response(400, {"error": "courseId is required"})
+    if not question:
+        return _json_response(400, {"error": "question is required"})
+
+    knowledge_base_id = os.getenv("KNOWLEDGE_BASE_ID", "AOKQR2EWNF")
+    model_arn = os.getenv("BEDROCK_MODEL_ARN",
+        "arn:aws:bedrock:us-west-2:457651165565:inference-profile/us.anthropic.claude-3-5-haiku-20241022-v1:0")
+
+    system_prompt = (
+        "You are Gurt, a helpful Canvas LMS assistant for Cal Poly students. "
+        "Answer questions about courses, assignments, deadlines, and syllabi "
+        "based on the information retrieved from the knowledge base. "
+        "Be concise and friendly. If you don't have enough information to answer, say so."
+    )
+
+    try:
+        import boto3
+
+        bedrock_agent = boto3.client("bedrock-agent-runtime")
+        response = bedrock_agent.retrieve_and_generate(
+            input={"text": f"[Course ID: {course_id}] {question}"},
+            retrieveAndGenerateConfiguration={
+                "type": "KNOWLEDGE_BASE",
+                "knowledgeBaseConfiguration": {
+                    "knowledgeBaseId": knowledge_base_id,
+                    "modelArn": model_arn,
+                    "generationConfiguration": {
+                        "promptTemplate": {
+                            "textPromptTemplate": (
+                                system_prompt
+                                + "\n\nHere is the retrieved context:\n$search_results$"
+                                + "\n\nUser question: $query$"
+                            ),
+                        },
+                    },
+                },
+            },
+        )
+
+        answer = response["output"]["text"]
+        return _json_response(200, {"answer": answer})
+
+    except Exception as exc:
+        return _json_response(500, {"error": f"model invocation failed: {exc}"})
+
+
 def lambda_handler(event: Mapping[str, Any], context: Any) -> Dict[str, Any]:
     """API Gateway Lambda entrypoint for fixture-backed demo routes."""
     method = _request_method(event)
     path = _normalized_path(event, _request_path(event))
     path_params = _path_params(event)
+
+    if method == "POST" and path == "/chat":
+        return _handle_chat(event)
 
     if method == "POST" and path == "/uploads":
         return uploads.lambda_handler(event, context)
