@@ -363,6 +363,7 @@ class RuntimeHandlerTests(unittest.TestCase):
                 "usedTextract": True,
                 "updatedAt": "2026-09-01T10:15:00Z",
                 "error": "",
+                "kbIngestionJobId": "KBJOB123",
             }
         )
         event = {"httpMethod": "GET", "path": "/docs/ingest/ingest-abc"}
@@ -374,6 +375,7 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertEqual(body["jobId"], "ingest-abc")
         self.assertEqual(body["status"], "FINISHED")
         self.assertEqual(body["textLength"], 321)
+        self.assertEqual(body["kbIngestionJobId"], "KBJOB123")
 
     def test_generate_flashcards_returns_generated_cards(self) -> None:
         event = {

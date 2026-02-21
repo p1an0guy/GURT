@@ -49,6 +49,15 @@ def _bedrock_agent_client() -> Any:
     return boto3.client("bedrock-agent")
 
 
+def _kb_ingestion_env_ids() -> tuple[str, str]:
+    """Resolve KB + data source ids, preferring canonical env var names."""
+    kb_id = os.getenv("KNOWLEDGE_BASE_ID", "").strip()
+    data_source_id = os.getenv("KNOWLEDGE_BASE_DATA_SOURCE_ID", "").strip()
+    if not data_source_id:
+        data_source_id = os.getenv("DATA_SOURCE_ID", "").strip()
+    return kb_id, data_source_id
+
+
 def _read_s3_bytes(bucket: str, key: str) -> bytes:
     response = _s3_client().get_object(Bucket=bucket, Key=key)
     return response["Body"].read()
@@ -230,10 +239,12 @@ def finalize_handler(event: Mapping[str, Any], _context: Any) -> dict[str, Any]:
     )
 
     if status == "FINISHED":
-        kb_id = os.getenv("KNOWLEDGE_BASE_ID", "").strip()
-        ds_id = os.getenv("DATA_SOURCE_ID", "").strip()
+        kb_id, ds_id = _kb_ingestion_env_ids()
         if not kb_id or not ds_id:
-            err_msg = "server misconfiguration: KNOWLEDGE_BASE_ID and DATA_SOURCE_ID required for KB ingestion"
+            err_msg = (
+                "server misconfiguration: KNOWLEDGE_BASE_ID and "
+                "KNOWLEDGE_BASE_DATA_SOURCE_ID (or DATA_SOURCE_ID) required for KB ingestion"
+            )
             logger.error(err_msg)
             _persist_kb_ingestion_result(job_id, ingestion_error=err_msg)
         else:
@@ -274,4 +285,3 @@ def _response(status_code: int, payload: Mapping[str, Any]) -> dict[str, Any]:
         "headers": {"Content-Type": "application/json"},
         "body": json.dumps(payload),
     }
-

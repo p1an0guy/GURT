@@ -55,7 +55,7 @@ class FinalizeHandlerTests(unittest.TestCase):
                 {
                     "DOCS_TABLE": "test-docs",
                     "KNOWLEDGE_BASE_ID": "kb-123",
-                    "DATA_SOURCE_ID": "ds-456",
+                    "KNOWLEDGE_BASE_DATA_SOURCE_ID": "ds-456",
                 },
                 clear=True,
             ):
