@@ -126,9 +126,16 @@ async function handleScrapeModulesStart(message, sendResponse) {
 
   try {
     const scrapeCanvasModules = await getCanvasScraper();
+    const scrapeOptions =
+      message && message.options && typeof message.options === "object"
+        ? message.options
+        : {};
     const discovered = await scrapeCanvasModules({
       sourceUrl: window.location.href,
-      onProgress: (progress) => emitScrapeProgress(requestId, progress)
+      onProgress: (progress) => emitScrapeProgress(requestId, progress),
+      concurrency: scrapeOptions.concurrency,
+      maxDepth: scrapeOptions.maxDepth,
+      maxSources: scrapeOptions.maxSources
     });
 
     sendResponse({

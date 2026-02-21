@@ -144,7 +144,7 @@ function fileNameForEntry(file, fallback = "") {
 
 function normalizeProgressText(progress) {
   if (!progress || typeof progress !== "object") {
-    return "Discovering module files...";
+    return "Discovering course files...";
   }
   if (typeof progress.message === "string" && progress.message.trim()) {
     return progress.message.trim();
@@ -152,7 +152,7 @@ function normalizeProgressText(progress) {
   if (typeof progress.stage === "string" && progress.stage.trim()) {
     return `Discovery stage: ${progress.stage.trim()}`;
   }
-  return "Discovering module files...";
+  return "Discovering course files...";
 }
 
 function forwardDiscoveryProgress(message) {
@@ -446,16 +446,16 @@ async function handleScrapeModulesStart(message) {
       reset: true,
       stage: "discovering",
       status: "discovering",
-      statusText: "Requesting module files from content script.",
+      statusText: "Requesting course files from content script.",
       counts: cloneCounts(counts),
       current: 0,
       total: 0,
-      message: "Requesting module files from content script."
+      message: "Requesting course files from content script."
     });
 
 	    const tab = await getActiveTab();
 	    if (!isCanvasUrl(tab.url || "")) {
-	      throw new Error("Open a Canvas course Modules page on canvas.calpoly.edu, then run scrape again.");
+	      throw new Error("Open a Canvas course page on canvas.calpoly.edu, then run scrape again.");
 	    }
 	    const discoveryResponse = await requestDiscoveryFromTab(tab, message, runId);
 	    if (discoveryResponse && discoveryResponse.success === false) {
