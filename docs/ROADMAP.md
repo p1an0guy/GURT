@@ -18,6 +18,7 @@
 2. Implement Canvas integration endpoints
    - `POST /canvas/connect`: accept and store Canvas base URL + token metadata for demo user.
    - `POST /canvas/sync`: fetch assignments/events and upsert normalized rows.
+   - Baseline complete: `GET /courses` and `GET /courses/{courseId}/items` now read synced Canvas DynamoDB rows first (fixture fallback in demo when no runtime rows exist).
    - Add deterministic tests with fixture-backed Canvas API responses.
 
 3. Build Bedrock-backed ingestion + RAG scaffold
