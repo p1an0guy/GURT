@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "CanvasSyncResponse.json",
+  "title": "CanvasSyncResponse",
+  "description": "Response payload for Canvas sync completion",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["synced", "coursesUpserted", "itemsUpserted", "updatedAt"],
+  "properties": {
+    "synced": {
+      "type": "boolean"
+    },
+    "coursesUpserted": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "itemsUpserted": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "updatedAt": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    }
+  }
+}

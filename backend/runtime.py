@@ -18,11 +18,13 @@ from gurt.calendar_tokens.minting import (
     mint_calendar_token,
 )
 from gurt.calendar_tokens.repository import DynamoDbCalendarTokenStore
+from studybuddy.models.canvas import CanvasItem, Course, ModelValidationError
 
 _ROOT_DIR = Path(__file__).resolve().parent.parent
 _FIXTURES_DIR = _ROOT_DIR / "fixtures"
 _DEMO_MODE_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 _ENTITY_CANVAS_ITEM = "CanvasItem"
+_ENTITY_CANVAS_CONNECTION = "CanvasConnection"
 
 
 @lru_cache(maxsize=1)
@@ -166,6 +168,10 @@ def _parse_json_body(event: Mapping[str, Any]) -> tuple[dict[str, Any] | None, s
         return None, "request body must be a JSON object"
 
     return decoded, None
+
+
+def _utc_now_rfc3339() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _require_course_id(event: Mapping[str, Any]) -> tuple[str | None, Dict[str, Any] | None]:
@@ -319,6 +325,122 @@ def _calendar_token_store() -> DynamoDbCalendarTokenStore:
     return DynamoDbCalendarTokenStore(_dynamodb_table(table_name))
 
 
+def _canvas_data_table() -> Any:
+    table_name = os.getenv("CANVAS_DATA_TABLE", "").strip()
+    if not table_name:
+        raise RuntimeError("server misconfiguration: CANVAS_DATA_TABLE missing")
+    return _dynamodb_table(table_name)
+
+
+def _canvas_connection_keys(user_id: str) -> tuple[str, str]:
+    return f"USER#{user_id}", "CANVAS_CONNECTION#default"
+
+
+def _read_canvas_connection(user_id: str) -> dict[str, Any] | None:
+    table = _canvas_data_table()
+    pk, sk = _canvas_connection_keys(user_id)
+    response = table.get_item(Key={"pk": pk, "sk": sk})
+    item = response.get("Item")
+    if not isinstance(item, dict):
+        return None
+    if item.get("entityType") != _ENTITY_CANVAS_CONNECTION:
+        return None
+    return item
+
+
+def _upsert_canvas_connection(*, user_id: str, canvas_base_url: str, access_token: str, updated_at: str) -> None:
+    table = _canvas_data_table()
+    pk, sk = _canvas_connection_keys(user_id)
+    table.put_item(
+        Item={
+            "pk": pk,
+            "sk": sk,
+            "entityType": _ENTITY_CANVAS_CONNECTION,
+            "userId": user_id,
+            "canvasBaseUrl": canvas_base_url,
+            "accessToken": access_token,
+            "updatedAt": updated_at,
+        }
+    )
+
+
+def _upsert_fixture_canvas_rows_for_user(*, user_id: str, updated_at: str) -> tuple[int, int]:
+    table = _canvas_data_table()
+    fixtures = _load_fixtures()
+
+    courses = [Course.from_api_dict(row) for row in fixtures["courses"]]
+    items = [CanvasItem.from_api_dict(row) for row in fixtures["items"]]
+
+    with table.batch_writer(overwrite_by_pkeys=["pk", "sk"]) as batch:
+        for course in courses:
+            batch.put_item(Item=course.to_dynamodb_item(user_id=user_id, updated_at=updated_at))
+        for item in items:
+            batch.put_item(Item=item.to_dynamodb_item(user_id=user_id, updated_at=updated_at))
+
+    return len(courses), len(items)
+
+
+def _handle_canvas_connect(event: Mapping[str, Any]) -> Dict[str, Any]:
+    user_id, auth_error = _require_authenticated_user_id(event)
+    if auth_error is not None or user_id is None:
+        return auth_error or _json_response(401, {"error": "authenticated principal is required"})
+
+    payload, parse_error = _parse_json_body(event)
+    if parse_error is not None or payload is None:
+        return _json_response(400, {"error": parse_error or "request body must be valid JSON"})
+
+    canvas_base_url = str(payload.get("canvasBaseUrl", "")).strip()
+    access_token = str(payload.get("accessToken", "")).strip()
+    if not canvas_base_url.startswith(("https://", "http://")):
+        return _json_response(400, {"error": "canvasBaseUrl must start with https:// or http://"})
+    if not access_token:
+        return _json_response(400, {"error": "accessToken is required"})
+
+    updated_at = _utc_now_rfc3339()
+    try:
+        _upsert_canvas_connection(
+            user_id=user_id,
+            canvas_base_url=canvas_base_url,
+            access_token=access_token,
+            updated_at=updated_at,
+        )
+    except RuntimeError as exc:
+        return _json_response(500, {"error": str(exc)})
+
+    return _json_response(200, {"connected": True, "updatedAt": updated_at})
+
+
+def _handle_canvas_sync(event: Mapping[str, Any]) -> Dict[str, Any]:
+    user_id, auth_error = _require_authenticated_user_id(event)
+    if auth_error is not None or user_id is None:
+        return auth_error or _json_response(401, {"error": "authenticated principal is required"})
+
+    try:
+        connection = _read_canvas_connection(user_id)
+        if connection is None:
+            return _json_response(400, {"error": "canvas connection not found; call POST /canvas/connect first"})
+
+        updated_at = _utc_now_rfc3339()
+        courses_upserted, items_upserted = _upsert_fixture_canvas_rows_for_user(
+            user_id=user_id,
+            updated_at=updated_at,
+        )
+    except RuntimeError as exc:
+        return _json_response(500, {"error": str(exc)})
+    except ModelValidationError as exc:
+        return _json_response(500, {"error": f"fixture validation failed: {exc}"})
+
+    return _json_response(
+        200,
+        {
+            "synced": True,
+            "coursesUpserted": courses_upserted,
+            "itemsUpserted": items_upserted,
+            "updatedAt": updated_at,
+        },
+    )
+
+
 def _scan_canvas_items_for_user(user_id: str) -> list[dict[str, Any]]:
     table_name = os.getenv("CANVAS_DATA_TABLE", "").strip()
     if not table_name:
@@ -463,6 +585,12 @@ def lambda_handler(event: Mapping[str, Any], context: Any) -> Dict[str, Any]:
 
     if method == "POST" and path == "/calendar/token":
         return _handle_calendar_token_create(event)
+
+    if method == "POST" and path == "/canvas/connect":
+        return _handle_canvas_connect(event)
+
+    if method == "POST" and path == "/canvas/sync":
+        return _handle_canvas_sync(event)
 
     if method == "GET":
         token = _extract_calendar_token(path, path_params)

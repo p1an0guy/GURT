@@ -55,6 +55,52 @@
         }
       }
     },
+    "/canvas/connect": {
+      "post": {
+        "operationId": "postCanvasConnect",
+        "description": "Stores Canvas connection settings for the authenticated caller.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CanvasConnectRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Canvas connection saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanvasConnectResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/canvas/sync": {
+      "post": {
+        "operationId": "postCanvasSync",
+        "description": "Syncs Canvas course/items into DynamoDB for the authenticated caller.",
+        "responses": {
+          "200": {
+            "description": "Canvas sync completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanvasSyncResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/uploads": {
       "post": {
         "operationId": "createUpload",
@@ -259,6 +305,15 @@
       },
       "CanvasItem": {
         "$ref": "./schemas/CanvasItem.json"
+      },
+      "CanvasConnectRequest": {
+        "$ref": "./schemas/CanvasConnectRequest.json"
+      },
+      "CanvasConnectResponse": {
+        "$ref": "./schemas/CanvasConnectResponse.json"
+      },
+      "CanvasSyncResponse": {
+        "$ref": "./schemas/CanvasSyncResponse.json"
       },
       "Topic": {
         "$ref": "./schemas/Topic.json"
