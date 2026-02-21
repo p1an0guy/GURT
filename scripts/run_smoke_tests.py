@@ -194,6 +194,21 @@ def validate_ics(ics_text: str) -> None:
     print("PASS calendar ICS checks")
 
 
+def resolve_calendar_token(*, base_url: str, initial_token: str, mint_if_missing: bool) -> str:
+    """Resolve calendar token from env or mint endpoint for live smoke runs."""
+    if initial_token:
+        return initial_token
+    if not mint_if_missing:
+        return "demo-calendar-token"
+
+    payload = http_json("POST", f"{base_url}/calendar/token", payload={})
+    token = str(payload.get("token", "")).strip() if isinstance(payload, dict) else ""
+    if not token:
+        raise RuntimeError("calendar token mint failed: response missing token")
+    print("PASS /calendar/token")
+    return token
+
+
 def run_sequence(ctx: SmokeContext) -> None:
     """Run the requested smoke sequence and validate response shapes."""
     health = http_json("GET", f"{ctx.base_url}/health")
@@ -252,7 +267,17 @@ def main() -> None:
         raise RuntimeError("BASE_URL is required unless SMOKE_MOCK_MODE=1")
 
     course_id = os.getenv("COURSE_ID", "").strip() or "course-psych-101"
-    calendar_token = os.getenv("CALENDAR_TOKEN", "").strip() or "demo-calendar-token"
+    initial_calendar_token = os.getenv("CALENDAR_TOKEN", "").strip()
+    mint_calendar_token = os.getenv("MINT_CALENDAR_TOKEN", "0").strip() == "1"
+    calendar_token = (
+        initial_calendar_token or "demo-calendar-token"
+        if mock_mode
+        else resolve_calendar_token(
+            base_url=base_url,
+            initial_token=initial_calendar_token,
+            mint_if_missing=mint_calendar_token,
+        )
+    )
     ctx = SmokeContext(base_url=base_url, calendar_token=calendar_token, course_id=course_id)
 
     try:

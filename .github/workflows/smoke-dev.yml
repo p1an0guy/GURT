@@ -2,6 +2,13 @@ name: Smoke Dev
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: smoke-dev-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   smoke-dev:
@@ -21,12 +28,22 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
 
+      - name: Validate smoke workflow configuration
+        env:
+          BASE_URL: ${{ secrets.DEV_BASE_URL }}
+        run: |
+          if [ -z "$BASE_URL" ]; then
+            echo "DEV_BASE_URL secret is required for smoke-dev workflow."
+            exit 1
+          fi
+
       - name: Run smoke tests against dev
         id: smoke
         env:
           BASE_URL: ${{ secrets.DEV_BASE_URL }}
-          CALENDAR_TOKEN: ${{ secrets.DEV_CALENDAR_TOKEN }}
           COURSE_ID: ${{ secrets.DEV_COURSE_ID }}
+          CALENDAR_TOKEN: ${{ secrets.DEV_CALENDAR_TOKEN }}
+          MINT_CALENDAR_TOKEN: '1'
         run: python scripts/run_smoke_tests.py
 
       - name: Summary
