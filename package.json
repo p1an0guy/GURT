@@ -6,8 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "node scripts/lint.mjs",
-    "test": "node --experimental-strip-types --test src/api/client.test.ts"
+    "typecheck": "next typegen && tsc --noEmit",
+    "lint": "npm run typecheck",
+    "test": "tsx --test src/api/client.test.ts"
   },
   "dependencies": {
     "next": "^15.2.0",
@@ -17,6 +18,7 @@
   "devDependencies": {
     "@types/node": "^22.13.5",
     "@types/react": "^19.0.10",
+    "tsx": "^4.21.0",
     "typescript": "^5.8.2"
   }
 }

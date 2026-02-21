@@ -11,6 +11,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Run frontend typecheck
+        run: npm run typecheck
+
+      - name: Run frontend lint
+        run: npm run lint
+
+      - name: Run frontend tests
+        run: npm test
+
+      - name: Run frontend build
+        run: npm run build
+
       - name: Detect CDK infra changes
         id: cdk_changes
         run: |
@@ -33,12 +54,6 @@ jobs:
 
       - name: Validate API contracts
         run: python scripts/validate_contracts.py
-
-      - name: Set up Node.js for CDK checks
-        if: steps.cdk_changes.outputs.has_cdk_changes == 'true'
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
 
       - name: Run CDK synth checks (when infra changes)
         if: steps.cdk_changes.outputs.has_cdk_changes == 'true'
