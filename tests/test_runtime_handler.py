@@ -149,21 +149,53 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertEqual(by_topic["topic-memory"]["dueCards"], 3)
         self.assertEqual(by_topic["topic-conditioning"]["dueCards"], 3)
 
-    def test_calendar_token_create_requires_authenticated_principal(self) -> None:
+    def test_calendar_token_create_uses_demo_user_when_principal_is_missing_in_demo_mode(self) -> None:
+        store = _MemoryCalendarTokenStore()
+        with patch("backend.runtime._calendar_token_store", return_value=store):
+            response = self._invoke(
+                {"httpMethod": "POST", "path": "/calendar/token"},
+                env={"DEMO_MODE": "true", "DEMO_USER_ID": "demo-fallback-user"},
+            )
+
+        self.assertEqual(response["statusCode"], 201)
+        body = json.loads(response["body"])
+        record = store.get(body["token"])
+        self.assertIsNotNone(record)
+        if record is None:
+            self.fail("Expected token to be stored")
+        self.assertEqual(record.user_id, "demo-fallback-user")
+
+    def test_calendar_token_create_requires_authenticated_principal_when_demo_mode_disabled(self) -> None:
         response = self._invoke(
             {"httpMethod": "POST", "path": "/calendar/token"},
+            env={"DEMO_MODE": "false"},
         )
 
         self.assertEqual(response["statusCode"], 401)
         self.assertIn("authenticated principal", json.loads(response["body"])["error"])
 
-    def test_canvas_connect_requires_authenticated_principal(self) -> None:
+    def test_canvas_connect_uses_demo_user_when_principal_is_missing_in_demo_mode(self) -> None:
+        event = {
+            "httpMethod": "POST",
+            "path": "/canvas/connect",
+            "body": json.dumps({"canvasBaseUrl": "https://canvas.example.edu", "accessToken": "x"}),
+        }
+
+        with patch("backend.runtime._upsert_canvas_connection") as upsert:
+            response = self._invoke(event, env={"DEMO_MODE": "true", "DEMO_USER_ID": "demo-fallback-user"})
+
+        self.assertEqual(response["statusCode"], 200)
+        call_kwargs = upsert.call_args.kwargs
+        self.assertEqual(call_kwargs["user_id"], "demo-fallback-user")
+
+    def test_canvas_connect_requires_authenticated_principal_when_demo_mode_disabled(self) -> None:
         response = self._invoke(
             {
                 "httpMethod": "POST",
                 "path": "/canvas/connect",
                 "body": json.dumps({"canvasBaseUrl": "https://canvas.example.edu", "accessToken": "x"}),
-            }
+            },
+            env={"DEMO_MODE": "false"},
         )
 
         self.assertEqual(response["statusCode"], 401)

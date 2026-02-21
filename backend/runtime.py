@@ -242,6 +242,9 @@ def _extract_authenticated_user_id(event: Mapping[str, Any]) -> str | None:
 def _require_authenticated_user_id(event: Mapping[str, Any]) -> tuple[str | None, Dict[str, Any] | None]:
     user_id = _extract_authenticated_user_id(event)
     if user_id is None:
+        if _is_demo_mode():
+            fallback = os.getenv("DEMO_USER_ID", "demo-user").strip() or "demo-user"
+            return fallback, None
         return None, _json_response(401, {"error": "authenticated principal is required"})
     return user_id, None
 

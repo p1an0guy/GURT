@@ -89,8 +89,9 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 
 ### Flow E — Calendar subscription (ICS)
 
-1. Authenticated caller requests a feed token via `POST /calendar/token`.
+1. Caller requests a feed token via `POST /calendar/token`.
 2. Backend mints token, stores token metadata in DynamoDB, and returns feed URL.
+   In demo mode, if no authenticated principal is present, it uses `DEMO_USER_ID`.
 3. User clicks “Subscribe calendar”.
 4. UI shows URL: `/calendar/<token>.ics`.
 5. User adds calendar by URL in Google Calendar.
