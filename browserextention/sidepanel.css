@@ -105,6 +105,29 @@ body {
   margin: 2px 0;
 }
 
+.message.bot table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 6px 0;
+  font-size: 13px;
+}
+
+.message.bot th,
+.message.bot td {
+  border: 1px solid #e0e0e0;
+  padding: 5px 8px;
+  text-align: left;
+}
+
+.message.bot th {
+  background: #f3f4f6;
+  font-weight: 600;
+}
+
+.message.bot tr:nth-child(even) {
+  background: #fafafa;
+}
+
 .message.bot code {
   background: #f3f4f6;
   padding: 1px 4px;

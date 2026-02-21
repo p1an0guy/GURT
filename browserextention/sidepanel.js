@@ -82,9 +82,33 @@ function renderMarkdown(text) {
   const lines = escaped.split("\n");
   const out = [];
   let inList = false;
+  let inTable = false;
 
-  for (const line of lines) {
-    const trimmed = line.trim();
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+
+    // Table rows: lines that start and end with |
+    if (/^\|.+\|$/.test(trimmed)) {
+      // Skip separator rows like |---|---|
+      if (/^\|[\s\-:|]+\|$/.test(trimmed)) continue;
+
+      const cells = trimmed.split("|").slice(1, -1).map(c => c.trim());
+      if (!inTable) {
+        if (inList) { out.push("</ul>"); inList = false; }
+        out.push("<table>");
+        // First row is the header
+        out.push("<thead><tr>" + cells.map(c => `<th>${c}</th>`).join("") + "</tr></thead><tbody>");
+        inTable = true;
+        continue;
+      }
+      out.push("<tr>" + cells.map(c => `<td>${c}</td>`).join("") + "</tr>");
+      continue;
+    }
+
+    if (inTable) {
+      out.push("</tbody></table>");
+      inTable = false;
+    }
 
     // Headers
     if (trimmed.startsWith("### ")) {
@@ -125,6 +149,7 @@ function renderMarkdown(text) {
     out.push(`<p>${trimmed}</p>`);
   }
   if (inList) out.push("</ul>");
+  if (inTable) out.push("</tbody></table>");
 
   // Inline formatting
   let html = out.join("");
