@@ -84,13 +84,39 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertGreaterEqual(len(rows), 1)
         self.assertEqual(rows[0]["id"], "course-psych-101")
 
-    def test_courses_route_returns_503_when_demo_mode_disabled(self) -> None:
+    def test_courses_route_requires_authenticated_principal_when_demo_mode_disabled(self) -> None:
         response = self._invoke(
             {"httpMethod": "GET", "path": "/courses"},
             env={"DEMO_MODE": "false"},
         )
 
-        self.assertEqual(response["statusCode"], 503)
+        self.assertEqual(response["statusCode"], 401)
+        self.assertIn("authenticated principal", json.loads(response["body"])["error"])
+
+    def test_courses_route_returns_runtime_rows_when_available(self) -> None:
+        event = {
+            "httpMethod": "GET",
+            "path": "/courses",
+            "requestContext": {"authorizer": {"principalId": "demo-user"}},
+        }
+
+        with patch(
+            "backend.runtime._query_canvas_courses_for_user",
+            return_value=[
+                {
+                    "id": "170880",
+                    "name": "POLS 112",
+                    "term": "Spring 2026",
+                    "color": "#3366FF",
+                }
+            ],
+        ):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 200)
+        rows = json.loads(response["body"])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["id"], "170880")
 
     def test_course_items_filters_by_course_id(self) -> None:
         response = self._invoke(
@@ -105,6 +131,34 @@ class RuntimeHandlerTests(unittest.TestCase):
         rows = json.loads(response["body"])
         self.assertEqual(len(rows), 2)
         self.assertTrue(all(row["courseId"] == "course-psych-101" for row in rows))
+
+    def test_course_items_returns_runtime_rows_when_available(self) -> None:
+        event = {
+            "httpMethod": "GET",
+            "path": "/courses/170880/items",
+            "pathParameters": {"courseId": "170880"},
+            "requestContext": {"authorizer": {"principalId": "demo-user"}},
+        }
+        with patch(
+            "backend.runtime._query_canvas_course_items_for_user",
+            return_value=[
+                {
+                    "id": "assign-1",
+                    "courseId": "170880",
+                    "title": "Reading 1",
+                    "itemType": "assignment",
+                    "dueAt": "2026-09-05T23:59:00Z",
+                    "pointsPossible": 10,
+                }
+            ],
+        ):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 200)
+        rows = json.loads(response["body"])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["id"], "assign-1")
+        self.assertEqual(rows[0]["courseId"], "170880")
 
     def test_course_items_accepts_stage_prefixed_path(self) -> None:
         response = self._invoke(

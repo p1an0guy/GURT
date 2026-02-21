@@ -54,7 +54,7 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 
 1. User provides Canvas token (demo auth) and Canvas base URL (or configured).
 2. Backend fetches courses + upcoming assignments/events.
-3. Backend stores Canvas items and exposes them to UI.
+3. Backend stores Canvas rows in DynamoDB and exposes runtime-backed `GET /courses` + `GET /courses/{courseId}/items` (fixture fallback remains when no synced rows exist in demo mode).
 4. UI shows timeline + flags an exam date (user can mark an item as an exam if needed).
 5. Current scaffold supports `POST /canvas/connect` + `POST /canvas/sync` with:
    - assignments sync (`published=true` and non-null `dueAt`)

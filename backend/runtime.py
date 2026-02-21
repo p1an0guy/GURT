@@ -6,6 +6,7 @@ import json
 import os
 import re
 from collections import Counter
+from decimal import Decimal
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
@@ -1281,21 +1282,8 @@ def _query_canvas_items_for_user(user_id: str) -> list[dict[str, Any]]:
         return []
 
     table = _dynamodb_table(table_name)
-    from boto3.dynamodb.conditions import Key
-
     def _query_partition_rows(pk_value: str, sk_prefix: str) -> list[dict[str, Any]]:
-        key_condition = Key("pk").eq(pk_value) & Key("sk").begins_with(sk_prefix)
-        response = table.query(KeyConditionExpression=key_condition)
-        rows = list(response.get("Items", []))
-
-        while "LastEvaluatedKey" in response:
-            response = table.query(
-                KeyConditionExpression=key_condition,
-                ExclusiveStartKey=response["LastEvaluatedKey"],
-            )
-            rows.extend(response.get("Items", []))
-
-        return rows
+        return _query_canvas_partition_rows(table=table, pk_value=pk_value, sk_prefix=sk_prefix)
 
     user_pk = f"USER#{user_id}"
     course_rows = _query_partition_rows(user_pk, "COURSE#")
@@ -1335,6 +1323,106 @@ def _query_canvas_items_for_user(user_id: str) -> list[dict[str, Any]]:
     return items
 
 
+def _query_canvas_partition_rows(*, table: Any, pk_value: str, sk_prefix: str) -> list[dict[str, Any]]:
+    from boto3.dynamodb.conditions import Key
+
+    key_condition = Key("pk").eq(pk_value) & Key("sk").begins_with(sk_prefix)
+    response = table.query(KeyConditionExpression=key_condition)
+    rows = list(response.get("Items", []))
+    while "LastEvaluatedKey" in response:
+        response = table.query(
+            KeyConditionExpression=key_condition,
+            ExclusiveStartKey=response["LastEvaluatedKey"],
+        )
+        rows.extend(response.get("Items", []))
+    return [row for row in rows if isinstance(row, dict)]
+
+
+def _json_number(value: Any) -> int | float:
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return value
+    if isinstance(value, Decimal):
+        if value == value.to_integral_value():
+            return int(value)
+        return float(value)
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return 0
+    if parsed.is_integer():
+        return int(parsed)
+    return parsed
+
+
+def _query_canvas_courses_for_user(user_id: str) -> list[dict[str, Any]]:
+    table_name = os.getenv("CANVAS_DATA_TABLE", "").strip()
+    if not table_name:
+        return []
+
+    table = _dynamodb_table(table_name)
+    rows = _query_canvas_partition_rows(table=table, pk_value=f"USER#{user_id}", sk_prefix="COURSE#")
+    courses: list[dict[str, Any]] = []
+    for row in rows:
+        if row.get("entityType") != "CanvasCourse":
+            continue
+        try:
+            course = Course.from_api_dict(
+                {
+                    "id": row.get("id"),
+                    "name": row.get("name"),
+                    "term": row.get("term"),
+                    "color": row.get("color"),
+                }
+            )
+        except ModelValidationError:
+            continue
+        courses.append(course.to_api_dict())
+
+    courses.sort(key=lambda course: str(course.get("name", "")).lower())
+    return courses
+
+
+def _query_canvas_course_items_for_user(*, user_id: str, course_id: str) -> list[dict[str, Any]]:
+    table_name = os.getenv("CANVAS_DATA_TABLE", "").strip()
+    if not table_name:
+        return []
+
+    table = _dynamodb_table(table_name)
+    rows = _query_canvas_partition_rows(
+        table=table,
+        pk_value=f"USER#{user_id}#COURSE#{course_id}",
+        sk_prefix="ITEM#",
+    )
+
+    items: list[dict[str, Any]] = []
+    for row in rows:
+        if row.get("entityType") != _ENTITY_CANVAS_ITEM:
+            continue
+        try:
+            item = CanvasItem.from_api_dict(
+                {
+                    "id": row.get("id"),
+                    "courseId": row.get("courseId"),
+                    "title": row.get("title"),
+                    "itemType": row.get("itemType"),
+                    "dueAt": row.get("dueAt"),
+                    "pointsPossible": _json_number(row.get("pointsPossible")),
+                }
+            )
+        except ModelValidationError:
+            continue
+        api_item = item.to_api_dict()
+        api_item["pointsPossible"] = _json_number(api_item.get("pointsPossible"))
+        items.append(api_item)
+
+    items.sort(key=lambda item: str(item.get("dueAt", "")))
+    return items
+
+
 def _load_schedule_items_for_user(user_id: str) -> list[dict[str, Any]]:
     items = _query_canvas_items_for_user(user_id)
     if items:
@@ -1353,6 +1441,42 @@ def _load_schedule_items_for_user(user_id: str) -> list[dict[str, Any]]:
         }
         for row in fixtures["items"]
     ]
+
+
+def _handle_courses(event: Mapping[str, Any]) -> Dict[str, Any]:
+    user_id, auth_error = _require_authenticated_user_id(event)
+    if auth_error is not None or user_id is None:
+        return auth_error or _json_response(401, {"error": "authenticated principal is required"})
+
+    try:
+        runtime_courses = _query_canvas_courses_for_user(user_id)
+    except RuntimeError as exc:
+        return _json_response(500, {"error": str(exc)})
+
+    if runtime_courses:
+        return _text_response(200, json.dumps(runtime_courses), content_type="application/json")
+    if _is_demo_mode():
+        return _text_response(200, json.dumps(_load_fixtures()["courses"]), content_type="application/json")
+    return _text_response(200, "[]", content_type="application/json")
+
+
+def _handle_course_items(event: Mapping[str, Any], course_id: str) -> Dict[str, Any]:
+    user_id, auth_error = _require_authenticated_user_id(event)
+    if auth_error is not None or user_id is None:
+        return auth_error or _json_response(401, {"error": "authenticated principal is required"})
+
+    try:
+        runtime_items = _query_canvas_course_items_for_user(user_id=user_id, course_id=course_id)
+    except RuntimeError as exc:
+        return _json_response(500, {"error": str(exc)})
+
+    if runtime_items:
+        return _text_response(200, json.dumps(runtime_items), content_type="application/json")
+    if _is_demo_mode():
+        fixtures = _load_fixtures()
+        fixture_items = [row for row in fixtures["items"] if row.get("courseId") == course_id]
+        return _text_response(200, json.dumps(fixture_items), content_type="application/json")
+    return _text_response(200, "[]", content_type="application/json")
 
 
 def _public_base_url(event: Mapping[str, Any]) -> str:
@@ -1442,6 +1566,14 @@ def lambda_handler(event: Mapping[str, Any], context: Any) -> Dict[str, Any]:
     if method == "GET" and path == "/health":
         return _json_response(200, {"status": "ok"})
 
+    if method == "GET" and path == "/courses":
+        return _handle_courses(event)
+
+    if method == "GET":
+        course_id = _extract_course_id_from_path(path, path_params)
+        if course_id is not None:
+            return _handle_course_items(event, course_id)
+
     if method == "POST" and path == "/calendar/token":
         return _handle_calendar_token_create(event)
 
@@ -1526,15 +1658,5 @@ def lambda_handler(event: Mapping[str, Any], context: Any) -> Dict[str, Any]:
     demo_guard = _require_demo_mode()
     if demo_guard is not None:
         return demo_guard
-
-    if method == "GET" and path == "/courses":
-        return _text_response(200, json.dumps(_load_fixtures()["courses"]), content_type="application/json")
-
-    if method == "GET":
-        course_id = _extract_course_id_from_path(path, path_params)
-        if course_id is not None:
-            fixtures = _load_fixtures()
-            items = [row for row in fixtures["items"] if row.get("courseId") == course_id]
-            return _text_response(200, json.dumps(items), content_type="application/json")
 
     return _json_response(404, {"error": "not found"})
