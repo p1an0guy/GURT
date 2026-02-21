@@ -426,6 +426,94 @@ class ExtractAndTextractRoutingTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "50MB"):
                 extract_handler(event, None)
 
+    def test_extract_handler_converts_docx_and_sets_textract_key(self) -> None:
+        event = {
+            "bucket": "uploads-bucket",
+            "key": "uploads/course-1/doc-1/week-1-notes.docx",
+            "threshold": 200,
+        }
+        with mock.patch(
+            "backend.ingest_workflow._read_s3_bytes",
+            return_value=b"docx-bytes",
+        ):
+            with mock.patch(
+                "backend.ingest_workflow._convert_docx_to_pdf",
+                return_value=b"%PDF-1.7 fake",
+            ) as convert_mock:
+                with mock.patch("backend.ingest_workflow._write_s3_bytes") as write_mock:
+                    with mock.patch(
+                        "backend.ingest_workflow._extract_text_with_pymupdf",
+                        return_value="doc text",
+                    ) as extract_mock:
+                        result = extract_handler(event, None)
+
+        convert_mock.assert_called_once_with(b"docx-bytes")
+        write_mock.assert_called_once()
+        self.assertEqual(result["text"], "doc text")
+        self.assertEqual(
+            result["textractKey"],
+            "uploads/course-1/doc-1/week-1-notes.converted.pdf",
+        )
+        extract_mock.assert_called_once_with(
+            b"%PDF-1.7 fake",
+            "uploads/course-1/doc-1/week-1-notes.converted.pdf",
+        )
+
+    def test_extract_handler_rejects_oversized_docx(self) -> None:
+        event = {
+            "bucket": "uploads-bucket",
+            "key": "uploads/course-1/doc-1/week-1-notes.docx",
+            "threshold": 200,
+        }
+        oversized = b"a" * (50 * 1024 * 1024 + 1)
+        with mock.patch("backend.ingest_workflow._read_s3_bytes", return_value=oversized):
+            with self.assertRaisesRegex(ValueError, "50MB"):
+                extract_handler(event, None)
+
+    def test_extract_handler_converts_doc_and_sets_textract_key(self) -> None:
+        event = {
+            "bucket": "uploads-bucket",
+            "key": "uploads/course-1/doc-1/week-1-notes.doc",
+            "threshold": 200,
+        }
+        with mock.patch(
+            "backend.ingest_workflow._read_s3_bytes",
+            return_value=b"doc-bytes",
+        ):
+            with mock.patch(
+                "backend.ingest_workflow._convert_doc_to_pdf",
+                return_value=b"%PDF-1.7 fake",
+            ) as convert_mock:
+                with mock.patch("backend.ingest_workflow._write_s3_bytes") as write_mock:
+                    with mock.patch(
+                        "backend.ingest_workflow._extract_text_with_pymupdf",
+                        return_value="doc text",
+                    ) as extract_mock:
+                        result = extract_handler(event, None)
+
+        convert_mock.assert_called_once_with(b"doc-bytes")
+        write_mock.assert_called_once()
+        self.assertEqual(result["text"], "doc text")
+        self.assertEqual(
+            result["textractKey"],
+            "uploads/course-1/doc-1/week-1-notes.converted.pdf",
+        )
+        extract_mock.assert_called_once_with(
+            b"%PDF-1.7 fake",
+            "uploads/course-1/doc-1/week-1-notes.converted.pdf",
+        )
+
+    def test_extract_handler_rejects_oversized_doc(self) -> None:
+        event = {
+            "bucket": "uploads-bucket",
+            "key": "uploads/course-1/doc-1/week-1-notes.doc",
+            "threshold": 200,
+        }
+        oversized = b"a" * (50 * 1024 * 1024 + 1)
+        with mock.patch("backend.ingest_workflow._read_s3_bytes", return_value=oversized):
+            with self.assertRaisesRegex(ValueError, "50MB"):
+                extract_handler(event, None)
+
     def test_start_textract_uses_textract_key_when_present(self) -> None:
         event = {
             "bucket": "uploads-bucket",
