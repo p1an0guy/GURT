@@ -46,6 +46,7 @@ export default function FlashcardsPage() {
   const [isLoadingCourses, setIsLoadingCourses] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [coursesLoaded, setCoursesLoaded] = useState(false);
+  const [hasAttemptedCourseLoad, setHasAttemptedCourseLoad] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [courseLoadError, setCourseLoadError] = useState("");
@@ -82,6 +83,7 @@ export default function FlashcardsPage() {
       );
     } finally {
       setIsLoadingCourses(false);
+      setHasAttemptedCourseLoad(true);
     }
   }
 
@@ -159,6 +161,10 @@ export default function FlashcardsPage() {
                   </option>
                 ))}
               </select>
+            ) : isLoadingCourses || !hasAttemptedCourseLoad ? (
+              <div className="status-block">
+                <p className="small">Loading courses...</p>
+              </div>
             ) : (
               <div className="status-block">
                 <p className="small">We could not load your courses right now.</p>

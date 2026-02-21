@@ -18,6 +18,7 @@ export default function DeckStudyPage() {
   const [deck, setDeck] = useState<DeckRecord | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -43,12 +44,13 @@ export default function DeckStudyPage() {
   const isFinished = deck !== null && activeIndex >= deck.cards.length;
 
   async function handleRate(rating: 1 | 2 | 3 | 4 | 5): Promise<void> {
-    if (!deck || !activeCard) {
+    if (!deck || !activeCard || isSubmittingReview) {
       return;
     }
 
     setError("");
     setMessage("");
+    setIsSubmittingReview(true);
     try {
       await client.postStudyReview({
         cardId: activeCard.id,
@@ -62,6 +64,8 @@ export default function DeckStudyPage() {
       setMessage(`Saved rating ${rating}.`);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Failed to submit review");
+    } finally {
+      setIsSubmittingReview(false);
     }
   }
 
@@ -128,19 +132,19 @@ export default function DeckStudyPage() {
 
               <p className="small">Rate recall quality:</p>
               <div className="rating-row">
-                <button type="button" onClick={() => void handleRate(1)}>
+                <button type="button" onClick={() => void handleRate(1)} disabled={isSubmittingReview}>
                   1
                 </button>
-                <button type="button" onClick={() => void handleRate(2)}>
+                <button type="button" onClick={() => void handleRate(2)} disabled={isSubmittingReview}>
                   2
                 </button>
-                <button type="button" onClick={() => void handleRate(3)}>
+                <button type="button" onClick={() => void handleRate(3)} disabled={isSubmittingReview}>
                   3
                 </button>
-                <button type="button" onClick={() => void handleRate(4)}>
+                <button type="button" onClick={() => void handleRate(4)} disabled={isSubmittingReview}>
                   4
                 </button>
-                <button type="button" onClick={() => void handleRate(5)}>
+                <button type="button" onClick={() => void handleRate(5)} disabled={isSubmittingReview}>
                   5
                 </button>
               </div>

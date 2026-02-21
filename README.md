@@ -59,7 +59,8 @@ Then open `http://localhost:3000`.
 
 Frontend routes:
 
-- `/` is the user-facing dashboard (`Generate Deck`, `Recent Decks`, `Study Deck`).
+- `/` is the user-facing dashboard (course overview and course navigation).
+- `/flashcards` contains the deck workflow (`Generate Deck`, `Recent Decks`, `Study Deck`).
 - `/dev-tools` is the internal debug console (runtime/API controls).
 
 ### Frontend env vars
