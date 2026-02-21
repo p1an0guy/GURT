@@ -3,9 +3,9 @@
   "context": {
     "stageName": "dev",
     "demoMode": "1",
-    "bedrockModelId": "us.anthropic.claude-sonnet-4-6",
+    "bedrockModelId": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
     "embeddingModelId": "amazon.titan-embed-text-v2:0",
-    "knowledgeBaseId": "",
+    "knowledgeBaseId": "AOKQR2EWNF",
     "knowledgeBaseDataSourceId": "",
     "createKnowledgeBaseStack": "0",
     "calendarTokenMintingPath": "endpoint",

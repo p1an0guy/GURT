@@ -228,6 +228,7 @@ class ApiStack(Stack):
                     "bedrock:Retrieve",
                     "bedrock:StartIngestionJob",
                     "bedrock:RetrieveAndGenerate",
+                    "bedrock:GetInferenceProfile",
                 ],
                 resources=["*"],
             )
