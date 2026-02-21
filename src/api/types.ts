@@ -20,6 +20,29 @@ export interface CanvasItem {
   pointsPossible: number;
 }
 
+export interface CanvasConnectRequest {
+  canvasBaseUrl: string;
+  accessToken: string;
+}
+
+export interface CanvasConnectResponse {
+  connected: boolean;
+  updatedAt: string;
+}
+
+export interface CanvasSyncResponse {
+  synced: boolean;
+  coursesUpserted: number;
+  itemsUpserted: number;
+  materialsUpserted: number;
+  materialsMirrored: number;
+  knowledgeBaseIngestionStarted: boolean;
+  knowledgeBaseIngestionJobId: string;
+  knowledgeBaseIngestionError: string;
+  failedCourseIds: string[];
+  updatedAt: string;
+}
+
 export interface Card {
   id: string;
   courseId: string;

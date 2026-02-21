@@ -3,8 +3,11 @@ import canvasItemsRaw from "../../fixtures/canvas_items.json" with { type: "json
 import coursesRaw from "../../fixtures/courses.json" with { type: "json" };
 import topicsRaw from "../../fixtures/topics.json" with { type: "json" };
 import type {
+  CanvasConnectRequest,
+  CanvasConnectResponse,
   CalendarTokenResponse,
   CanvasItem,
+  CanvasSyncResponse,
   Card,
   Course,
   HealthStatus,
@@ -73,6 +76,28 @@ export function getFixtureStudyMastery(courseId: string): TopicMastery[] {
 
 export function getFixtureStudyReviewAck(): StudyReviewAck {
   return { accepted: true };
+}
+
+export function getFixtureCanvasConnect(_request: CanvasConnectRequest): CanvasConnectResponse {
+  return {
+    connected: true,
+    updatedAt: "2026-09-02T09:00:00Z",
+  };
+}
+
+export function getFixtureCanvasSync(): CanvasSyncResponse {
+  return {
+    synced: true,
+    coursesUpserted: 2,
+    itemsUpserted: 3,
+    materialsUpserted: 2,
+    materialsMirrored: 2,
+    knowledgeBaseIngestionStarted: true,
+    knowledgeBaseIngestionJobId: "kb-job-fixture-1",
+    knowledgeBaseIngestionError: "",
+    failedCourseIds: [],
+    updatedAt: "2026-09-02T09:01:00Z",
+  };
 }
 
 export function getFixtureCalendarIcs(token: string): string {

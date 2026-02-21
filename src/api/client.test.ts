@@ -25,6 +25,11 @@ test("uses fixture mode when explicitly enabled", async () => {
     useFixtures: true,
   });
 
+  const canvasConnect = await client.connectCanvas({
+    canvasBaseUrl: "https://canvas.calpoly.edu",
+    accessToken: "fixture-token",
+  });
+  const canvasSync = await client.syncCanvas();
   const courses = await client.listCourses();
   const cards = await client.getStudyToday("course-psych-101");
   const mastery = await client.getStudyMastery("course-psych-101");
@@ -37,6 +42,8 @@ test("uses fixture mode when explicitly enabled", async () => {
   const ingestStatus = await client.getDocsIngestStatus(ingestStart.jobId);
 
   assert.equal(fetchCalled, false);
+  assert.equal(canvasConnect.connected, true);
+  assert.equal(canvasSync.synced, true);
   assert.equal(courses.length, 2);
   assert.ok(cards.length > 0);
   assert.equal(calendarToken.token, "demo-calendar-token");
@@ -137,6 +144,25 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
       return jsonResponse({ status: "ok" });
     }
 
+    if (url.endsWith("/canvas/connect")) {
+      return jsonResponse({ connected: true, updatedAt: "2026-09-02T09:00:00Z" });
+    }
+
+    if (url.endsWith("/canvas/sync")) {
+      return jsonResponse({
+        synced: true,
+        coursesUpserted: 2,
+        itemsUpserted: 3,
+        materialsUpserted: 2,
+        materialsMirrored: 2,
+        knowledgeBaseIngestionStarted: false,
+        knowledgeBaseIngestionJobId: "",
+        knowledgeBaseIngestionError: "",
+        failedCourseIds: [],
+        updatedAt: "2026-09-02T09:01:00Z",
+      });
+    }
+
     if (url.endsWith("/courses")) {
       return jsonResponse([{ id: "course-1", name: "Course", term: "Fall", color: "#123456" }]);
     }
@@ -210,6 +236,11 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
   };
 
   await client.getHealth();
+  await client.connectCanvas({
+    canvasBaseUrl: "https://canvas.calpoly.edu",
+    accessToken: "live-token",
+  });
+  await client.syncCanvas();
   await client.listCourses();
   await client.listCourseItems("course/1");
   await client.getStudyToday("course/1");
@@ -227,7 +258,9 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
   assert.match(ics, /BEGIN:VCALENDAR/);
   assert.equal(tokenResponse.token, "minted-token");
   assert.equal(ingestStatus.status, "FINISHED");
-  assert.equal(calls.length, 10);
+  assert.equal(calls.length, 12);
+  assert.ok(calls.some((call) => call.url === "https://api.example.dev/canvas/connect"));
+  assert.ok(calls.some((call) => call.url === "https://api.example.dev/canvas/sync"));
   assert.ok(calls.some((call) => call.url === "https://api.example.dev/courses/course%2F1/items"));
   assert.ok(calls.some((call) => call.url === "https://api.example.dev/study/today?courseId=course%2F1"));
   assert.ok(calls.some((call) => call.url === "https://api.example.dev/study/mastery?courseId=course%2F1"));
