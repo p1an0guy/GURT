@@ -5,7 +5,7 @@
 - `main` deploys with `./scripts/deploy.sh` using AWS profile credentials.
 - Dev smoke workflow passes against deployed API.
 - Calendar token mint + ICS feed endpoints are live.
-- Temporary fallback is enabled for calendar ICS when no user schedule rows exist.
+- Temporary fallback is enabled for calendar ICS only for `DEMO_USER_ID` when no user schedule rows exist.
 - Canvas sync now includes published/visible course materials metadata + S3 mirroring, and can auto-start KB ingestion when KB IDs are configured.
 
 ## Next steps (execution order)

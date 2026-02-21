@@ -67,6 +67,10 @@ def _calendar_fixture_fallback_enabled() -> bool:
     return raw.strip().lower() in _DEMO_MODE_TRUE_VALUES
 
 
+def _demo_user_id() -> str:
+    return os.getenv("DEMO_USER_ID", "demo-user").strip() or "demo-user"
+
+
 def _cors_headers() -> dict[str, str]:
     origin = os.getenv("CORS_ALLOW_ORIGIN", "*").strip() or "*"
     methods = os.getenv("CORS_ALLOW_METHODS", "GET,POST,OPTIONS").strip() or "GET,POST,OPTIONS"
@@ -287,8 +291,7 @@ def _require_authenticated_user_id(event: Mapping[str, Any]) -> tuple[str | None
     user_id = _extract_authenticated_user_id(event)
     if user_id is None:
         if _is_demo_mode():
-            fallback = os.getenv("DEMO_USER_ID", "demo-user").strip() or "demo-user"
-            return fallback, None
+            return _demo_user_id(), None
         return None, _json_response(401, {"error": "authenticated principal is required"})
     return user_id, None
 
@@ -1447,6 +1450,9 @@ def _load_schedule_items_for_user(user_id: str) -> list[dict[str, Any]]:
         return items
 
     if not (_is_demo_mode() and _calendar_fixture_fallback_enabled()):
+        return []
+
+    if user_id != _demo_user_id():
         return []
 
     fixtures = _load_fixtures()

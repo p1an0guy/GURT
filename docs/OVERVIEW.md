@@ -111,7 +111,7 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
    - office hours (from syllabus parsing and/or manual entry)
    - optional: study blocks (stretch)
 7. If Canvas dates change, the backend updates stored Canvas items; ICS reflects updates on next fetch.
-8. Demo deploys may enable `CALENDAR_FIXTURE_FALLBACK=1` to return fixture events when the token user has no schedule rows yet.
+8. Demo deploys may enable `CALENDAR_FIXTURE_FALLBACK=1` to return fixture events only for `DEMO_USER_ID` when that user has no schedule rows yet.
 
 ## API contract (high-level endpoints)
 

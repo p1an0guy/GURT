@@ -1002,11 +1002,37 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertNotEqual(first_start_line, second_start_line)
         self.assertIn("SUMMARY:Midterm Exam Updated", second_response["body"])
 
-    def test_calendar_route_uses_fixture_events_for_any_user_when_schedule_is_empty_in_demo_mode(self) -> None:
+    def test_calendar_route_uses_fixture_events_for_demo_user_when_schedule_is_empty_in_demo_mode(self) -> None:
         store = _MemoryCalendarTokenStore()
         store.save(
             CalendarTokenRecord.mint(
-                token="token-any-user",
+                token="token-demo-user",
+                user_id="demo-user",
+                created_at="2026-09-01T10:15:00Z",
+            )
+        )
+
+        with (
+            patch("backend.runtime._calendar_token_store", return_value=store),
+            patch("backend.runtime._query_canvas_items_for_user", return_value=[]),
+        ):
+            response = self._invoke(
+                {
+                    "httpMethod": "GET",
+                    "path": "/calendar/token-demo-user.ics",
+                    "pathParameters": {"token": "token-demo-user"},
+                },
+                env={"DEMO_MODE": "true", "CALENDAR_FIXTURE_FALLBACK": "true"},
+            )
+
+        self.assertEqual(response["statusCode"], 200)
+        self.assertIn("BEGIN:VEVENT", response["body"])
+
+    def test_calendar_route_skips_fixture_fallback_for_non_demo_user_when_schedule_is_empty(self) -> None:
+        store = _MemoryCalendarTokenStore()
+        store.save(
+            CalendarTokenRecord.mint(
+                token="token-non-demo-user",
                 user_id="arn:aws:iam::123456789012:user/demo",
                 created_at="2026-09-01T10:15:00Z",
             )
@@ -1019,14 +1045,15 @@ class RuntimeHandlerTests(unittest.TestCase):
             response = self._invoke(
                 {
                     "httpMethod": "GET",
-                    "path": "/calendar/token-any-user.ics",
-                    "pathParameters": {"token": "token-any-user"},
+                    "path": "/calendar/token-non-demo-user.ics",
+                    "pathParameters": {"token": "token-non-demo-user"},
                 },
                 env={"DEMO_MODE": "true", "CALENDAR_FIXTURE_FALLBACK": "true"},
             )
 
         self.assertEqual(response["statusCode"], 200)
-        self.assertIn("BEGIN:VEVENT", response["body"])
+        self.assertIn("BEGIN:VCALENDAR", response["body"])
+        self.assertNotIn("BEGIN:VEVENT", response["body"])
 
     def test_calendar_route_skips_fixture_fallback_when_demo_mode_disabled_even_if_flag_is_enabled(self) -> None:
         store = _MemoryCalendarTokenStore()
