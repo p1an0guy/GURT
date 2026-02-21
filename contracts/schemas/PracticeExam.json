@@ -23,7 +23,11 @@
             "minItems": 2,
             "items": {"type": "string", "minLength": 1}
           },
-          "answerIndex": {"type": "integer", "minimum": 0}
+          "answerIndex": {"type": "integer", "minimum": 0},
+          "citations": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1}
+          }
         }
       }
     }

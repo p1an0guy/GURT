@@ -4,6 +4,9 @@
     "courseId": "course-psych-101",
     "topicId": "topic-memory",
     "prompt": "What is proactive interference?",
-    "answer": "Old memories interfere with the recall of newer information."
+    "answer": "Old memories interfere with the recall of newer information.",
+    "citations": [
+      "s3://bucket/uploads/course-psych-101/doc-1/syllabus.pdf#chunk-4"
+    ]
   }
 ]

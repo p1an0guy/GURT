@@ -6,7 +6,10 @@
       "id": "q-01",
       "prompt": "Which process moves information into long-term memory?",
       "choices": ["Encoding", "Retrieval", "Rehearsal", "Recognition"],
-      "answerIndex": 0
+      "answerIndex": 0,
+      "citations": [
+        "s3://bucket/uploads/course-psych-101/doc-1/syllabus.pdf#chunk-7"
+      ]
     }
   ]
 }

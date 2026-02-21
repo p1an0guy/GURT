@@ -26,7 +26,7 @@
    - `POST /docs/ingest`: extract text, chunk, embed, persist metadata.
    - KB ingestion auto-triggers after Canvas materials sync when `KNOWLEDGE_BASE_ID` + `KNOWLEDGE_BASE_DATA_SOURCE_ID` are configured.
    - KB ingestion auto-triggers after Step Functions finalize for non-Canvas uploads (`POST /docs/ingest`) when KB IDs are configured.
-   - Add citation structure for downstream flashcard/practice generation.
+   - Baseline complete: generation endpoints now include citation structure in flashcard rows and practice exam questions for downstream UX traceability.
 
 4. Wire study/generation endpoints from scaffold to runtime
    - `POST /generate/flashcards`
