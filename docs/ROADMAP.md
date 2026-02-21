@@ -31,6 +31,7 @@
    - `POST /generate/flashcards`
    - `POST /generate/practice-exam`
    - `GET /study/today`, `POST /study/review`, `GET /study/mastery`
+   - Baseline complete: generated cards persist to `CardsTable`; review updates FSRS state; mastery can derive from runtime card state with fixture fallback when runtime rows are absent.
    - Preserve contract-first updates for any response shape changes.
 
 5. Frontend integration to deployed dev API
