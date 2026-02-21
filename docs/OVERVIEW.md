@@ -60,6 +60,9 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 5. Current scaffold supports `POST /canvas/connect` + `POST /canvas/sync` with:
    - assignments sync (`published=true` and non-null `dueAt`)
    - published/visible course file sync (materials metadata + S3 mirror)
+   - demo-user scoping in demo mode:
+     - `POST /canvas/connect` may return `demoUserId`
+     - clients pass `X-Gurt-Demo-User-Id` on subsequent user-scoped requests to keep per-user data isolated
    - per-course partial failure reporting (`failedCourseIds`)
 6. EventBridge runs periodic Canvas sync every 24 hours for all users with stored Canvas connections.
 
@@ -104,7 +107,9 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 
 1. Caller requests a feed token via `POST /calendar/token`.
 2. Backend mints token, stores token metadata in DynamoDB, and returns feed URL.
-   In demo mode, if no authenticated principal is present, it uses `DEMO_USER_ID`.
+   In demo mode, if no authenticated principal is present:
+   - it uses `X-Gurt-Demo-User-Id` when provided (and valid)
+   - otherwise it falls back to `DEMO_USER_ID`
 3. User clicks “Subscribe calendar”.
 4. UI shows URL: `/calendar/<token>.ics`.
 5. User adds calendar by URL in Google Calendar.
@@ -121,7 +126,7 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 (Exact OpenAPI lives in /contracts/openapi.yaml)
 
 - Canvas:
-  - POST `/canvas/connect` (store token for demo user)
+  - POST `/canvas/connect` (store token; in demo mode may return `demoUserId` for scoped requests)
   - POST `/canvas/sync` (pull latest items)
   - GET `/courses`
   - GET `/courses/{courseId}/items` (assignments/events/exams)
@@ -144,7 +149,7 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
   - Runtime behavior: generated cards are persisted in `CardsTable`; study review events update per-card FSRS state and mastery rolls up from stored card state. Fixture fallback remains when no runtime cards exist for a course.
 
 - Calendar:
-  - POST `/calendar/token` (mint token for authenticated caller)
+  - POST `/calendar/token` (mint token for authenticated caller; demo mode supports scoped fallback via `X-Gurt-Demo-User-Id` then `DEMO_USER_ID`)
   - GET `/calendar/{token}.ics`
 
 ## Data model (conceptual)
