@@ -188,7 +188,7 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
       return requestJson<CanvasConnectResponse>("/canvas/connect", {
         method: "POST",
         headers: {
-          "content-type": "application/json",
+          "content-type": "text/plain",
         },
         body: JSON.stringify(request),
       });
@@ -210,7 +210,7 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
       return requestJson<Card[]>("/generate/flashcards", {
         method: "POST",
         headers: {
-          "content-type": "application/json",
+          "content-type": "text/plain",
         },
         body: JSON.stringify({ courseId, numCards }),
       });
@@ -223,7 +223,7 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
       return requestJson<PracticeExam>("/generate/practice-exam", {
         method: "POST",
         headers: {
-          "content-type": "application/json",
+          "content-type": "text/plain",
         },
         body: JSON.stringify({ courseId, numQuestions }),
       });
@@ -236,7 +236,7 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
       return requestJson<ChatResponse>("/chat", {
         method: "POST",
         headers: {
-          "content-type": "application/json",
+          "content-type": "text/plain",
         },
         body: JSON.stringify({ courseId, question }),
       });
@@ -274,7 +274,7 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
       return requestJson<StudyReviewAck>("/study/review", {
         method: "POST",
         headers: {
-          "content-type": "application/json",
+          "content-type": "text/plain",
         },
         body: JSON.stringify(reviewEvent),
       });
@@ -313,7 +313,7 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
       return requestJson<IngestStartResponse>("/docs/ingest", {
         method: "POST",
         headers: {
-          "content-type": "application/json",
+          "content-type": "text/plain",
         },
         body: JSON.stringify(request),
       });
