@@ -350,8 +350,8 @@ class KnowledgeBaseStack(Stack):
                     chunking_strategy="FIXED_SIZE",
                     fixed_size_chunking_configuration=(
                         bedrock.CfnDataSource.FixedSizeChunkingConfigurationProperty(
-                            max_tokens=300,
-                            overlap_percentage=20,
+                            max_tokens=800,
+                            overlap_percentage=15,
                         )
                     ),
                 )

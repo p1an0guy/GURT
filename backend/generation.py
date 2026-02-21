@@ -348,11 +348,11 @@ def format_canvas_items(items: list[dict[str, Any]]) -> str | None:
 
 
 def chat_answer(*, course_id: str, question: str, canvas_context: str | None = None) -> dict[str, Any]:
-    context = _retrieve_context(course_id=course_id, query=question, k=6)
+    context = _retrieve_context(course_id=course_id, query=question, k=10)
     if not context:
         raise GenerationError("no knowledge base context available for chat")
 
-    context_block = "\n\n".join(row["text"] for row in context[:6])
+    context_block = "\n\n".join(row["text"] for row in context[:10])
     canvas_section = ""
     if canvas_context:
         canvas_section = f"\n\nCanvas assignment data:\n{canvas_context}"
@@ -364,7 +364,9 @@ def chat_answer(*, course_id: str, question: str, canvas_context: str | None = N
         "Rules:\n"
         "- Be CONCISE. Answer the question directly first, then add brief context only if needed.\n"
         "- Do math and calculations when asked (grades, averages, projections). Show the key numbers, not every step.\n"
-        "- Use standard grading: A ≥ 90%, B ≥ 80%, C ≥ 70%, D ≥ 60%, F < 60% unless the syllabus says otherwise.\n"
+        "- Use Cal Poly grading scale: A ≥ 93%, A- ≥ 90%, B+ ≥ 87%, B ≥ 83%, B- ≥ 80%, "
+        "C+ ≥ 77%, C ≥ 73%, C- ≥ 70%, D+ ≥ 67%, D ≥ 63%, D- ≥ 60%, F < 60% "
+        "unless the syllabus specifies a different scale.\n"
         "- Use the provided course context AND your general knowledge.\n"
         "- Use markdown: **bold** for emphasis, bullet lists for multiple items. Keep answers short.\n"
         "- Use emojis where they add clarity (✅ ❌ 📅 📊 etc.) but don't overdo it.\n"
