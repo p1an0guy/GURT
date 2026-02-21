@@ -7,7 +7,7 @@ import os
 import re
 from collections import Counter
 from decimal import Decimal
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
 from uuid import uuid4
@@ -332,6 +332,32 @@ def _to_ics_datetime(value: str) -> str:
     return parsed.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
+def _resolve_event_window(item: Mapping[str, Any]) -> tuple[str, str]:
+    due_at = str(item["dueAt"])
+
+    start_at_raw = item.get("startAt")
+    if isinstance(start_at_raw, str) and start_at_raw.strip():
+        start_at = start_at_raw.strip()
+    else:
+        start_at = due_at
+
+    end_at_raw = item.get("endAt")
+    if isinstance(end_at_raw, str) and end_at_raw.strip():
+        end_at = end_at_raw.strip()
+    else:
+        end_at = due_at
+
+    start_dt = datetime.fromisoformat(start_at.replace("Z", "+00:00")).astimezone(timezone.utc)
+    end_dt = datetime.fromisoformat(end_at.replace("Z", "+00:00")).astimezone(timezone.utc)
+    if end_dt <= start_dt:
+        end_dt = start_dt + timedelta(minutes=60)
+
+    return (
+        start_dt.strftime("%Y%m%dT%H%M%SZ"),
+        end_dt.strftime("%Y%m%dT%H%M%SZ"),
+    )
+
+
 def _build_ics_payload(*, user_id: str, items: list[dict[str, Any]]) -> str:
     lines = [
         "BEGIN:VCALENDAR",
@@ -344,14 +370,15 @@ def _build_ics_payload(*, user_id: str, items: list[dict[str, Any]]) -> str:
         item_id = str(item["id"])
         due_at = str(item["dueAt"])
         title = str(item["title"]).replace("\n", " ").replace("\r", " ")
+        start_ics, end_ics = _resolve_event_window(item)
 
         lines.extend(
             [
                 "BEGIN:VEVENT",
                 f"UID:studybuddy:{user_id}:{course_id}:{item_id}",
                 f"DTSTAMP:{_to_ics_datetime(due_at)}",
-                f"DTSTART:{_to_ics_datetime(due_at)}",
-                f"DTEND:{_to_ics_datetime(due_at)}",
+                f"DTSTART:{start_ics}",
+                f"DTEND:{end_ics}",
                 f"SUMMARY:{title}",
                 f"DESCRIPTION:Course {course_id}",
                 "END:VEVENT",
@@ -1328,17 +1355,23 @@ def _query_canvas_items_for_user(user_id: str) -> list[dict[str, Any]]:
             item_id = row.get("id")
             title = row.get("title")
             due_at = row.get("dueAt")
+            start_at = row.get("startAt")
+            end_at = row.get("endAt")
             if not all(isinstance(value, str) and value for value in (item_id, title, due_at)):
                 continue
 
-            items.append(
-                {
-                    "id": item_id,
-                    "courseId": course_id,
-                    "title": title,
-                    "dueAt": due_at,
-                }
-            )
+            normalized: dict[str, str] = {
+                "id": item_id,
+                "courseId": course_id,
+                "title": title,
+                "dueAt": due_at,
+            }
+            if isinstance(start_at, str) and start_at:
+                normalized["startAt"] = start_at
+            if isinstance(end_at, str) and end_at:
+                normalized["endAt"] = end_at
+
+            items.append(normalized)
 
     items.sort(key=lambda row: str(row.get("dueAt", "")))
     return items
@@ -1462,6 +1495,8 @@ def _load_schedule_items_for_user(user_id: str) -> list[dict[str, Any]]:
             "courseId": str(row["courseId"]),
             "title": str(row["title"]),
             "dueAt": str(row["dueAt"]),
+            **({"startAt": str(row["startAt"])} if isinstance(row.get("startAt"), str) and row.get("startAt") else {}),
+            **({"endAt": str(row["endAt"])} if isinstance(row.get("endAt"), str) and row.get("endAt") else {}),
         }
         for row in fixtures["items"]
     ]
