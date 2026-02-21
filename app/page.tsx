@@ -21,6 +21,10 @@ function toNowRfc3339(): string {
   return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
+function waitMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function kbIngestionStatusMessage(sync: CanvasSyncResponse): string {
   if (sync.materialsMirrored === 0) {
     return "No new mirrored materials.";
@@ -73,6 +77,13 @@ export default function HomePage() {
   const [mastery, setMastery] = useState<TopicMastery[]>([]);
   const [calendarUrl, setCalendarUrl] = useState<string>("");
   const [message, setMessage] = useState<string>("");
+  const [ingestDocId, setIngestDocId] = useState("doc-demo-001");
+  const [ingestKey, setIngestKey] = useState("uploads/course-psych-101/doc-demo-001/syllabus.pdf");
+  const [ingestJobId, setIngestJobId] = useState("");
+  const [ingestStatus, setIngestStatus] = useState("");
+  const [lastIngestUpdatedAt, setLastIngestUpdatedAt] = useState("");
+  const [ingestLoading, setIngestLoading] = useState(false);
+  const [ingestError, setIngestError] = useState("");
 
   const client = useMemo(
     () =>
@@ -237,8 +248,71 @@ export default function HomePage() {
     }
   }
 
+  async function handleStartIngest(): Promise<void> {
+    setMessage("");
+    setIngestError("");
+    setIngestStatus("");
+    setLastIngestUpdatedAt("");
+    setIngestLoading(true);
+    try {
+      const docId = ingestDocId.trim();
+      const key = ingestKey.trim();
+      if (!docId) {
+        throw new Error("Ingest docId is required.");
+      }
+      if (!key) {
+        throw new Error("Ingest key is required.");
+      }
+
+      const start = await client.startDocsIngest({
+        docId,
+        courseId,
+        key,
+      });
+      setIngestJobId(start.jobId);
+      setIngestStatus(start.status);
+      setLastIngestUpdatedAt(start.updatedAt);
+      setMessage(`Ingest started (jobId: ${start.jobId}).`);
+
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        const status = await client.getDocsIngestStatus(start.jobId);
+        setIngestStatus(status.status);
+        setLastIngestUpdatedAt(status.updatedAt);
+        if (status.status === "FINISHED") {
+          setMessage(
+            `Ingest finished (jobId: ${status.jobId}, textLength: ${status.textLength}, textract: ${status.usedTextract ? "yes" : "no"}).`,
+          );
+          return;
+        }
+        if (status.status === "FAILED") {
+          throw new Error(`Ingest failed (jobId: ${status.jobId}): ${status.error || "unknown error"}`);
+        }
+        await waitMs(1500);
+      }
+      throw new Error(`Ingest polling timed out for job ${start.jobId}.`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      setIngestError(errorMessage);
+      setMessage(errorMessage);
+    } finally {
+      setIngestLoading(false);
+    }
+  }
+
   return (
     <>
+      {ingestLoading ? (
+        <div className="loading-screen" role="status" aria-live="polite">
+          <div className="loading-card">
+            <h2>Processing Document</h2>
+            <p>
+              {ingestJobId
+                ? `Polling ingest job ${ingestJobId} (${ingestStatus || "RUNNING"})...`
+                : "Starting ingest workflow..."}
+            </p>
+          </div>
+        </div>
+      ) : null}
       <main className="page">
         <section className="hero">
           <h1>StudyBuddy Demo Console</h1>
@@ -324,6 +398,32 @@ export default function HomePage() {
               Mint Calendar Token
             </button>
 
+            <label htmlFor="ingestDocId">Ingest Doc ID</label>
+            <input
+              id="ingestDocId"
+              value={ingestDocId}
+              onChange={(event) => setIngestDocId(event.target.value)}
+              placeholder="doc-demo-001"
+            />
+            <label htmlFor="ingestKey">Ingest S3 Key</label>
+            <input
+              id="ingestKey"
+              value={ingestKey}
+              onChange={(event) => setIngestKey(event.target.value)}
+              placeholder="uploads/course-psych-101/doc-demo-001/syllabus.pdf"
+            />
+            <button type="button" onClick={handleStartIngest} disabled={ingestLoading}>
+              {ingestLoading ? "Ingesting..." : "Start Ingest"}
+            </button>
+            {ingestError ? (
+              <>
+                <p className="error-text">Ingest failed: {ingestError}</p>
+                <button type="button" className="secondary-button" onClick={handleStartIngest} disabled={ingestLoading}>
+                  Retry Ingest
+                </button>
+              </>
+            ) : null}
+
             <label htmlFor="numCards">Generate Flashcards</label>
             <input
               id="numCards"
@@ -407,6 +507,15 @@ export default function HomePage() {
                   ? `Last sync ${lastCanvasSync.updatedAt}: ${kbIngestionStatusMessage(lastCanvasSync)}`
                   : "No successful canvas sync yet."}
               </p>
+            </div>
+            <div className="status-block">
+              <p className="small"><strong>Docs Ingest</strong></p>
+              <p className="small">
+                {ingestJobId
+                  ? `Job ${ingestJobId}: ${ingestStatus || "RUNNING"} (${lastIngestUpdatedAt || "pending"})`
+                  : "No ingest job started yet."}
+              </p>
+              {ingestError ? <p className="error-text">{ingestError}</p> : null}
             </div>
             <div className="status-block">
               <p className="small"><strong>Generation + Chat</strong></p>
