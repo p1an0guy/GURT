@@ -1,6 +1,7 @@
 {
   "courseId": "course-psych-101",
-  "filename": "week-1-notes.pdf",
-  "contentType": "application/pdf"
+  "filename": "week-1-slides.pptx",
+  "contentType": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "contentLengthBytes": 1048576
 }
 

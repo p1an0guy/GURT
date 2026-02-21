@@ -117,3 +117,4 @@ Route prefix: `/uploads`, `/docs/*`, `/generate/*`, `/chat`, `/practice-exam/*`
 - From scanned notes: ingest -> Textract -> chunks -> generate <=100 cards with citations.
 - Practice exam returns 10 questions grounded in sources.
 - No generation response without citations.
+

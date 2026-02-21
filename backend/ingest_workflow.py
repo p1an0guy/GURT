@@ -6,10 +6,17 @@ import hashlib
 import json
 import logging
 import os
+import shutil
+import subprocess
+import tempfile
+import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Mapping
 
 logger = logging.getLogger(__name__)
+PPTX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+MAX_PPTX_BYTES = 50 * 1024 * 1024
 
 
 def _utc_now_rfc3339() -> str:
@@ -61,6 +68,80 @@ def _kb_ingestion_env_ids() -> tuple[str, str]:
 def _read_s3_bytes(bucket: str, key: str) -> bytes:
     response = _s3_client().get_object(Bucket=bucket, Key=key)
     return response["Body"].read()
+
+
+def _write_s3_bytes(bucket: str, key: str, data: bytes, *, content_type: str) -> None:
+    _s3_client().put_object(Bucket=bucket, Key=key, Body=data, ContentType=content_type)
+
+
+def _is_pptx_key(key: str) -> bool:
+    return key.lower().endswith(".pptx")
+
+
+def _converted_pdf_key(key: str) -> str:
+    stem, _sep, _ext = key.rpartition(".")
+    if stem:
+        return f"{stem}.converted.pdf"
+    return f"{key}.converted.pdf"
+
+
+def _find_office_binary() -> str | None:
+    for binary in ("soffice", "libreoffice"):
+        path = shutil.which(binary)
+        if path:
+            return path
+    return None
+
+
+def _convert_pptx_to_pdf(data: bytes) -> bytes:
+    binary = _find_office_binary()
+    if not binary:
+        raise RuntimeError("pptx conversion unavailable: LibreOffice binary not found")
+
+    with tempfile.TemporaryDirectory(dir="/tmp") as tmp_dir:
+        input_path = Path(tmp_dir) / "source.pptx"
+        output_path = Path(tmp_dir) / "source.pdf"
+        input_path.write_bytes(data)
+        started = time.monotonic()
+        try:
+            completed = subprocess.run(
+                [
+                    binary,
+                    "--headless",
+                    "--nologo",
+                    "--nolockcheck",
+                    "--nodefault",
+                    "--nofirststartwizard",
+                    "--convert-to",
+                    "pdf",
+                    "--outdir",
+                    tmp_dir,
+                    str(input_path),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=90,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("pptx conversion timed out after 90 seconds") from exc
+
+        if completed.returncode != 0:
+            raise RuntimeError(
+                "pptx conversion failed: "
+                f"exit={completed.returncode} stderr={completed.stderr.strip()}"
+            )
+        if not output_path.exists():
+            raise RuntimeError("pptx conversion failed: output PDF was not produced")
+
+        result = output_path.read_bytes()
+        logger.info(
+            "pptx conversion succeeded: inputBytes=%s outputBytes=%s durationMs=%s",
+            len(data),
+            len(result),
+            int((time.monotonic() - started) * 1000),
+        )
+        return result
 
 
 def _extract_text_with_pymupdf(data: bytes, key: str) -> str:
@@ -144,20 +225,32 @@ def extract_handler(event: Mapping[str, Any], _context: Any) -> dict[str, Any]:
         raise ValueError("bucket and key are required")
 
     data = _read_s3_bytes(bucket, key)
-    text = _extract_text_with_pymupdf(data, key)
+    extraction_key = key
+    textract_key = key
+    if _is_pptx_key(key):
+        if len(data) > MAX_PPTX_BYTES:
+            raise ValueError("'.pptx' exceeds 50MB limit")
+        converted_pdf = _convert_pptx_to_pdf(data)
+        converted_key = _converted_pdf_key(key)
+        _write_s3_bytes(bucket, converted_key, converted_pdf, content_type="application/pdf")
+        extraction_key = converted_key
+        textract_key = converted_key
+
+    text = _extract_text_with_pymupdf(data if extraction_key == key else converted_pdf, extraction_key)
     return {
         **payload,
         "text": text,
         "textLength": len(text),
         "usedTextract": False,
         "needsTextract": len(text.strip()) < threshold,
+        "textractKey": textract_key,
     }
 
 
 def start_textract_handler(event: Mapping[str, Any], _context: Any) -> dict[str, Any]:
     payload = _parse_event(event)
     bucket = str(payload.get("bucket", "")).strip()
-    key = str(payload.get("key", "")).strip()
+    key = str(payload.get("textractKey", payload.get("key", ""))).strip()
     if not bucket or not key:
         raise ValueError("bucket and key are required")
 

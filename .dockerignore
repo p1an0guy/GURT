@@ -1,0 +1,9 @@
+.git
+.cursor
+.next
+node_modules
+.venv
+infra/.venv
+infra/cdk.out
+**/cdk.out
+agent-transcripts

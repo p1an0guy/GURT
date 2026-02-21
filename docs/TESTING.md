@@ -130,9 +130,11 @@ Docs ingest workflow (Step Functions + PyMuPDF/Textract fallback + Bedrock KB):
 1. Upload source file via `POST /uploads` and complete S3 `PUT`.
 2. Start ingest: `POST /docs/ingest` with `{docId, courseId, key}`.
 3. Poll ingest status: `GET /docs/ingest/{jobId}` until `status` is `FINISHED` or `FAILED`.
-4. If PyMuPDF extraction yields fewer than 200 chars, workflow falls back to async Textract OCR.
-5. On successful finalize, Bedrock Knowledge Base `StartIngestionJob` is triggered automatically (no manual CLI) when `KNOWLEDGE_BASE_ID` and `KNOWLEDGE_BASE_DATA_SOURCE_ID` are configured.
-6. Status response may include `kbIngestionJobId` (when trigger succeeded) or `kbIngestionError` (when trigger failed) for traceability.
+4. For `.pptx` uploads, extract step converts to PDF first (stored back to S3), then runs extraction against converted PDF.
+5. If PyMuPDF extraction yields fewer than 200 chars, workflow falls back to async Textract OCR.
+6. `.pptx` uploads require `contentLengthBytes` and must be <= 50MB.
+7. On successful finalize, Bedrock Knowledge Base `StartIngestionJob` is triggered automatically (no manual CLI) when `KNOWLEDGE_BASE_ID` and `KNOWLEDGE_BASE_DATA_SOURCE_ID` are configured.
+8. Status response may include `kbIngestionJobId` (when trigger succeeded) or `kbIngestionError` (when trigger failed) for traceability.
 
 ## CDK infra synth and deploy (demo scaffold)
 
