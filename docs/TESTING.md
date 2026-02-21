@@ -211,3 +211,10 @@ npm run dev
 ```
 
 Then open `http://localhost:3000`.
+
+Quick runtime-hardening checks in browser:
+
+1. Use `Live API` mode, then run `Sync Canvas`.
+2. Confirm the Status panel shows last sync time and any `failedCourseIds` warnings.
+3. Run `Start Ingest` with a known key and confirm poll progress increments; for failures, use `Retry Ingest`.
+4. Run `Generate Cards`, `Generate Exam`, and `Ask Chat`; confirm each action reports success timestamps or actionable retry errors.

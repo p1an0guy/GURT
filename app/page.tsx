@@ -34,16 +34,31 @@ export default function HomePage() {
   const [canvasBaseUrl, setCanvasBaseUrl] = useState("https://canvas.calpoly.edu/");
   const [canvasAccessToken, setCanvasAccessToken] = useState("");
   const [lastCanvasSync, setLastCanvasSync] = useState<CanvasSyncResponse | null>(null);
+  const [canvasSyncLoading, setCanvasSyncLoading] = useState(false);
+  const [canvasSyncError, setCanvasSyncError] = useState("");
+  const [canvasSyncWarning, setCanvasSyncWarning] = useState("");
   const [numCards, setNumCards] = useState("10");
   const [numQuestions, setNumQuestions] = useState("10");
   const [generatedCards, setGeneratedCards] = useState<Card[]>([]);
+  const [generateCardsLoading, setGenerateCardsLoading] = useState(false);
+  const [generateCardsError, setGenerateCardsError] = useState("");
+  const [lastCardsGeneratedAt, setLastCardsGeneratedAt] = useState("");
   const [practiceExam, setPracticeExam] = useState<PracticeExam | null>(null);
+  const [generateExamLoading, setGenerateExamLoading] = useState(false);
+  const [generateExamError, setGenerateExamError] = useState("");
+  const [lastExamGeneratedAt, setLastExamGeneratedAt] = useState("");
   const [chatQuestion, setChatQuestion] = useState("What are the most important topics this week?");
   const [chatResponse, setChatResponse] = useState<ChatResponse | null>(null);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState("");
+  const [lastChatAt, setLastChatAt] = useState("");
   const [ingestDocId, setIngestDocId] = useState("");
   const [ingestKey, setIngestKey] = useState("");
   const [ingestStatus, setIngestStatus] = useState<IngestStatusResponse | null>(null);
   const [ingestLoading, setIngestLoading] = useState(false);
+  const [ingestError, setIngestError] = useState("");
+  const [ingestPollCount, setIngestPollCount] = useState(0);
+  const [lastIngestSuccessAt, setLastIngestSuccessAt] = useState("");
   const [health, setHealth] = useState<string>("unknown");
   const [courses, setCourses] = useState<Course[]>([]);
   const [items, setItems] = useState<CanvasItem[]>([]);
@@ -127,9 +142,15 @@ export default function HomePage() {
 
   async function handleCanvasSync(): Promise<void> {
     setMessage("");
+    setCanvasSyncError("");
+    setCanvasSyncWarning("");
+    setCanvasSyncLoading(true);
     try {
       const sync = await client.syncCanvas();
       setLastCanvasSync(sync);
+      if (sync.failedCourseIds.length > 0) {
+        setCanvasSyncWarning(`Partial sync. Failed course IDs: ${sync.failedCourseIds.join(", ")}`);
+      }
       const failed = sync.failedCourseIds.length > 0 ? ` (failed: ${sync.failedCourseIds.join(", ")})` : "";
       setMessage(
         `Canvas sync: ${sync.coursesUpserted} course(s), ${sync.itemsUpserted} item(s), ${sync.materialsMirrored} material(s) mirrored${failed}.`,
@@ -143,13 +164,19 @@ export default function HomePage() {
       setItems(itemsResp);
       setMastery(masteryResp);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unknown error");
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      setCanvasSyncError(errorMessage);
+      setMessage(errorMessage);
+    } finally {
+      setCanvasSyncLoading(false);
     }
   }
 
   async function handleStartIngest(): Promise<void> {
     setMessage("");
     setIngestLoading(true);
+    setIngestError("");
+    setIngestPollCount(0);
     setIngestStatus(null);
     try {
       const started = await client.startDocsIngest({
@@ -158,19 +185,36 @@ export default function HomePage() {
         key: ingestKey,
       });
 
+      setIngestStatus({
+        jobId: started.jobId,
+        status: "RUNNING",
+        textLength: 0,
+        usedTextract: false,
+        updatedAt: started.updatedAt,
+        error: "",
+      });
       let status = await client.getDocsIngestStatus(started.jobId);
+      let polls = 1;
+      setIngestPollCount(polls);
       while (status.status === "RUNNING") {
         await new Promise((resolve) => setTimeout(resolve, 2500));
         status = await client.getDocsIngestStatus(started.jobId);
+        polls += 1;
+        setIngestPollCount(polls);
       }
       setIngestStatus(status);
       if (status.status === "FINISHED") {
+        setLastIngestSuccessAt(status.updatedAt);
         setMessage(`Ingest finished. Extracted ${status.textLength} chars.`);
       } else {
-        setMessage(`Ingest failed: ${status.error || "unknown error"}`);
+        const errorMessage = status.error || "unknown error";
+        setIngestError(errorMessage);
+        setMessage(`Ingest failed: ${errorMessage}`);
       }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unknown error");
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      setIngestError(errorMessage);
+      setMessage(errorMessage);
     } finally {
       setIngestLoading(false);
     }
@@ -178,36 +222,57 @@ export default function HomePage() {
 
   async function handleGenerateFlashcards(): Promise<void> {
     setMessage("");
+    setGenerateCardsLoading(true);
+    setGenerateCardsError("");
     try {
       const requested = Number.parseInt(numCards, 10);
       const cards = await client.generateFlashcards(courseId, Number.isNaN(requested) ? 10 : requested);
       setGeneratedCards(cards);
+      setLastCardsGeneratedAt(toNowRfc3339());
       setMessage(`Generated ${cards.length} flashcard(s).`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unknown error");
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      setGenerateCardsError(errorMessage);
+      setMessage(errorMessage);
+    } finally {
+      setGenerateCardsLoading(false);
     }
   }
 
   async function handleGeneratePracticeExam(): Promise<void> {
     setMessage("");
+    setGenerateExamLoading(true);
+    setGenerateExamError("");
     try {
       const requested = Number.parseInt(numQuestions, 10);
       const exam = await client.generatePracticeExam(courseId, Number.isNaN(requested) ? 10 : requested);
       setPracticeExam(exam);
+      setLastExamGeneratedAt(exam.generatedAt);
       setMessage(`Generated practice exam with ${exam.questions.length} question(s).`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unknown error");
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      setGenerateExamError(errorMessage);
+      setMessage(errorMessage);
+    } finally {
+      setGenerateExamLoading(false);
     }
   }
 
   async function handleChatAsk(): Promise<void> {
     setMessage("");
+    setChatLoading(true);
+    setChatError("");
     try {
       const response = await client.chat(courseId, chatQuestion);
       setChatResponse(response);
+      setLastChatAt(toNowRfc3339());
       setMessage("Chat response loaded.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unknown error");
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      setChatError(errorMessage);
+      setMessage(errorMessage);
+    } finally {
+      setChatLoading(false);
     }
   }
 
@@ -287,9 +352,18 @@ export default function HomePage() {
             <button type="button" onClick={handleCanvasConnect}>
               Connect Canvas
             </button>
-            <button type="button" onClick={handleCanvasSync}>
-              Sync Canvas
+            <button type="button" onClick={handleCanvasSync} disabled={canvasSyncLoading}>
+              {canvasSyncLoading ? "Syncing..." : "Sync Canvas"}
             </button>
+            {canvasSyncWarning ? <p className="warning-text">{canvasSyncWarning}</p> : null}
+            {canvasSyncError ? (
+              <>
+                <p className="error-text">Canvas sync failed: {canvasSyncError}</p>
+                <button type="button" className="secondary-button" onClick={handleCanvasSync} disabled={canvasSyncLoading}>
+                  Retry Canvas Sync
+                </button>
+              </>
+            ) : null}
             <button type="button" onClick={handleSubmitReview}>
               Send Review Event
             </button>
@@ -316,6 +390,14 @@ export default function HomePage() {
             <button type="button" onClick={handleStartIngest} disabled={ingestLoading}>
               {ingestLoading ? "Ingesting..." : "Start Ingest"}
             </button>
+            {ingestError ? (
+              <>
+                <p className="error-text">Ingest failed: {ingestError}</p>
+                <button type="button" className="secondary-button" onClick={handleStartIngest} disabled={ingestLoading}>
+                  Retry Ingest
+                </button>
+              </>
+            ) : null}
 
             <label htmlFor="numCards">Generate Flashcards</label>
             <input
@@ -324,9 +406,17 @@ export default function HomePage() {
               onChange={(event) => setNumCards(event.target.value)}
               placeholder="10"
             />
-            <button type="button" onClick={handleGenerateFlashcards}>
-              Generate Cards
+            <button type="button" onClick={handleGenerateFlashcards} disabled={generateCardsLoading}>
+              {generateCardsLoading ? "Generating..." : "Generate Cards"}
             </button>
+            {generateCardsError ? (
+              <>
+                <p className="error-text">Flashcard generation failed: {generateCardsError}</p>
+                <button type="button" className="secondary-button" onClick={handleGenerateFlashcards} disabled={generateCardsLoading}>
+                  Retry Generate Cards
+                </button>
+              </>
+            ) : null}
 
             <label htmlFor="numQuestions">Generate Practice Exam</label>
             <input
@@ -335,9 +425,17 @@ export default function HomePage() {
               onChange={(event) => setNumQuestions(event.target.value)}
               placeholder="10"
             />
-            <button type="button" onClick={handleGeneratePracticeExam}>
-              Generate Exam
+            <button type="button" onClick={handleGeneratePracticeExam} disabled={generateExamLoading}>
+              {generateExamLoading ? "Generating..." : "Generate Exam"}
             </button>
+            {generateExamError ? (
+              <>
+                <p className="error-text">Practice exam generation failed: {generateExamError}</p>
+                <button type="button" className="secondary-button" onClick={handleGeneratePracticeExam} disabled={generateExamLoading}>
+                  Retry Generate Exam
+                </button>
+              </>
+            ) : null}
 
             <label htmlFor="chatQuestion">Chat Question</label>
             <input
@@ -346,9 +444,17 @@ export default function HomePage() {
               onChange={(event) => setChatQuestion(event.target.value)}
               placeholder="Ask a course question"
             />
-            <button type="button" onClick={handleChatAsk}>
-              Ask Chat
+            <button type="button" onClick={handleChatAsk} disabled={chatLoading}>
+              {chatLoading ? "Asking..." : "Ask Chat"}
             </button>
+            {chatError ? (
+              <>
+                <p className="error-text">Chat failed: {chatError}</p>
+                <button type="button" className="secondary-button" onClick={handleChatAsk} disabled={chatLoading}>
+                  Retry Chat
+                </button>
+              </>
+            ) : null}
           </div>
           </article>
 
@@ -359,18 +465,39 @@ export default function HomePage() {
               Health: {health}
             </p>
             <p className="small">{message || "No requests yet."}</p>
-            {lastCanvasSync && (
+            <div className="status-block">
+              <p className="small"><strong>Canvas Sync</strong></p>
               <p className="small">
-                Last Canvas sync: {lastCanvasSync.updatedAt} ({lastCanvasSync.itemsUpserted} items,{" "}
-                {lastCanvasSync.materialsMirrored} mirrored)
+                {lastCanvasSync
+                  ? `Last success: ${lastCanvasSync.updatedAt} (${lastCanvasSync.itemsUpserted} items, ${lastCanvasSync.materialsMirrored} mirrored)`
+                  : "No successful sync yet."}
               </p>
-            )}
-            {ingestStatus && (
+              {canvasSyncWarning ? <p className="warning-text">{canvasSyncWarning}</p> : null}
+              {canvasSyncError ? <p className="error-text">{canvasSyncError}</p> : null}
+            </div>
+            <div className="status-block">
+              <p className="small"><strong>Docs Ingest</strong></p>
               <p className="small">
-                Ingest job {ingestStatus.jobId}: {ingestStatus.status} (text {ingestStatus.textLength}, Textract{" "}
-                {ingestStatus.usedTextract ? "yes" : "no"})
+                {ingestStatus
+                  ? `Job ${ingestStatus.jobId}: ${ingestStatus.status} (polls: ${ingestPollCount}, text: ${ingestStatus.textLength})`
+                  : "No ingest job started yet."}
               </p>
-            )}
+              <p className="small">
+                {lastIngestSuccessAt
+                  ? `Last successful ingest: ${lastIngestSuccessAt}`
+                  : "No successful ingest run yet."}
+              </p>
+              {ingestError ? <p className="error-text">{ingestError}</p> : null}
+            </div>
+            <div className="status-block">
+              <p className="small"><strong>Generation + Chat</strong></p>
+              <p className="small">
+                Flashcards: {lastCardsGeneratedAt || "none"} | Exam: {lastExamGeneratedAt || "none"} | Chat: {lastChatAt || "none"}
+              </p>
+              {generateCardsError ? <p className="error-text">Cards: {generateCardsError}</p> : null}
+              {generateExamError ? <p className="error-text">Exam: {generateExamError}</p> : null}
+              {chatError ? <p className="error-text">Chat: {chatError}</p> : null}
+            </div>
             <p className="small">Calendar feed URL:</p>
             <p className="mono">{calendarUrl || "(load data to generate URL)"}</p>
           </div>
