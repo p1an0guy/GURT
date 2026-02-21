@@ -3,7 +3,16 @@
 import { useMemo, useState } from "react";
 
 import { createApiClient } from "../src/api/client.ts";
-import type { CanvasItem, CanvasSyncResponse, Course, IngestStatusResponse, TopicMastery } from "../src/api/types.ts";
+import type {
+  CanvasItem,
+  CanvasSyncResponse,
+  Card,
+  ChatResponse,
+  Course,
+  IngestStatusResponse,
+  PracticeExam,
+  TopicMastery,
+} from "../src/api/types.ts";
 
 const DEFAULT_COURSE_ID = "course-psych-101";
 const DEFAULT_CALENDAR_TOKEN =
@@ -25,6 +34,12 @@ export default function HomePage() {
   const [canvasBaseUrl, setCanvasBaseUrl] = useState("https://canvas.calpoly.edu/");
   const [canvasAccessToken, setCanvasAccessToken] = useState("");
   const [lastCanvasSync, setLastCanvasSync] = useState<CanvasSyncResponse | null>(null);
+  const [numCards, setNumCards] = useState("10");
+  const [numQuestions, setNumQuestions] = useState("10");
+  const [generatedCards, setGeneratedCards] = useState<Card[]>([]);
+  const [practiceExam, setPracticeExam] = useState<PracticeExam | null>(null);
+  const [chatQuestion, setChatQuestion] = useState("What are the most important topics this week?");
+  const [chatResponse, setChatResponse] = useState<ChatResponse | null>(null);
   const [ingestDocId, setIngestDocId] = useState("");
   const [ingestKey, setIngestKey] = useState("");
   const [ingestStatus, setIngestStatus] = useState<IngestStatusResponse | null>(null);
@@ -161,6 +176,41 @@ export default function HomePage() {
     }
   }
 
+  async function handleGenerateFlashcards(): Promise<void> {
+    setMessage("");
+    try {
+      const requested = Number.parseInt(numCards, 10);
+      const cards = await client.generateFlashcards(courseId, Number.isNaN(requested) ? 10 : requested);
+      setGeneratedCards(cards);
+      setMessage(`Generated ${cards.length} flashcard(s).`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unknown error");
+    }
+  }
+
+  async function handleGeneratePracticeExam(): Promise<void> {
+    setMessage("");
+    try {
+      const requested = Number.parseInt(numQuestions, 10);
+      const exam = await client.generatePracticeExam(courseId, Number.isNaN(requested) ? 10 : requested);
+      setPracticeExam(exam);
+      setMessage(`Generated practice exam with ${exam.questions.length} question(s).`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unknown error");
+    }
+  }
+
+  async function handleChatAsk(): Promise<void> {
+    setMessage("");
+    try {
+      const response = await client.chat(courseId, chatQuestion);
+      setChatResponse(response);
+      setMessage("Chat response loaded.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unknown error");
+    }
+  }
+
   return (
     <>
       {ingestLoading && (
@@ -266,6 +316,39 @@ export default function HomePage() {
             <button type="button" onClick={handleStartIngest} disabled={ingestLoading}>
               {ingestLoading ? "Ingesting..." : "Start Ingest"}
             </button>
+
+            <label htmlFor="numCards">Generate Flashcards</label>
+            <input
+              id="numCards"
+              value={numCards}
+              onChange={(event) => setNumCards(event.target.value)}
+              placeholder="10"
+            />
+            <button type="button" onClick={handleGenerateFlashcards}>
+              Generate Cards
+            </button>
+
+            <label htmlFor="numQuestions">Generate Practice Exam</label>
+            <input
+              id="numQuestions"
+              value={numQuestions}
+              onChange={(event) => setNumQuestions(event.target.value)}
+              placeholder="10"
+            />
+            <button type="button" onClick={handleGeneratePracticeExam}>
+              Generate Exam
+            </button>
+
+            <label htmlFor="chatQuestion">Chat Question</label>
+            <input
+              id="chatQuestion"
+              value={chatQuestion}
+              onChange={(event) => setChatQuestion(event.target.value)}
+              placeholder="Ask a course question"
+            />
+            <button type="button" onClick={handleChatAsk}>
+              Ask Chat
+            </button>
           </div>
           </article>
 
@@ -331,6 +414,40 @@ export default function HomePage() {
               </li>
             ))}
           </ul>
+          </article>
+
+          <article className="panel">
+          <h2>Generated Flashcards</h2>
+          <ul className="list">
+            {generatedCards.map((card) => (
+              <li key={card.id}>
+                <strong>{card.prompt}</strong>
+                <div className="small">{card.answer}</div>
+                <div className="small mono">{card.topicId}</div>
+              </li>
+            ))}
+          </ul>
+          </article>
+
+          <article className="panel">
+          <h2>Practice Exam + Chat</h2>
+          <div className="stack">
+            {practiceExam ? (
+              <p className="small">
+                Practice exam generated at {practiceExam.generatedAt} with {practiceExam.questions.length} question(s).
+              </p>
+            ) : (
+              <p className="small">No practice exam generated yet.</p>
+            )}
+            {chatResponse ? (
+              <>
+                <p className="small">{chatResponse.answer}</p>
+                <p className="small mono">{chatResponse.citations.join(", ") || "No citations"}</p>
+              </>
+            ) : (
+              <p className="small">No chat response yet.</p>
+            )}
+          </div>
           </article>
         </section>
       </main>

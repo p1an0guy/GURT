@@ -30,6 +30,9 @@ test("uses fixture mode when explicitly enabled", async () => {
     accessToken: "fixture-token",
   });
   const canvasSync = await client.syncCanvas();
+  const generatedCards = await client.generateFlashcards("course-psych-101", 2);
+  const exam = await client.generatePracticeExam("course-psych-101", 2);
+  const chat = await client.chat("course-psych-101", "What is memory consolidation?");
   const courses = await client.listCourses();
   const cards = await client.getStudyToday("course-psych-101");
   const mastery = await client.getStudyMastery("course-psych-101");
@@ -44,6 +47,9 @@ test("uses fixture mode when explicitly enabled", async () => {
   assert.equal(fetchCalled, false);
   assert.equal(canvasConnect.connected, true);
   assert.equal(canvasSync.synced, true);
+  assert.equal(generatedCards.length, 2);
+  assert.equal(exam.questions.length, 2);
+  assert.equal(chat.citations.length, 1);
   assert.equal(courses.length, 2);
   assert.ok(cards.length > 0);
   assert.equal(calendarToken.token, "demo-calendar-token");
@@ -163,6 +169,40 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
       });
     }
 
+    if (url.endsWith("/generate/flashcards")) {
+      return jsonResponse([
+        {
+          id: "card-1",
+          courseId: "course-1",
+          topicId: "topic-1",
+          prompt: "Prompt 1",
+          answer: "Answer 1",
+        },
+      ]);
+    }
+
+    if (url.endsWith("/generate/practice-exam")) {
+      return jsonResponse({
+        courseId: "course-1",
+        generatedAt: "2026-09-02T09:00:00Z",
+        questions: [
+          {
+            id: "q-1",
+            prompt: "Question 1",
+            choices: ["A", "B"],
+            answerIndex: 0,
+          },
+        ],
+      });
+    }
+
+    if (url.endsWith("/chat")) {
+      return jsonResponse({
+        answer: "Chat answer",
+        citations: ["s3://bucket/path#chunk-1"],
+      });
+    }
+
     if (url.endsWith("/courses")) {
       return jsonResponse([{ id: "course-1", name: "Course", term: "Fall", color: "#123456" }]);
     }
@@ -241,6 +281,9 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
     accessToken: "live-token",
   });
   await client.syncCanvas();
+  await client.generateFlashcards("course/1", 2);
+  await client.generatePracticeExam("course/1", 2);
+  await client.chat("course/1", "What is retrieval practice?");
   await client.listCourses();
   await client.listCourseItems("course/1");
   await client.getStudyToday("course/1");
@@ -258,9 +301,12 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
   assert.match(ics, /BEGIN:VCALENDAR/);
   assert.equal(tokenResponse.token, "minted-token");
   assert.equal(ingestStatus.status, "FINISHED");
-  assert.equal(calls.length, 12);
+  assert.equal(calls.length, 15);
   assert.ok(calls.some((call) => call.url === "https://api.example.dev/canvas/connect"));
   assert.ok(calls.some((call) => call.url === "https://api.example.dev/canvas/sync"));
+  assert.ok(calls.some((call) => call.url === "https://api.example.dev/generate/flashcards"));
+  assert.ok(calls.some((call) => call.url === "https://api.example.dev/generate/practice-exam"));
+  assert.ok(calls.some((call) => call.url === "https://api.example.dev/chat"));
   assert.ok(calls.some((call) => call.url === "https://api.example.dev/courses/course%2F1/items"));
   assert.ok(calls.some((call) => call.url === "https://api.example.dev/study/today?courseId=course%2F1"));
   assert.ok(calls.some((call) => call.url === "https://api.example.dev/study/mastery?courseId=course%2F1"));

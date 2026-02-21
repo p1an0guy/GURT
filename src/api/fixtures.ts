@@ -6,6 +6,7 @@ import type {
   CanvasConnectRequest,
   CanvasConnectResponse,
   CalendarTokenResponse,
+  ChatResponse,
   CanvasItem,
   CanvasSyncResponse,
   Card,
@@ -14,6 +15,7 @@ import type {
   IngestStartRequest,
   IngestStartResponse,
   IngestStatusResponse,
+  PracticeExam,
   StudyReviewAck,
   TopicMastery,
 } from "./types.ts";
@@ -76,6 +78,32 @@ export function getFixtureStudyMastery(courseId: string): TopicMastery[] {
 
 export function getFixtureStudyReviewAck(): StudyReviewAck {
   return { accepted: true };
+}
+
+export function getFixtureGeneratedFlashcards(courseId: string, numCards: number): Card[] {
+  const selected = cards.filter((card) => card.courseId === courseId).slice(0, Math.max(numCards, 1));
+  return clone(selected.length > 0 ? selected : cards.slice(0, Math.max(numCards, 1)));
+}
+
+export function getFixturePracticeExam(courseId: string, numQuestions: number): PracticeExam {
+  const questions = getFixtureGeneratedFlashcards(courseId, numQuestions).map((card, index) => ({
+    id: `q-${index + 1}`,
+    prompt: card.prompt,
+    choices: [card.answer, "Distractor A", "Distractor B"],
+    answerIndex: 0,
+  }));
+  return {
+    courseId,
+    generatedAt: "2026-09-02T09:10:00Z",
+    questions,
+  };
+}
+
+export function getFixtureChatResponse(courseId: string, question: string): ChatResponse {
+  return {
+    answer: `Fixture answer for ${courseId}: ${question}`,
+    citations: ["s3://fixture/uploads/course-psych-101/syllabus.pdf#chunk-1"],
+  };
 }
 
 export function getFixtureCanvasConnect(_request: CanvasConnectRequest): CanvasConnectResponse {

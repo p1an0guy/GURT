@@ -43,6 +43,11 @@ export interface CanvasSyncResponse {
   updatedAt: string;
 }
 
+export interface ChatResponse {
+  answer: string;
+  citations: string[];
+}
+
 export interface Card {
   id: string;
   courseId: string;
@@ -96,4 +101,17 @@ export interface TopicMastery {
   courseId: string;
   masteryLevel: number;
   dueCards: number;
+}
+
+export interface PracticeExamQuestion {
+  id: string;
+  prompt: string;
+  choices: string[];
+  answerIndex: number;
+}
+
+export interface PracticeExam {
+  courseId: string;
+  generatedAt: string;
+  questions: PracticeExamQuestion[];
 }

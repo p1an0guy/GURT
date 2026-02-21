@@ -1,13 +1,16 @@
 import {
+  getFixtureChatResponse,
   getFixtureCanvasConnect,
   getFixtureCanvasSync,
   getFixtureCalendarIcs,
   getFixtureCalendarTokenResponse,
   getFixtureCourseItems,
+  getFixtureGeneratedFlashcards,
   getFixtureCourses,
   getFixtureHealth,
   getFixtureIngestStartResponse,
   getFixtureIngestStatusResponse,
+  getFixturePracticeExam,
   getFixtureStudyMastery,
   getFixtureStudyReviewAck,
   getFixtureStudyToday,
@@ -16,6 +19,7 @@ import type {
   CanvasConnectRequest,
   CanvasConnectResponse,
   CalendarTokenResponse,
+  ChatResponse,
   CanvasItem,
   CanvasSyncResponse,
   Card,
@@ -24,6 +28,7 @@ import type {
   IngestStartRequest,
   IngestStartResponse,
   IngestStatusResponse,
+  PracticeExam,
   ReviewEvent,
   StudyReviewAck,
   TopicMastery,
@@ -42,6 +47,9 @@ export interface ApiClient {
   getHealth(): Promise<HealthStatus>;
   connectCanvas(request: CanvasConnectRequest): Promise<CanvasConnectResponse>;
   syncCanvas(): Promise<CanvasSyncResponse>;
+  generateFlashcards(courseId: string, numCards: number): Promise<Card[]>;
+  generatePracticeExam(courseId: string, numQuestions: number): Promise<PracticeExam>;
+  chat(courseId: string, question: string): Promise<ChatResponse>;
   listCourses(): Promise<Course[]>;
   listCourseItems(courseId: string): Promise<CanvasItem[]>;
   getStudyToday(courseId: string): Promise<Card[]>;
@@ -191,6 +199,45 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
       }
       return requestJson<CanvasSyncResponse>("/canvas/sync", {
         method: "POST",
+      });
+    },
+
+    async generateFlashcards(courseId: string, numCards: number): Promise<Card[]> {
+      if (useFixtures) {
+        return getFixtureGeneratedFlashcards(courseId, numCards);
+      }
+      return requestJson<Card[]>("/generate/flashcards", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ courseId, numCards }),
+      });
+    },
+
+    async generatePracticeExam(courseId: string, numQuestions: number): Promise<PracticeExam> {
+      if (useFixtures) {
+        return getFixturePracticeExam(courseId, numQuestions);
+      }
+      return requestJson<PracticeExam>("/generate/practice-exam", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ courseId, numQuestions }),
+      });
+    },
+
+    async chat(courseId: string, question: string): Promise<ChatResponse> {
+      if (useFixtures) {
+        return getFixtureChatResponse(courseId, question);
+      }
+      return requestJson<ChatResponse>("/chat", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ courseId, question }),
       });
     },
 
