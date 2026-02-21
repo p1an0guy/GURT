@@ -6,6 +6,8 @@ from pathlib import Path
 
 from aws_cdk import CfnOutput, Duration, Stack
 from aws_cdk import aws_apigateway as apigateway
+from aws_cdk import aws_events as events
+from aws_cdk import aws_events_targets as targets
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_lambda as lambda_
 from constructs import Construct
@@ -29,6 +31,7 @@ class ApiStack(Stack):
         calendar_token: str,
         calendar_token_user_id: str,
         calendar_fixture_fallback: str,
+        canvas_sync_schedule_hours: int,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -148,6 +151,14 @@ class ApiStack(Stack):
         calendar_feed = calendar.add_resource("{token_ics}")
         calendar_feed.add_method("GET", app_integration)
 
+        sync_rule = events.Rule(
+            self,
+            "CanvasPeriodicSyncRule",
+            schedule=events.Schedule.rate(Duration.hours(canvas_sync_schedule_hours)),
+            description="Periodic Canvas sync for all users with stored Canvas connections.",
+        )
+        sync_rule.add_target(targets.LambdaFunction(app_api_handler))
+
         api_base_url = self.rest_api.url.rstrip("/")
         CfnOutput(
             self,
@@ -184,4 +195,10 @@ class ApiStack(Stack):
             "SuggestedSmokeCourseIdSecret",
             value="course-psych-101",
             description="Suggested value for DEV_COURSE_ID",
+        )
+        CfnOutput(
+            self,
+            "CanvasSyncScheduleHours",
+            value=str(canvas_sync_schedule_hours),
+            description="EventBridge cadence in hours for periodic Canvas sync",
         )

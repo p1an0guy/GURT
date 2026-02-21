@@ -283,6 +283,54 @@ class RuntimeHandlerTests(unittest.TestCase):
 
         self.assertEqual(response["statusCode"], 502)
 
+    def test_scheduled_canvas_sync_processes_all_connections_and_continues_on_user_failures(self) -> None:
+        event = {"source": "aws.events", "detail-type": "Scheduled Event"}
+
+        with (
+            patch(
+                "backend.runtime._list_canvas_connections",
+                return_value=[
+                    {
+                        "userId": "user-1",
+                        "canvasBaseUrl": "https://canvas.calpoly.edu",
+                        "accessToken": "token-1",
+                    },
+                    {
+                        "userId": "user-2",
+                        "canvasBaseUrl": "https://canvas.calpoly.edu",
+                        "accessToken": "token-2",
+                    },
+                ],
+            ),
+            patch(
+                "backend.runtime._sync_canvas_assignments_for_user",
+                side_effect=[(2, 7, ["42"]), CanvasApiError("invalid token")],
+            ),
+        ):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 200)
+        body = json.loads(response["body"])
+        self.assertEqual(body["scheduled"], True)
+        self.assertEqual(body["connectionsProcessed"], 2)
+        self.assertEqual(body["usersSucceeded"], 1)
+        self.assertEqual(body["usersFailed"], 1)
+        self.assertEqual(body["coursesUpserted"], 2)
+        self.assertEqual(body["itemsUpserted"], 7)
+        self.assertEqual(body["failedCourseIdsByUser"]["user-1"], ["42"])
+        self.assertIn("user-2", body["userErrors"])
+
+    def test_scheduled_canvas_sync_handles_empty_connection_set(self) -> None:
+        event = {"source": "aws.events", "detail-type": "Scheduled Event"}
+        with patch("backend.runtime._list_canvas_connections", return_value=[]):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 200)
+        body = json.loads(response["body"])
+        self.assertEqual(body["connectionsProcessed"], 0)
+        self.assertEqual(body["usersSucceeded"], 0)
+        self.assertEqual(body["usersFailed"], 0)
+
     def test_calendar_token_create_persists_token_and_returns_feed_url(self) -> None:
         store = _MemoryCalendarTokenStore()
         event = {
