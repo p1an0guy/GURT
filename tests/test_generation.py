@@ -10,6 +10,7 @@ from backend import generation
 
 class RetrieveContextTests(unittest.TestCase):
     def test_source_scope_matches_supported_upload_layouts(self) -> None:
+        # With uploads/ prefix
         self.assertTrue(
             generation._source_in_course_scope(
                 source="s3://bucket/uploads/170880/doc-1/syllabus.pdf",
@@ -25,6 +26,27 @@ class RetrieveContextTests(unittest.TestCase):
         self.assertFalse(
             generation._source_in_course_scope(
                 source="s3://bucket/uploads/999999/doc-1/syllabus.pdf",
+                course_id="170880",
+            )
+        )
+
+    def test_source_scope_matches_without_uploads_prefix(self) -> None:
+        # KB data source may strip the uploads/ prefix from S3 URIs
+        self.assertTrue(
+            generation._source_in_course_scope(
+                source="s3://bucket/canvas-materials/user-123/170880/file-1/ch1.pdf",
+                course_id="170880",
+            )
+        )
+        self.assertTrue(
+            generation._source_in_course_scope(
+                source="s3://bucket/170880/doc-1/syllabus.pdf",
+                course_id="170880",
+            )
+        )
+        self.assertFalse(
+            generation._source_in_course_scope(
+                source="s3://bucket/canvas-materials/user-123/999999/file-1/ch1.pdf",
                 course_id="170880",
             )
         )

@@ -78,15 +78,21 @@ def _source_in_course_scope(*, source: str, course_id: str) -> bool:
         return False
 
     parts = [part for part in key.split("/") if part]
-    if len(parts) < 2 or parts[0] != "uploads":
+    if not parts:
         return False
 
-    # User uploads are stored at uploads/{courseId}/{docId}/{filename}
-    if parts[1] != "canvas-materials":
-        return parts[1] == course_id
+    # Strip optional "uploads" prefix – the KB data source root may omit it.
+    if parts[0] == "uploads":
+        parts = parts[1:]
+    if not parts:
+        return False
 
-    # Canvas materials are stored at uploads/canvas-materials/{userId}/{courseId}/...
-    return len(parts) >= 4 and parts[3] == course_id
+    # Canvas materials: [uploads/]canvas-materials/{userId}/{courseId}/...
+    if parts[0] == "canvas-materials":
+        return len(parts) >= 3 and parts[2] == course_id
+
+    # User uploads: [uploads/]{courseId}/{docId}/{filename}
+    return parts[0] == course_id
 
 
 def _retrieve_response_with_fallback(*, client: Any, kb_id: str, query: str, num_results: int, course_id: str) -> dict[str, Any]:
