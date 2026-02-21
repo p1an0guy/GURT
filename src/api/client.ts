@@ -65,6 +65,7 @@ export interface CreateApiClientOptions {
   baseUrl: string;
   fetchImpl?: FetchLike;
   useFixtures?: boolean;
+  demoUserId?: string;
 }
 
 export class ApiClientError extends Error {
@@ -143,13 +144,26 @@ async function parseError(response: Response): Promise<ApiClientError> {
 export function createApiClient(options: CreateApiClientOptions): ApiClient {
   const fetchImpl = options.fetchImpl ?? fetch;
   const useFixtures = options.useFixtures ?? readFixtureModeEnv();
+  const demoUserId = options.demoUserId?.trim() ?? "";
+
+  function withDemoHeader(init?: RequestInit): RequestInit | undefined {
+    if (!demoUserId) {
+      return init;
+    }
+    const headers = new Headers(init?.headers);
+    headers.set("x-gurt-demo-user-id", demoUserId);
+    return {
+      ...(init ?? {}),
+      headers,
+    };
+  }
 
   async function requestJson<T>(
     path: string,
     init?: RequestInit,
     query?: Record<string, string>,
   ): Promise<T> {
-    const response = await fetchImpl(buildUrl(options.baseUrl, path, query), init);
+    const response = await fetchImpl(buildUrl(options.baseUrl, path, query), withDemoHeader(init));
 
     if (!response.ok) {
       throw await parseError(response);
@@ -163,7 +177,7 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
     init?: RequestInit,
     query?: Record<string, string>,
   ): Promise<string> {
-    const response = await fetchImpl(buildUrl(options.baseUrl, path, query), init);
+    const response = await fetchImpl(buildUrl(options.baseUrl, path, query), withDemoHeader(init));
 
     if (!response.ok) {
       throw await parseError(response);

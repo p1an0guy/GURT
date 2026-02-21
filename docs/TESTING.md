@@ -113,6 +113,9 @@ Canvas bootstrap for demo schedule rows:
 
 1. `POST <DEV_BASE_URL>/canvas/connect` with JSON body:
    `{"canvasBaseUrl":"https://canvas.example.edu","accessToken":"demo-token"}`
+   - In demo mode without an authenticated principal, response may include `demoUserId`.
+   - Pass that value as `X-Gurt-Demo-User-Id` on subsequent user-scoped requests
+     (`/canvas/sync`, `/calendar/token`, `/courses`, `/study/*`) to keep data isolated.
 2. `POST <DEV_BASE_URL>/canvas/sync`
    - Response includes `failedCourseIds` for per-course retry visibility.
    - Response includes KB trigger diagnostics:

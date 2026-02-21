@@ -16,6 +16,7 @@ from typing import Any, Dict, Mapping
 from backend.canvas_client import (
     CanvasApiError,
     fetch_active_courses,
+    fetch_current_user_id,
     fetch_course_assignments,
     fetch_course_files,
     fetch_file_bytes,
@@ -80,8 +81,8 @@ def _cors_headers() -> dict[str, str]:
     methods = os.getenv("CORS_ALLOW_METHODS", "GET,POST,OPTIONS").strip() or "GET,POST,OPTIONS"
     headers = os.getenv(
         "CORS_ALLOW_HEADERS",
-        "Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token",
-    ).strip() or "Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token"
+        "Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token,X-Gurt-Demo-User-Id",
+    ).strip() or "Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token,X-Gurt-Demo-User-Id"
     return {
         "Access-Control-Allow-Origin": origin,
         "Access-Control-Allow-Methods": methods,
@@ -195,6 +196,20 @@ def _headers(event: Mapping[str, Any]) -> dict[str, str]:
     return normalized
 
 
+def _demo_user_id_from_headers(event: Mapping[str, Any]) -> str | None:
+    headers = _headers(event)
+    raw = (
+        headers.get("x-gurt-demo-user-id")
+        or headers.get("x-demo-user-id")
+        or ""
+    ).strip()
+    if not raw:
+        return None
+    if not re.fullmatch(r"[A-Za-z0-9:_-]{1,128}", raw):
+        return None
+    return raw
+
+
 def _parse_json_body(event: Mapping[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
     body = event.get("body")
 
@@ -295,6 +310,9 @@ def _require_authenticated_user_id(event: Mapping[str, Any]) -> tuple[str | None
     user_id = _extract_authenticated_user_id(event)
     if user_id is None:
         if _is_demo_mode():
+            hinted_user_id = _demo_user_id_from_headers(event)
+            if hinted_user_id:
+                return hinted_user_id, None
             return _demo_user_id(), None
         return None, _json_response(401, {"error": "authenticated principal is required"})
     return user_id, None
@@ -831,10 +849,6 @@ def _sync_canvas_materials_for_user(
 
 
 def _handle_canvas_connect(event: Mapping[str, Any]) -> Dict[str, Any]:
-    user_id, auth_error = _require_authenticated_user_id(event)
-    if auth_error is not None or user_id is None:
-        return auth_error or _json_response(401, {"error": "authenticated principal is required"})
-
     payload, parse_error = _parse_json_body(event)
     if parse_error is not None or payload is None:
         return _json_response(400, {"error": parse_error or "request body must be valid JSON"})
@@ -845,6 +859,29 @@ def _handle_canvas_connect(event: Mapping[str, Any]) -> Dict[str, Any]:
         return _json_response(400, {"error": "canvasBaseUrl must start with https:// or http://"})
     if not access_token:
         return _json_response(400, {"error": "accessToken is required"})
+
+    response_user_id: str | None = None
+    authenticated_user_id = _extract_authenticated_user_id(event)
+    if authenticated_user_id:
+        user_id = authenticated_user_id
+    elif _is_demo_mode():
+        hinted_user_id = _demo_user_id_from_headers(event)
+        if hinted_user_id:
+            user_id = hinted_user_id
+        else:
+            try:
+                user_agent = os.getenv("CANVAS_USER_AGENT", "GURT-DemoCanvasSync/0.1")
+                canvas_user_id = fetch_current_user_id(
+                    base_url=canvas_base_url,
+                    token=access_token,
+                    user_agent=user_agent,
+                )
+            except CanvasApiError as exc:
+                return _json_response(502, {"error": str(exc)})
+            user_id = f"canvas-user-{canvas_user_id}"
+        response_user_id = user_id
+    else:
+        return _json_response(401, {"error": "authenticated principal is required"})
 
     updated_at = _utc_now_rfc3339()
     try:
@@ -857,7 +894,10 @@ def _handle_canvas_connect(event: Mapping[str, Any]) -> Dict[str, Any]:
     except RuntimeError as exc:
         return _json_response(500, {"error": str(exc)})
 
-    return _json_response(200, {"connected": True, "updatedAt": updated_at})
+    response_payload: dict[str, Any] = {"connected": True, "updatedAt": updated_at}
+    if response_user_id:
+        response_payload["demoUserId"] = response_user_id
+    return _json_response(200, response_payload)
 
 
 def _handle_canvas_sync(event: Mapping[str, Any]) -> Dict[str, Any]:

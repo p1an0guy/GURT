@@ -12,6 +12,7 @@ from urllib.error import HTTPError
 from backend.canvas_client import (
     CanvasApiError,
     fetch_active_courses,
+    fetch_current_user_id,
     fetch_course_assignments,
     fetch_course_files,
     fetch_file_bytes,
@@ -123,6 +124,17 @@ class CanvasClientTests(unittest.TestCase):
                     course_id="10",
                     user_agent="test-agent",
                 )
+
+    def test_fetch_current_user_id_reads_profile_id(self) -> None:
+        payload = {"id": 4242, "name": "Student"}
+        with patch("backend.canvas_client.urlopen", return_value=_FakeResponse(payload)):
+            user_id = fetch_current_user_id(
+                base_url="https://canvas.calpoly.edu/",
+                token="token",
+                user_agent="test-agent",
+            )
+
+        self.assertEqual(user_id, "4242")
 
     def test_fetch_course_files_filters_hidden_and_unpublished(self) -> None:
         payload = [

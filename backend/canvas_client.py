@@ -128,6 +128,22 @@ def fetch_active_courses(*, base_url: str, token: str, user_agent: str) -> list[
     return courses
 
 
+def fetch_current_user_id(*, base_url: str, token: str, user_agent: str) -> str:
+    """Fetch the Canvas caller id for per-user demo data isolation."""
+    root = normalize_canvas_base_url(base_url)
+    payload, _ = _request_json(
+        url=f"{root}/api/v1/users/self/profile",
+        token=token,
+        user_agent=user_agent,
+    )
+    if not isinstance(payload, dict):
+        raise CanvasApiError("canvas response expected object for /api/v1/users/self/profile")
+    user_id = payload.get("id")
+    if user_id is None:
+        raise CanvasApiError("canvas response missing user id for /api/v1/users/self/profile")
+    return str(user_id)
+
+
 def _assignment_item_type(assignment: dict[str, Any]) -> str:
     title = str(assignment.get("name", ""))
     if assignment.get("quiz_id") is not None or _QUIZ_PATTERN.search(title):
