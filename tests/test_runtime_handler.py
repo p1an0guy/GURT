@@ -63,6 +63,14 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertEqual(response["statusCode"], 200)
         self.assertEqual(json.loads(response["body"]), {"status": "ok"})
 
+    def test_health_route_includes_cors_headers(self) -> None:
+        response = self._invoke({"httpMethod": "GET", "path": "/health"}, env={"DEMO_MODE": "false"})
+        self.assertEqual(response["statusCode"], 200)
+        headers = response.get("headers", {})
+        self.assertEqual(headers.get("Access-Control-Allow-Origin"), "*")
+        self.assertIn("POST", headers.get("Access-Control-Allow-Methods", ""))
+        self.assertIn("Content-Type", headers.get("Access-Control-Allow-Headers", ""))
+
     def test_health_route_accepts_stage_prefixed_path(self) -> None:
         response = self._invoke(
             {

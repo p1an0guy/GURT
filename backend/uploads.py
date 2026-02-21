@@ -117,9 +117,20 @@ def create_upload(
 
 def _build_json_response(status_code: int, payload: Mapping[str, Any]) -> Dict[str, Any]:
     """Build API Gateway Lambda proxy response."""
+    origin = os.getenv("CORS_ALLOW_ORIGIN", "*").strip() or "*"
+    methods = os.getenv("CORS_ALLOW_METHODS", "GET,POST,OPTIONS").strip() or "GET,POST,OPTIONS"
+    allow_headers = os.getenv(
+        "CORS_ALLOW_HEADERS",
+        "Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token",
+    ).strip() or "Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token"
     return {
         "statusCode": status_code,
-        "headers": {"Content-Type": "application/json"},
+        "headers": {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Methods": methods,
+            "Access-Control-Allow-Headers": allow_headers,
+        },
         "body": json.dumps(payload),
     }
 
@@ -164,4 +175,3 @@ def lambda_handler(
         return _build_json_response(400, {"error": str(exc)})
     except json.JSONDecodeError:
         return _build_json_response(400, {"error": "request body must be valid JSON"})
-
