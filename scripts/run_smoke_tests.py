@@ -33,6 +33,7 @@ class SmokeContext:
     base_url: str
     calendar_token: str
     course_id: str
+    require_ics_event: bool = False
     include_canvas_sync: bool = False
     include_chat: bool = False
     include_ingest: bool = False
@@ -243,10 +244,12 @@ def http_json(method: str, url: str, payload: Dict[str, Any] | None = None) -> A
     return json.loads(body)
 
 
-def http_text(url: str) -> str:
-    """Execute HTTP GET and return text response."""
+def http_text(url: str) -> tuple[str, str]:
+    """Execute HTTP GET and return text response plus content type."""
     with urlopen(url, timeout=15) as resp:
-        return resp.read().decode("utf-8")
+        content_type = resp.headers.get("Content-Type", "")
+        body = resp.read().decode("utf-8")
+    return body, content_type
 
 
 def validate_rows(rows: List[Dict[str, Any]], schema_name: str, label: str) -> None:
@@ -257,12 +260,15 @@ def validate_rows(rows: List[Dict[str, Any]], schema_name: str, label: str) -> N
     print(f"PASS {label}: {len(rows)} record(s)")
 
 
-def validate_ics(ics_text: str) -> None:
-    """Perform basic deterministic iCalendar checks."""
+def validate_ics(ics_text: str, *, content_type: str, require_event: bool) -> None:
+    """Perform iCalendar checks while avoiding live-data flakiness."""
+    if "text/calendar" not in content_type.lower():
+        raise RuntimeError(f"ICS validation failed: unexpected content type '{content_type or 'missing'}'")
+
     text = ics_text.replace("\r\n", "\n")
     if "BEGIN:VCALENDAR" not in text or "END:VCALENDAR" not in text:
         raise RuntimeError("ICS validation failed: missing VCALENDAR boundaries")
-    if text.count("BEGIN:VEVENT") < 1:
+    if require_event and text.count("BEGIN:VEVENT") < 1:
         raise RuntimeError("ICS validation failed: expected at least one VEVENT")
     print("PASS calendar ICS checks")
 
@@ -355,8 +361,8 @@ def run_sequence(ctx: SmokeContext) -> None:
             raise RuntimeError(f"Ingest status failed: {ingest_status}")
         print("PASS /docs/ingest/{jobId}")
 
-    ics_text = http_text(f"{ctx.base_url}/calendar/{ctx.calendar_token}.ics")
-    validate_ics(ics_text)
+    ics_text, content_type = http_text(f"{ctx.base_url}/calendar/{ctx.calendar_token}.ics")
+    validate_ics(ics_text, content_type=content_type, require_event=ctx.require_ics_event)
 
 
 def start_mock_server() -> tuple[ThreadingHTTPServer, str]:
@@ -386,6 +392,8 @@ def main() -> None:
     include_canvas_sync = os.getenv("SMOKE_INCLUDE_CANVAS_SYNC", "0").strip() == "1"
     include_chat = os.getenv("SMOKE_INCLUDE_CHAT", "0").strip() == "1"
     include_ingest = os.getenv("SMOKE_INCLUDE_INGEST", "0").strip() == "1"
+    # Require at least one VEVENT only in deterministic fixture mode unless explicitly overridden.
+    require_ics_event = os.getenv("SMOKE_REQUIRE_ICS_EVENT", "").strip() == "1" or mock_mode
     calendar_token = resolve_calendar_token(
         base_url=base_url,
         initial_token=initial_calendar_token,
@@ -395,6 +403,7 @@ def main() -> None:
         base_url=base_url,
         calendar_token=calendar_token,
         course_id=course_id,
+        require_ics_event=require_ics_event,
         include_canvas_sync=include_canvas_sync,
         include_chat=include_chat,
         include_ingest=include_ingest,
