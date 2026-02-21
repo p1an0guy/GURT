@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { createApiClient } from "../../../src/api/client.ts";
 import { getDeckById, markDeckStudied, type DeckRecord } from "../../../src/decks/store.ts";
@@ -47,6 +47,7 @@ export default function DeckStudyPage() {
   const [message, setMessage] = useState("");
   const [spacePressCount, setSpacePressCount] = useState(0);
   const [shortcutWarning, setShortcutWarning] = useState("");
+  const ratingSectionRef = useRef<HTMLDivElement | null>(null);
 
   const settings = useMemo(readRuntimeSettings, []);
   const client = useMemo(
@@ -68,6 +69,15 @@ export default function DeckStudyPage() {
 
   const activeCard = deck?.cards[activeIndex];
   const isFinished = deck !== null && activeIndex >= deck.cards.length;
+
+  function keepRatingsVisible(): void {
+    requestAnimationFrame(() => {
+      ratingSectionRef.current?.scrollIntoView({
+        block: "nearest",
+        behavior: "smooth",
+      });
+    });
+  }
 
   async function handleRate(rating: RecallRating): Promise<void> {
     if (!deck || !activeCard || isSubmittingReview) {
@@ -125,10 +135,7 @@ export default function DeckStudyPage() {
           return next;
         });
         setRevealed((prev) => !prev);
-        return;
-      }
-
-      if (!revealed) {
+        keepRatingsVisible();
         return;
       }
 
@@ -164,7 +171,7 @@ export default function DeckStudyPage() {
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [activeCard, deck, handleRate, isFinished, isSubmittingReview, revealed]);
+  }, [activeCard, deck, handleRate, isFinished, isSubmittingReview]);
 
   if (!deck) {
     return (
@@ -223,26 +230,34 @@ export default function DeckStudyPage() {
                 </div>
               ) : null}
 
-              <button type="button" onClick={() => setRevealed((prev) => !prev)}>
+              <button
+                type="button"
+                onClick={() => {
+                  setRevealed((prev) => !prev);
+                  keepRatingsVisible();
+                }}
+              >
                 {revealed ? "Hide Answer" : "Reveal Answer"}
               </button>
 
-              <p className="small">Rate recall quality:</p>
-              <p className="small">Space: Reveal / Hide answer</p>
-              <p className="small">1: Forgot, 2: Hard, 3: Good, 4: Easy</p>
-              <div className="rating-row">
-                <button type="button" onClick={() => void handleRate(1)} disabled={isSubmittingReview}>
-                  Forgot
-                </button>
-                <button type="button" onClick={() => void handleRate(2)} disabled={isSubmittingReview}>
-                  Hard
-                </button>
-                <button type="button" onClick={() => void handleRate(3)} disabled={isSubmittingReview}>
-                  Good
-                </button>
-                <button type="button" onClick={() => void handleRate(4)} disabled={isSubmittingReview}>
-                  Easy
-                </button>
+              <div ref={ratingSectionRef}>
+                <p className="small">Rate recall quality:</p>
+                <p className="small">Space: Reveal / Hide answer</p>
+                <p className="small">1: Forgot, 2: Hard, 3: Good, 4: Easy</p>
+                <div className="rating-row">
+                  <button type="button" onClick={() => void handleRate(1)} disabled={isSubmittingReview}>
+                    Forgot
+                  </button>
+                  <button type="button" onClick={() => void handleRate(2)} disabled={isSubmittingReview}>
+                    Hard
+                  </button>
+                  <button type="button" onClick={() => void handleRate(3)} disabled={isSubmittingReview}>
+                    Good
+                  </button>
+                  <button type="button" onClick={() => void handleRate(4)} disabled={isSubmittingReview}>
+                    Easy
+                  </button>
+                </div>
               </div>
 
               {message ? <p className="small">{message}</p> : null}
