@@ -98,6 +98,10 @@ Canvas bootstrap for demo schedule rows:
    `{"canvasBaseUrl":"https://canvas.example.edu","accessToken":"demo-token"}`
 2. `POST <DEV_BASE_URL>/canvas/sync`
    - Response includes `failedCourseIds` for per-course retry visibility.
+   - Response includes KB trigger diagnostics:
+     - `knowledgeBaseIngestionStarted`
+     - `knowledgeBaseIngestionJobId`
+     - `knowledgeBaseIngestionError`
    - Current live scope syncs:
      - published assignments with non-null due dates
      - published/visible course files (materials metadata + S3 mirror)

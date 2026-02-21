@@ -13,6 +13,7 @@
     "materialsMirrored",
     "knowledgeBaseIngestionStarted",
     "knowledgeBaseIngestionJobId",
+    "knowledgeBaseIngestionError",
     "failedCourseIds",
     "updatedAt"
   ],
@@ -40,6 +41,9 @@
       "type": "boolean"
     },
     "knowledgeBaseIngestionJobId": {
+      "type": "string"
+    },
+    "knowledgeBaseIngestionError": {
       "type": "string"
     },
     "failedCourseIds": {

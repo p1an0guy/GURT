@@ -269,7 +269,7 @@ class RuntimeHandlerTests(unittest.TestCase):
             ) as sync_materials,
             patch(
                 "backend.runtime._start_knowledge_base_ingestion",
-                return_value=(True, "ingest-job-1"),
+                return_value=(True, "ingest-job-1", ""),
             ),
         ):
             response = self._invoke(event, env={"DEMO_MODE": "false"})
@@ -283,6 +283,7 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertEqual(body["materialsMirrored"], 4)
         self.assertEqual(body["knowledgeBaseIngestionStarted"], True)
         self.assertEqual(body["knowledgeBaseIngestionJobId"], "ingest-job-1")
+        self.assertEqual(body["knowledgeBaseIngestionError"], "")
         self.assertEqual(body["failedCourseIds"], ["42", "99"])
         sync_rows.assert_called_once()
         sync_materials.assert_called_once()
@@ -522,7 +523,7 @@ class RuntimeHandlerTests(unittest.TestCase):
             ),
             patch(
                 "backend.runtime._start_knowledge_base_ingestion",
-                return_value=(True, "ingest-job-2"),
+                return_value=(True, "ingest-job-2", ""),
             ),
         ):
             response = self._invoke(event, env={"DEMO_MODE": "false"})
@@ -539,6 +540,7 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertEqual(body["materialsMirrored"], 5)
         self.assertEqual(body["knowledgeBaseIngestionStarted"], True)
         self.assertEqual(body["knowledgeBaseIngestionJobId"], "ingest-job-2")
+        self.assertEqual(body["knowledgeBaseIngestionError"], "")
         self.assertEqual(body["failedCourseIdsByUser"]["user-1"], ["42"])
         self.assertIn("user-2", body["userErrors"])
 
