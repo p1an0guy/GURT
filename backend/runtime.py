@@ -67,18 +67,36 @@ def _calendar_fixture_fallback_enabled() -> bool:
     return raw.strip().lower() in _DEMO_MODE_TRUE_VALUES
 
 
+def _cors_headers() -> dict[str, str]:
+    origin = os.getenv("CORS_ALLOW_ORIGIN", "*").strip() or "*"
+    methods = os.getenv("CORS_ALLOW_METHODS", "GET,POST,OPTIONS").strip() or "GET,POST,OPTIONS"
+    headers = os.getenv(
+        "CORS_ALLOW_HEADERS",
+        "Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token",
+    ).strip() or "Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token"
+    return {
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Methods": methods,
+        "Access-Control-Allow-Headers": headers,
+    }
+
+
 def _json_response(status_code: int, payload: Mapping[str, Any]) -> Dict[str, Any]:
+    headers = {"Content-Type": "application/json"}
+    headers.update(_cors_headers())
     return {
         "statusCode": status_code,
-        "headers": {"Content-Type": "application/json"},
+        "headers": headers,
         "body": json.dumps(payload),
     }
 
 
 def _text_response(status_code: int, payload: str, *, content_type: str) -> Dict[str, Any]:
+    headers = {"Content-Type": content_type}
+    headers.update(_cors_headers())
     return {
         "statusCode": status_code,
-        "headers": {"Content-Type": content_type},
+        "headers": headers,
         "body": payload,
     }
 

@@ -243,6 +243,35 @@ class ApiStack(Stack):
             "StudyBuddyApi",
             rest_api_name="studybuddy-demo-api",
             deploy_options=apigateway.StageOptions(stage_name=stage_name),
+            default_cors_preflight_options=apigateway.CorsOptions(
+                allow_origins=apigateway.Cors.ALL_ORIGINS,
+                allow_methods=["GET", "POST", "OPTIONS"],
+                allow_headers=[
+                    "Content-Type",
+                    "Authorization",
+                    "X-Amz-Date",
+                    "X-Api-Key",
+                    "X-Amz-Security-Token",
+                ],
+            ),
+        )
+        self.rest_api.add_gateway_response(
+            "Default4xxCors",
+            type=apigateway.ResponseType.DEFAULT_4_XX,
+            response_headers={
+                "Access-Control-Allow-Origin": "'*'",
+                "Access-Control-Allow-Headers": "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'",
+                "Access-Control-Allow-Methods": "'GET,POST,OPTIONS'",
+            },
+        )
+        self.rest_api.add_gateway_response(
+            "Default5xxCors",
+            type=apigateway.ResponseType.DEFAULT_5_XX,
+            response_headers={
+                "Access-Control-Allow-Origin": "'*'",
+                "Access-Control-Allow-Headers": "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'",
+                "Access-Control-Allow-Methods": "'GET,POST,OPTIONS'",
+            },
         )
 
         app_integration = apigateway.LambdaIntegration(app_api_handler)

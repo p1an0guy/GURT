@@ -212,6 +212,8 @@ npm run dev
 
 Then open `http://localhost:3000`.
 
+If browser calls fail with `Failed to fetch`, verify deployed API has CORS enabled (OPTIONS preflight + response headers) and that `NEXT_PUBLIC_API_BASE_URL` matches the deployed stage URL exactly.
+
 Quick runtime-hardening checks in browser:
 
 1. Use `Live API` mode, then run `Sync Canvas`.
