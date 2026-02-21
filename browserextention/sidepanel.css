@@ -37,6 +37,49 @@ body {
   opacity: 0.7;
 }
 
+/* Course tabs bar */
+.course-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 6px 12px;
+  background: #354550;
+  overflow-x: auto;
+  flex-shrink: 0;
+  scrollbar-width: none;
+}
+
+.course-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.course-tabs:empty {
+  display: none;
+}
+
+.course-tab {
+  border: none;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.75);
+  transition: background 0.15s, color 0.15s;
+}
+
+.course-tab:hover {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+.course-tab.active {
+  background: #fff;
+  color: #2d3b45;
+}
+
 .scrape-panel {
   padding: 12px 16px;
   background: #fff;
