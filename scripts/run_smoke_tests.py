@@ -33,6 +33,7 @@ class SmokeContext:
     base_url: str
     calendar_token: str
     course_id: str
+    include_canvas_sync: bool = False
     include_ingest: bool = False
 
 
@@ -163,6 +164,32 @@ class FixtureMockHandler(BaseHTTPRequestHandler):
             )
             return
 
+        if self.path == "/canvas/connect":
+            self._write_json(
+                {
+                    "connected": True,
+                    "updatedAt": "2026-09-01T10:15:00Z",
+                }
+            )
+            return
+
+        if self.path == "/canvas/sync":
+            self._write_json(
+                {
+                    "synced": True,
+                    "coursesUpserted": 2,
+                    "itemsUpserted": 3,
+                    "materialsUpserted": 2,
+                    "materialsMirrored": 2,
+                    "knowledgeBaseIngestionStarted": False,
+                    "knowledgeBaseIngestionJobId": "",
+                    "knowledgeBaseIngestionError": "",
+                    "failedCourseIds": [],
+                    "updatedAt": "2026-09-01T10:15:01Z",
+                }
+            )
+            return
+
         if self.path != "/study/review":
             self._write_json({"error": "not found"}, status=404)
             return
@@ -252,6 +279,20 @@ def run_sequence(ctx: SmokeContext) -> None:
         raise RuntimeError(f"Health check failed: {health}")
     print("PASS /health")
 
+    if ctx.include_canvas_sync:
+        connect_payload = {
+            "canvasBaseUrl": "https://canvas.example.edu",
+            "accessToken": "demo-token",
+        }
+        validate_instance(connect_payload, read_schema("CanvasConnectRequest.json"))
+        connect_response = http_json("POST", f"{ctx.base_url}/canvas/connect", payload=connect_payload)
+        validate_instance(connect_response, read_schema("CanvasConnectResponse.json"))
+        print("PASS /canvas/connect")
+
+        sync_response = http_json("POST", f"{ctx.base_url}/canvas/sync", payload={})
+        validate_instance(sync_response, read_schema("CanvasSyncResponse.json"))
+        print("PASS /canvas/sync")
+
     courses = http_json("GET", f"{ctx.base_url}/courses")
     validate_rows(courses, "Course.json", "/courses")
 
@@ -322,6 +363,7 @@ def main() -> None:
     course_id = os.getenv("COURSE_ID", "").strip() or "course-psych-101"
     initial_calendar_token = os.getenv("CALENDAR_TOKEN", "").strip()
     mint_calendar_token = os.getenv("MINT_CALENDAR_TOKEN", "0").strip() == "1"
+    include_canvas_sync = os.getenv("SMOKE_INCLUDE_CANVAS_SYNC", "0").strip() == "1"
     include_ingest = os.getenv("SMOKE_INCLUDE_INGEST", "0").strip() == "1"
     calendar_token = resolve_calendar_token(
         base_url=base_url,
@@ -332,6 +374,7 @@ def main() -> None:
         base_url=base_url,
         calendar_token=calendar_token,
         course_id=course_id,
+        include_canvas_sync=include_canvas_sync,
         include_ingest=include_ingest,
     )
 

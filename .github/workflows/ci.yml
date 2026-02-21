@@ -56,5 +56,6 @@ jobs:
         env:
           SMOKE_MOCK_MODE: '1'
           MINT_CALENDAR_TOKEN: '1'
+          SMOKE_INCLUDE_CANVAS_SYNC: '1'
           SMOKE_INCLUDE_INGEST: '1'
         run: python scripts/run_smoke_tests.py
