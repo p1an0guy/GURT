@@ -835,6 +835,80 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertIn("SUMMARY:Midterm Exam", response["body"])
         load_items.assert_called_once_with("demo-user")
 
+    def test_calendar_route_defaults_zero_duration_events_to_60_minutes(self) -> None:
+        store = _MemoryCalendarTokenStore()
+        store.save(
+            CalendarTokenRecord.mint(
+                token="calendar-token-60m",
+                user_id="demo-user",
+                created_at="2026-09-01T10:15:00Z",
+            )
+        )
+
+        event = {
+            "httpMethod": "GET",
+            "path": "/calendar/calendar-token-60m.ics",
+            "pathParameters": {"token": "calendar-token-60m"},
+        }
+
+        with (
+            patch("backend.runtime._calendar_token_store", return_value=store),
+            patch(
+                "backend.runtime._load_schedule_items_for_user",
+                return_value=[
+                    {
+                        "id": "item-60m",
+                        "courseId": "course-psych-101",
+                        "title": "Zero Duration Exam",
+                        "dueAt": "2026-10-15T17:00:00Z",
+                    }
+                ],
+            ),
+        ):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 200)
+        self.assertIn("DTSTART:20261015T170000Z", response["body"])
+        self.assertIn("DTEND:20261015T180000Z", response["body"])
+
+    def test_calendar_route_preserves_explicit_start_and_end_times(self) -> None:
+        store = _MemoryCalendarTokenStore()
+        store.save(
+            CalendarTokenRecord.mint(
+                token="calendar-token-explicit-window",
+                user_id="demo-user",
+                created_at="2026-09-01T10:15:00Z",
+            )
+        )
+
+        event = {
+            "httpMethod": "GET",
+            "path": "/calendar/calendar-token-explicit-window.ics",
+            "pathParameters": {"token": "calendar-token-explicit-window"},
+        }
+
+        with (
+            patch("backend.runtime._calendar_token_store", return_value=store),
+            patch(
+                "backend.runtime._load_schedule_items_for_user",
+                return_value=[
+                    {
+                        "id": "item-window",
+                        "courseId": "course-psych-101",
+                        "title": "Timed Exam",
+                        "dueAt": "2026-10-15T17:00:00Z",
+                        "startAt": "2026-10-15T17:00:00Z",
+                        "endAt": "2026-10-15T19:00:00Z",
+                    }
+                ],
+            ),
+        ):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 200)
+        self.assertIn("DTSTART:20261015T170000Z", response["body"])
+        self.assertIn("DTEND:20261015T190000Z", response["body"])
+
     def test_calendar_route_returns_404_for_unknown_token(self) -> None:
         store = _MemoryCalendarTokenStore()
         with patch("backend.runtime._calendar_token_store", return_value=store):
