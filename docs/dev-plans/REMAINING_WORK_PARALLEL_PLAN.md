@@ -1,208 +1,154 @@
-# Remaining Work Plan (After Canvas Materials Sync + Extension Are In Progress)
+# Remaining Work and Progress Plan
 
-## Scope Correction
+Last updated: **February 21, 2026**
 
-This plan intentionally excludes:
-- Canvas materials sync implementation work already in progress.
-- Chrome extension implementation work already in progress.
+This document is the current source of truth for what is complete vs. still open after the original parallel plan was drafted.
 
-This plan covers the remaining delivery work needed to reach demo-ready and merge-gated stability.
+## Scope
 
-## Assumed Current State
+Still in scope:
+- Remaining backend/runtime hardening needed for demo-ready and merge-gated stability.
+- CI coverage and operational hardening deltas.
+- Cross-stream integration cleanup.
 
-- `POST /canvas/connect` and `POST /canvas/sync` exist and run.
-- Canvas materials sync is actively being implemented by another stream.
-- Chrome extension chatbot MVP is actively being implemented by another stream.
-- Calendar token mint + ICS feed endpoints are live.
-- Ingest workflow exists (`POST /docs/ingest` + status polling), but Bedrock KB ingestion job trigger still needs full runtime wiring.
+Out of scope:
+- Re-doing completed calendar isolation/fallback work.
+- Re-doing completed extension compatibility documentation.
 
-If any assumption is incorrect, adjust only the affected workstream backlog, not ownership boundaries.
+## Current Progress Snapshot
 
-## Remaining Workstreams (Parallel)
+1. **Calendar hardening + schedule source of truth**: `COMPLETE`
+2. **Ingestion runtime completion**: `MOSTLY COMPLETE`
+3. **Study/generation runtime wiring**: `MOSTLY COMPLETE`
+4. **Frontend runtime hardening**: `MOSTLY COMPLETE`
+5. **CI and merge-gate hardening**: `PARTIAL`
+6. **Extension compatibility docs**: `COMPLETE`
+
+## Workstream Status and Remaining Delta
 
 ## 1) Calendar Hardening + Schedule Source of Truth
 
-Branch:
-- `feature/calendar-hardening-remove-fallback`
+Status: `COMPLETE`
 
-Ownership:
-- `backend/runtime.py`
-- `contracts/openapi.yaml` (only if behavior requires explicit docs update)
-- `docs/ROADMAP.md`
-- `docs/OVERVIEW.md` (if architecture behavior changes)
+Completed:
+- `/calendar/{token}.ics` is derived from token user schedule rows.
+- Fixture fallback is gated by explicit demo flag + demo user checks.
+- Stable UID behavior is preserved across due date changes.
+- Tests cover user isolation and fallback on/off behavior.
 
-Deliverables:
-- Ensure `/calendar/{token}.ics` reads only token user schedule rows in DynamoDB.
-- Keep fixture fallback only behind explicit demo flag.
-- Remove non-flagged fallback path before production hardening.
-- Confirm sync updates propagate into ICS event updates with stable UID behavior.
-- Add tests for:
-  - token -> user row isolation
-  - empty schedule behavior with fallback off
-  - empty schedule behavior with fallback on
-
-Done criteria:
-- ICS never leaks cross-user rows.
-- ICS behavior deterministic with fallback toggle.
-- Tests cover both fallback modes.
+No remaining delta for this workstream in demo scope.
 
 ## 2) Ingestion Runtime Completion (Bedrock KB Trigger + Observability)
 
-Branch:
-- `feature/ingest-runtime-complete`
+Status: `MOSTLY COMPLETE`
 
-Ownership:
-- `backend/ingest_workflow.py`
-- `backend/runtime.py`
-- `infra/stacks/knowledge_base_stack.py` (if IAM/env wiring needed)
-- `infra/stacks/api_stack.py` (if runtime env/permissions needed)
-- `docs/TESTING.md`
+Completed:
+- `StartIngestionJob` is triggered automatically on successful finalize.
+- KB ingestion result metadata (`kbIngestionJobId` / `kbIngestionError`) is persisted.
+- Retry-safe client token semantics are implemented and tested.
+- Error paths are captured and surfaced as actionable messages.
 
-Deliverables:
-- Trigger Bedrock `StartIngestionJob` automatically after successful docs ingest finalize.
-- Persist ingestion job metadata/state for traceability.
-- Add failure capture/retry-safe semantics (do not duplicate ingestion for unchanged source revision).
-- Add operational logs/metrics points for extract -> ingest trigger.
-- Add tests for:
-  - successful finalize triggers KB ingestion
-  - trigger failure path is surfaced with actionable error
-  - idempotent behavior on repeated finalize for same source revision
-
-Done criteria:
-- No manual CLI step required for KB ingestion after document ingest.
-- Runtime status is queryable and debuggable.
+Remaining delta:
+- Add explicit operational metrics (not just logs) around extract -> finalize -> KB trigger outcomes.
 
 ## 3) Study/Generation Endpoint Wiring to Real Runtime State
 
-Branch:
-- `feature/study-generation-runtime-wiring`
+Status: `MOSTLY COMPLETE`
 
-Ownership:
-- `backend/runtime.py`
-- `backend/generation.py`
-- `study/fsrs.py`
-- `contracts/*` (only if contract-compatible additions are required)
-- `fixtures/*.json` (only for deterministic smoke coverage)
-
-Deliverables:
-- Replace fixture-only behaviors for:
+Completed:
+- Runtime-backed implementations exist for:
   - `POST /generate/flashcards`
   - `POST /generate/practice-exam`
   - `GET /study/today`
   - `POST /study/review`
   - `GET /study/mastery`
-- Wire FSRS updates to persisted review state.
-- Ensure generated outputs include citations aligned with contract.
-- Validate exam-aware prioritization path for study queue.
-- Add tests for:
-  - FSRS state transitions from review events
-  - mastery updates after review/practice interactions
-  - generation output shape + citation presence
+- FSRS updates are persisted from review events.
+- Generation outputs include citations with fallback behavior.
+- Unit tests cover citation behavior and FSRS state transitions.
 
-Done criteria:
-- Endpoints serve runtime-backed data, not placeholder-only fixture logic.
-- Contract responses remain valid and deterministic under test fixtures.
+Remaining delta:
+- Implement explicit exam-aware prioritization path in `GET /study/today`.
 
 ## 4) Frontend Completion + UX Error/Retry Hardening
 
-Branch:
-- `feature/frontend-runtime-hardening`
+Status: `MOSTLY COMPLETE`
 
-Ownership:
-- `app/page.tsx` (or split components under `app/**`)
-- `src/api/client.ts`
-- `src/api/types.ts`
-- `src/api/client.test.ts`
-- `docs/TESTING.md` (if local workflow changes)
+Completed:
+- Live-mode integration for sync/study/generation/chat surfaces exists.
+- Retry/error states are present for sync/ingest/generation/chat actions.
+- Status panel exposes last sync and KB-ingestion outcome fields.
 
-Deliverables:
-- Complete live-mode integration for sync, study, and ingest surfaces.
-- Add robust error/retry UX for:
-  - Canvas sync failures (`failedCourseIds` visibility)
-  - ingest polling/terminal failures
-  - study action failures
-- Add lightweight UI state for:
-  - last successful sync time
-  - ingest status progression
-  - actionable retry buttons
-- Ensure no contract drift between client types and OpenAPI schemas.
-
-Done criteria:
-- Frontend can demonstrate end-to-end flow against deployed API with no manual JSON calls.
-- Retry paths are visible and usable during demo failures.
+Remaining delta:
+- Finalize UI direction for manual ingest controls vs. Canvas-first ingest UX in the main dashboard.
 
 ## 5) CI and Merge-Gate Hardening
 
-Branch:
-- `chore/ci-hardening-final-gates`
+Status: `PARTIAL`
 
-Ownership:
-- `.github/workflows/ci.yml`
-- `.github/workflows/smoke-dev.yml`
-- `scripts/run_smoke_tests.py`
-- `scripts/validate_contracts.py`
-- `docs/TESTING.md`
+Completed:
+- CI workflow runs frontend typecheck/lint/test/build plus contract checks, unit tests, mock smoke tests.
+- CI includes conditional CDK check execution when `infra/**` changes.
+- Dev smoke workflow exists for deployed environment.
+- Smoke includes calendar token + ICS assertions and ingest start/status happy path.
 
-Deliverables:
-- Ensure required checks enforce:
-  - contract validation
-  - smoke-dev workflow
-  - CDK checks when `infra/**` changes
-- Expand smoke sequence to include:
-  - calendar token + ICS fetch assertions
-  - materials metadata endpoint assertions (once materials stream merges)
-  - ingest start/status happy path
-- Keep mock-mode deterministic and fast for PR validation.
+Remaining delta:
+- Add smoke assertion coverage for materials metadata path once that endpoint/shape is finalized.
+- Verify GitHub branch protection is configured so CI + smoke checks are actually required gates (repository settings check, not code).
 
-Done criteria:
-- Required checks block merge on contract/smoke failures.
-- Local and CI smoke expectations are aligned and documented.
+## 6) Integration Workstream: Extension Compatibility (No Endpoint Changes)
 
-## Integration Workstream: Extension Compatibility (No Endpoint Changes)
+Status: `COMPLETE`
 
-Branch:
-- `chore/extension-compatibility-docs`
+Completed:
+- Extension compatibility doc exists with request/response examples, CORS guidance, and failure handling.
+- Documentation explicitly states no extension-only endpoint in this phase.
 
-Ownership:
-- `docs/OVERVIEW.md`
-- `docs/TESTING.md`
-- optional extension-facing README under `docs/`
+No remaining delta for this workstream in demo scope.
 
-Deliverables:
-- Document stable `POST /chat` usage for extension:
-  - request/response examples
-  - required headers/base URL format
-  - failure handling expectations
-- Validate CORS/runtime config supports extension origin model for dev/demo.
-- Explicitly state that no dedicated extension endpoint exists in this phase.
+## Prioritized Remaining Delta Checklist
 
-Done criteria:
-- Extension developer has zero backend ambiguity and can test against deployed API.
+## P0
 
-## Merge Order
+1. Implement exam-aware prioritization in `GET /study/today`.
+2. Add/extend tests that prove exam-proximity or exam-linked topic boosters are included deterministically.
+3. Update `docs/OVERVIEW.md` with the exact prioritization rule used.
 
-1. Calendar hardening + ingest runtime completion.
-2. Study/generation runtime wiring.
-3. Frontend runtime hardening.
-4. CI gate hardening.
-5. Integration pass with in-progress materials sync branch and extension branch.
+## P1
 
-## Final Integration Checklist
+1. Add explicit operational metrics for ingest pipeline stages:
+   - finalize success/failure
+   - KB trigger started/succeeded/failed
+   - missing KB config cases
+2. Document metric names and expected alert thresholds in `docs/TESTING.md` or an ops runbook.
+
+## P2
+
+1. Add smoke checks for materials metadata endpoint once endpoint contract is stable.
+2. Confirm branch protection requires CI and smoke workflows for merge to `main`.
+3. Resolve frontend ingest UX direction in `app/page.tsx` and align `docs/TESTING.md`.
+
+## Merge Order for Remaining Delta
+
+1. P0: Study queue prioritization.
+2. P1: Ingest operational metrics and docs.
+3. P2: Smoke expansion + branch protection verification + frontend ingest UX finalization.
+
+## Final Integration Checklist (Current)
 
 - `python scripts/validate_contracts.py`
 - `SMOKE_MOCK_MODE=1 python scripts/run_smoke_tests.py`
-- `python -m pytest -q` (where tests exist)
-- `./scripts/check-cdk.sh` (if `infra/**` changed)
-- Frontend client tests:
-  - `npm test`
-  - `npm run lint`
+- `python -m pytest -q`
+- `./scripts/check-cdk.sh` (when `infra/**` changes)
+- `npm run typecheck`
+- `npm run lint`
+- `npm test`
+- `npm run build`
 
 ## Risks and Mitigations
 
-- Risk: parallel merges reintroduce fixture/runtime divergence.
-  - Mitigation: require smoke + contract checks on every merge path.
-- Risk: calendar fallback behavior causes demo/prod confusion.
-  - Mitigation: enforce explicit flag and test both modes.
-- Risk: extension blocked by environment/CORS mismatch.
-  - Mitigation: add explicit extension compatibility docs and dev-stage validation.
-
+- Risk: fixture/runtime divergence reappears during parallel merges.
+  - Mitigation: keep contract + smoke checks mandatory on every merge path.
+- Risk: exam-aware prioritization remains undefined, causing inconsistent study queue behavior.
+  - Mitigation: lock a deterministic prioritization rule and test it.
+- Risk: ingest failures are hard to triage without metricized visibility.
+  - Mitigation: add stage-level metrics with clear alert thresholds.
