@@ -137,8 +137,12 @@ def main() -> int:
         "allow_fork_syncing": False,
     }
 
-    _github_request(method="PUT", url=api_base, token=token, payload=payload)
-    protection = _github_request(method="GET", url=api_base, token=token)
+    try:
+        _github_request(method="PUT", url=api_base, token=token, payload=payload)
+        protection = _github_request(method="GET", url=api_base, token=token)
+    except RuntimeError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
     required_status = protection.get("required_status_checks") or {}
     actual_checks = [str(row.get("context", "")) for row in required_status.get("checks") or []]
