@@ -99,6 +99,45 @@ The **Smoke Dev** workflow runs:
 - automatically on every push to `main`
 - manually via `workflow_dispatch`
 
+## Required Merge Checks (`main` branch protection)
+
+Branch protection for `main` must require status checks before merge.
+
+Required check context names:
+
+- `contracts-and-tests` (workflow: `CI`, job id: `contracts-and-tests`)
+
+Why only one required context:
+
+- The required smoke gate is the `Run smoke tests in mock mode` step inside `contracts-and-tests`.
+- `Smoke Dev` (`smoke-dev` job) runs on `push` to `main` and `workflow_dispatch`, so it is post-merge environment validation, not a pre-merge PR gate.
+
+Expected protection settings:
+
+- Require status checks to pass before merging: enabled
+- Require branches to be up to date before merging (`strict`): enabled
+- Include administrators (`enforce_admins`): enabled
+- Require linear history: enabled
+- Require conversation resolution before merging: enabled
+- Force pushes: disabled
+- Branch deletions: disabled
+
+Apply/verify with admin token:
+
+```bash
+GITHUB_TOKEN=<admin-token> python scripts/enforce_branch_protection.py
+```
+
+Optional explicit repo/branch/check:
+
+```bash
+GITHUB_TOKEN=<admin-token> python scripts/enforce_branch_protection.py \
+  --owner p1an0guy \
+  --repo GURT \
+  --branch main \
+  --check contracts-and-tests
+```
+
 Repository secrets:
 
 - `DEV_BASE_URL` (required)
