@@ -1013,53 +1013,72 @@ def _handle_scheduled_canvas_sync() -> Dict[str, Any]:
     )
 
 
-def _scan_canvas_items_for_user(user_id: str) -> list[dict[str, Any]]:
+def _query_canvas_items_for_user(user_id: str) -> list[dict[str, Any]]:
     table_name = os.getenv("CANVAS_DATA_TABLE", "").strip()
     if not table_name:
         return []
 
     table = _dynamodb_table(table_name)
-    response = table.scan()
-    rows = list(response.get("Items", []))
+    from boto3.dynamodb.conditions import Key
 
-    while "LastEvaluatedKey" in response:
-        response = table.scan(ExclusiveStartKey=response["LastEvaluatedKey"])
-        rows.extend(response.get("Items", []))
+    def _query_partition_rows(pk_value: str, sk_prefix: str) -> list[dict[str, Any]]:
+        key_condition = Key("pk").eq(pk_value) & Key("sk").begins_with(sk_prefix)
+        response = table.query(KeyConditionExpression=key_condition)
+        rows = list(response.get("Items", []))
+
+        while "LastEvaluatedKey" in response:
+            response = table.query(
+                KeyConditionExpression=key_condition,
+                ExclusiveStartKey=response["LastEvaluatedKey"],
+            )
+            rows.extend(response.get("Items", []))
+
+        return rows
+
+    user_pk = f"USER#{user_id}"
+    course_rows = _query_partition_rows(user_pk, "COURSE#")
+    course_ids = [
+        str(row.get("id"))
+        for row in course_rows
+        if row.get("entityType") == "CanvasCourse" and isinstance(row.get("id"), str) and str(row.get("id"))
+    ]
 
     items: list[dict[str, Any]] = []
-    for row in rows:
-        if row.get("entityType") != _ENTITY_CANVAS_ITEM:
-            continue
-        if row.get("userId") != user_id:
-            continue
+    for course_id in course_ids:
+        item_pk = f"USER#{user_id}#COURSE#{course_id}"
+        item_rows = _query_partition_rows(item_pk, "ITEM#")
 
-        course_id = row.get("courseId")
-        item_id = row.get("id")
-        title = row.get("title")
-        due_at = row.get("dueAt")
+        for row in item_rows:
+            if row.get("entityType") != _ENTITY_CANVAS_ITEM:
+                continue
+            if row.get("userId") != user_id:
+                continue
 
-        if not all(isinstance(value, str) and value for value in (course_id, item_id, title, due_at)):
-            continue
+            item_id = row.get("id")
+            title = row.get("title")
+            due_at = row.get("dueAt")
+            if not all(isinstance(value, str) and value for value in (item_id, title, due_at)):
+                continue
 
-        items.append(
-            {
-                "id": item_id,
-                "courseId": course_id,
-                "title": title,
-                "dueAt": due_at,
-            }
-        )
+            items.append(
+                {
+                    "id": item_id,
+                    "courseId": course_id,
+                    "title": title,
+                    "dueAt": due_at,
+                }
+            )
 
     items.sort(key=lambda row: str(row.get("dueAt", "")))
     return items
 
 
 def _load_schedule_items_for_user(user_id: str) -> list[dict[str, Any]]:
-    items = _scan_canvas_items_for_user(user_id)
+    items = _query_canvas_items_for_user(user_id)
     if items:
         return items
 
-    if not _calendar_fixture_fallback_enabled():
+    if not (_is_demo_mode() and _calendar_fixture_fallback_enabled()):
         return []
 
     fixtures = _load_fixtures()

@@ -639,7 +639,143 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertEqual(response["statusCode"], 200)
         self.assertIn("BEGIN:VCALENDAR", response["body"])
 
-    def test_calendar_route_uses_fixture_events_for_any_user_when_schedule_is_empty(self) -> None:
+    def test_calendar_route_isolates_events_by_token_user(self) -> None:
+        store = _MemoryCalendarTokenStore()
+        store.save(
+            CalendarTokenRecord.mint(
+                token="token-user-a",
+                user_id="user-a",
+                created_at="2026-09-01T10:15:00Z",
+            )
+        )
+        store.save(
+            CalendarTokenRecord.mint(
+                token="token-user-b",
+                user_id="user-b",
+                created_at="2026-09-01T10:15:00Z",
+            )
+        )
+
+        def load_items_for_user(user_id: str) -> list[dict[str, str]]:
+            if user_id == "user-a":
+                return [
+                    {
+                        "id": "item-a-1",
+                        "courseId": "course-a",
+                        "title": "User A Midterm",
+                        "dueAt": "2026-10-15T17:00:00Z",
+                    }
+                ]
+            if user_id == "user-b":
+                return [
+                    {
+                        "id": "item-b-1",
+                        "courseId": "course-b",
+                        "title": "User B Quiz",
+                        "dueAt": "2026-10-16T17:00:00Z",
+                    }
+                ]
+            return []
+
+        with (
+            patch("backend.runtime._calendar_token_store", return_value=store),
+            patch("backend.runtime._load_schedule_items_for_user", side_effect=load_items_for_user) as load_items,
+        ):
+            response_a = self._invoke(
+                {
+                    "httpMethod": "GET",
+                    "path": "/calendar/token-user-a.ics",
+                    "pathParameters": {"token": "token-user-a"},
+                },
+                env={"DEMO_MODE": "false"},
+            )
+            response_b = self._invoke(
+                {
+                    "httpMethod": "GET",
+                    "path": "/calendar/token-user-b.ics",
+                    "pathParameters": {"token": "token-user-b"},
+                },
+                env={"DEMO_MODE": "false"},
+            )
+
+        self.assertEqual(response_a["statusCode"], 200)
+        self.assertEqual(response_b["statusCode"], 200)
+        self.assertIn("SUMMARY:User A Midterm", response_a["body"])
+        self.assertNotIn("SUMMARY:User B Quiz", response_a["body"])
+        self.assertIn("SUMMARY:User B Quiz", response_b["body"])
+        self.assertNotIn("SUMMARY:User A Midterm", response_b["body"])
+        self.assertEqual(load_items.call_args_list[0].args, ("user-a",))
+        self.assertEqual(load_items.call_args_list[1].args, ("user-b",))
+
+    def test_calendar_route_keeps_uid_stable_when_event_fields_change(self) -> None:
+        store = _MemoryCalendarTokenStore()
+        store.save(
+            CalendarTokenRecord.mint(
+                token="token-stable-uid",
+                user_id="demo-user",
+                created_at="2026-09-01T10:15:00Z",
+            )
+        )
+
+        first_snapshot = [
+            {
+                "id": "item-123",
+                "courseId": "course-psych-101",
+                "title": "Midterm Exam",
+                "dueAt": "2026-10-15T17:00:00Z",
+            }
+        ]
+        second_snapshot = [
+            {
+                "id": "item-123",
+                "courseId": "course-psych-101",
+                "title": "Midterm Exam Updated",
+                "dueAt": "2026-10-16T18:30:00Z",
+            }
+        ]
+
+        with (
+            patch("backend.runtime._calendar_token_store", return_value=store),
+            patch("backend.runtime._load_schedule_items_for_user", side_effect=[first_snapshot, second_snapshot]),
+        ):
+            first_response = self._invoke(
+                {
+                    "httpMethod": "GET",
+                    "path": "/calendar/token-stable-uid.ics",
+                    "pathParameters": {"token": "token-stable-uid"},
+                },
+                env={"DEMO_MODE": "false"},
+            )
+            second_response = self._invoke(
+                {
+                    "httpMethod": "GET",
+                    "path": "/calendar/token-stable-uid.ics",
+                    "pathParameters": {"token": "token-stable-uid"},
+                },
+                env={"DEMO_MODE": "false"},
+            )
+
+        self.assertEqual(first_response["statusCode"], 200)
+        self.assertEqual(second_response["statusCode"], 200)
+
+        first_uid_line = next(
+            line for line in first_response["body"].splitlines() if line.startswith("UID:")
+        )
+        second_uid_line = next(
+            line for line in second_response["body"].splitlines() if line.startswith("UID:")
+        )
+        first_start_line = next(
+            line for line in first_response["body"].splitlines() if line.startswith("DTSTART:")
+        )
+        second_start_line = next(
+            line for line in second_response["body"].splitlines() if line.startswith("DTSTART:")
+        )
+
+        self.assertEqual(first_uid_line, second_uid_line)
+        self.assertNotEqual(first_start_line, second_start_line)
+        self.assertIn("SUMMARY:Midterm Exam Updated", second_response["body"])
+
+    def test_calendar_route_uses_fixture_events_for_any_user_when_schedule_is_empty_in_demo_mode(self) -> None:
         store = _MemoryCalendarTokenStore()
         store.save(
             CalendarTokenRecord.mint(
@@ -651,7 +787,7 @@ class RuntimeHandlerTests(unittest.TestCase):
 
         with (
             patch("backend.runtime._calendar_token_store", return_value=store),
-            patch("backend.runtime._scan_canvas_items_for_user", return_value=[]),
+            patch("backend.runtime._query_canvas_items_for_user", return_value=[]),
         ):
             response = self._invoke(
                 {
@@ -659,11 +795,38 @@ class RuntimeHandlerTests(unittest.TestCase):
                     "path": "/calendar/token-any-user.ics",
                     "pathParameters": {"token": "token-any-user"},
                 },
-                env={"DEMO_MODE": "false", "CALENDAR_FIXTURE_FALLBACK": "true"},
+                env={"DEMO_MODE": "true", "CALENDAR_FIXTURE_FALLBACK": "true"},
             )
 
         self.assertEqual(response["statusCode"], 200)
         self.assertIn("BEGIN:VEVENT", response["body"])
+
+    def test_calendar_route_skips_fixture_fallback_when_demo_mode_disabled_even_if_flag_is_enabled(self) -> None:
+        store = _MemoryCalendarTokenStore()
+        store.save(
+            CalendarTokenRecord.mint(
+                token="token-demo-disabled",
+                user_id="arn:aws:iam::123456789012:user/demo",
+                created_at="2026-09-01T10:15:00Z",
+            )
+        )
+
+        with (
+            patch("backend.runtime._calendar_token_store", return_value=store),
+            patch("backend.runtime._query_canvas_items_for_user", return_value=[]),
+        ):
+            response = self._invoke(
+                {
+                    "httpMethod": "GET",
+                    "path": "/calendar/token-demo-disabled.ics",
+                    "pathParameters": {"token": "token-demo-disabled"},
+                },
+                env={"DEMO_MODE": "false", "CALENDAR_FIXTURE_FALLBACK": "true"},
+            )
+
+        self.assertEqual(response["statusCode"], 200)
+        self.assertIn("BEGIN:VCALENDAR", response["body"])
+        self.assertNotIn("BEGIN:VEVENT", response["body"])
 
     def test_calendar_route_skips_fixture_fallback_when_flag_is_disabled(self) -> None:
         store = _MemoryCalendarTokenStore()
@@ -677,7 +840,7 @@ class RuntimeHandlerTests(unittest.TestCase):
 
         with (
             patch("backend.runtime._calendar_token_store", return_value=store),
-            patch("backend.runtime._scan_canvas_items_for_user", return_value=[]),
+            patch("backend.runtime._query_canvas_items_for_user", return_value=[]),
         ):
             response = self._invoke(
                 {
