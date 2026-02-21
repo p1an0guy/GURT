@@ -25,6 +25,17 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT";
 }
 
+type RecallRating = 1 | 2 | 3 | 4;
+
+const SHORTCUT_WARNING = "Must rate recall quality before continuing.";
+const SPACE_WARNING_THRESHOLD = 3;
+const RATING_LABELS: Record<RecallRating, string> = {
+  1: "Forgot",
+  2: "Hard",
+  3: "Good",
+  4: "Easy",
+};
+
 export default function DeckStudyPage() {
   const params = useParams<{ deckId: string }>();
   const deckId = typeof params.deckId === "string" ? params.deckId : "";
@@ -34,6 +45,8 @@ export default function DeckStudyPage() {
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [spacePressCount, setSpacePressCount] = useState(0);
+  const [shortcutWarning, setShortcutWarning] = useState("");
 
   const settings = useMemo(readRuntimeSettings, []);
   const client = useMemo(
@@ -56,7 +69,7 @@ export default function DeckStudyPage() {
   const activeCard = deck?.cards[activeIndex];
   const isFinished = deck !== null && activeIndex >= deck.cards.length;
 
-  async function handleRate(rating: 1 | 2 | 3 | 4 | 5): Promise<void> {
+  async function handleRate(rating: RecallRating): Promise<void> {
     if (!deck || !activeCard || isSubmittingReview) {
       return;
     }
@@ -74,13 +87,23 @@ export default function DeckStudyPage() {
       markDeckStudied(deck.deckId);
       setActiveIndex((prev) => prev + 1);
       setRevealed(false);
-      setMessage(`Saved rating ${rating}.`);
+      setSpacePressCount(0);
+      setShortcutWarning("");
+      setMessage(`Saved rating: ${RATING_LABELS[rating]}.`);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Failed to submit review");
     } finally {
       setIsSubmittingReview(false);
     }
   }
+
+  useEffect(() => {
+    if (!isFinished) {
+      return;
+    }
+    setSpacePressCount(0);
+    setShortcutWarning("");
+  }, [isFinished]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
@@ -94,6 +117,13 @@ export default function DeckStudyPage() {
 
       if (event.code === "Space") {
         event.preventDefault();
+        setSpacePressCount((prev) => {
+          const next = prev + 1;
+          if (next >= SPACE_WARNING_THRESHOLD) {
+            setShortcutWarning(SHORTCUT_WARNING);
+          }
+          return next;
+        });
         setRevealed((prev) => !prev);
         return;
       }
@@ -102,7 +132,7 @@ export default function DeckStudyPage() {
         return;
       }
 
-      let rating: 1 | 2 | 3 | 4 | 5 | null = null;
+      let rating: RecallRating | null = null;
       switch (event.code) {
         case "Digit1":
         case "Numpad1":
@@ -119,10 +149,6 @@ export default function DeckStudyPage() {
         case "Digit4":
         case "Numpad4":
           rating = 4;
-          break;
-        case "Digit5":
-        case "Numpad5":
-          rating = 5;
           break;
         default:
           break;
@@ -202,26 +228,25 @@ export default function DeckStudyPage() {
               </button>
 
               <p className="small">Rate recall quality:</p>
-              <p className="small">Shortcuts: Space = reveal/hide, 1-5 = rate</p>
+              <p className="small">Space: Reveal / Hide answer</p>
+              <p className="small">1: Forgot, 2: Hard, 3: Good, 4: Easy</p>
               <div className="rating-row">
                 <button type="button" onClick={() => void handleRate(1)} disabled={isSubmittingReview}>
-                  1
+                  Forgot
                 </button>
                 <button type="button" onClick={() => void handleRate(2)} disabled={isSubmittingReview}>
-                  2
+                  Hard
                 </button>
                 <button type="button" onClick={() => void handleRate(3)} disabled={isSubmittingReview}>
-                  3
+                  Good
                 </button>
                 <button type="button" onClick={() => void handleRate(4)} disabled={isSubmittingReview}>
-                  4
-                </button>
-                <button type="button" onClick={() => void handleRate(5)} disabled={isSubmittingReview}>
-                  5
+                  Easy
                 </button>
               </div>
 
               {message ? <p className="small">{message}</p> : null}
+              {shortcutWarning ? <p className="error-text">{shortcutWarning}</p> : null}
               {error ? <p className="error-text">{error}</p> : null}
             </div>
           ) : null}
