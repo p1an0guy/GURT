@@ -126,7 +126,18 @@ class FixtureMockHandler(BaseHTTPRequestHandler):
         self._write_json({"error": "not found"}, status=404)
 
     def do_POST(self) -> None:  # noqa: N802
-        """Handle deterministic POST route for review ack."""
+        """Handle deterministic POST routes used by smoke checks."""
+        if self.path == "/calendar/token":
+            self._write_json(
+                {
+                    "token": "smoke-calendar-token",
+                    "feedUrl": "/calendar/smoke-calendar-token.ics",
+                    "createdAt": "2026-09-01T10:15:00Z",
+                },
+                status=201,
+            )
+            return
+
         if self.path != "/study/review":
             self._write_json({"error": "not found"}, status=404)
             return
@@ -269,14 +280,10 @@ def main() -> None:
     course_id = os.getenv("COURSE_ID", "").strip() or "course-psych-101"
     initial_calendar_token = os.getenv("CALENDAR_TOKEN", "").strip()
     mint_calendar_token = os.getenv("MINT_CALENDAR_TOKEN", "0").strip() == "1"
-    calendar_token = (
-        initial_calendar_token or "demo-calendar-token"
-        if mock_mode
-        else resolve_calendar_token(
-            base_url=base_url,
-            initial_token=initial_calendar_token,
-            mint_if_missing=mint_calendar_token,
-        )
+    calendar_token = resolve_calendar_token(
+        base_url=base_url,
+        initial_token=initial_calendar_token,
+        mint_if_missing=mint_calendar_token,
     )
     ctx = SmokeContext(base_url=base_url, calendar_token=calendar_token, course_id=course_id)
 
