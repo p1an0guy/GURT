@@ -370,6 +370,16 @@ button:disabled {
   background: rgba(255, 255, 255, 0.75);
 }
 
+.answer-block {
+  min-height: 8.5rem;
+  max-height: 11rem;
+  overflow-y: auto;
+}
+
+.answer-block-hidden {
+  background: rgba(255, 255, 255, 0.55);
+}
+
 .warning-text {
   margin: 0;
   font-size: 0.82rem;
@@ -462,7 +472,7 @@ button:disabled {
 
 .rating-row {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.5rem;
 }
 

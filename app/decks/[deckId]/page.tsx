@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { createApiClient } from "../../../src/api/client.ts";
 import { getDeckById, markDeckStudied, type DeckRecord } from "../../../src/decks/store.ts";
@@ -48,8 +48,6 @@ export default function DeckStudyPage() {
   const [message, setMessage] = useState("");
   const [spacePressCount, setSpacePressCount] = useState(0);
   const [shortcutWarning, setShortcutWarning] = useState("");
-  const ratingSectionRef = useRef<HTMLDivElement | null>(null);
-  const revealAnchorTopRef = useRef<number | null>(null);
 
   const settings = useMemo(readRuntimeSettings, []);
   const client = useMemo(
@@ -71,20 +69,6 @@ export default function DeckStudyPage() {
 
   const activeCard = deck?.cards[activeIndex];
   const isFinished = deck !== null && activeIndex >= deck.cards.length;
-
-  function keepRatingsVisible(): void {
-    requestAnimationFrame(() => {
-      ratingSectionRef.current?.scrollIntoView({
-        block: "center",
-        behavior: "smooth",
-      });
-    });
-  }
-
-  function toggleRevealKeepingControlsAnchored(): void {
-    revealAnchorTopRef.current = ratingSectionRef.current?.getBoundingClientRect().top ?? null;
-    setRevealed((prev) => !prev);
-  }
 
   async function handleRate(rating: RecallRating): Promise<void> {
     if (!deck || !activeCard || isSubmittingReview) {
@@ -147,7 +131,7 @@ export default function DeckStudyPage() {
           }
           return next;
         });
-        toggleRevealKeepingControlsAnchored();
+        setRevealed((prev) => !prev);
         return;
       }
 
@@ -184,36 +168,6 @@ export default function DeckStudyPage() {
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [activeCard, deck, handleRate, isFinished, isSubmittingReview, router]);
-
-  useEffect(() => {
-    if (!shortcutWarning) {
-      return;
-    }
-    keepRatingsVisible();
-  }, [shortcutWarning]);
-
-  useLayoutEffect(() => {
-    const priorTop = revealAnchorTopRef.current;
-    if (priorTop === null) {
-      return;
-    }
-
-    revealAnchorTopRef.current = null;
-    const currentTop = ratingSectionRef.current?.getBoundingClientRect().top;
-    if (typeof currentTop !== "number") {
-      return;
-    }
-
-    const delta = currentTop - priorTop;
-    if (Math.abs(delta) < 1) {
-      return;
-    }
-
-    window.scrollBy({
-      top: delta,
-      behavior: "auto",
-    });
-  }, [revealed]);
 
   if (!deck) {
     return (
@@ -263,25 +217,23 @@ export default function DeckStudyPage() {
                 <p>{activeCard.prompt}</p>
               </div>
 
-              {revealed ? (
-                <div className="status-block">
-                  <p>
-                    <strong>Answer</strong>
-                  </p>
-                  <p>{activeCard.answer}</p>
-                </div>
-              ) : null}
+              <div className={`status-block answer-block${revealed ? "" : " answer-block-hidden"}`}>
+                <p>
+                  <strong>Answer</strong>
+                </p>
+                <p>{revealed ? activeCard.answer : "Answer hidden. Press Space or click Reveal Answer."}</p>
+              </div>
 
               <button
                 type="button"
                 onClick={() => {
-                  toggleRevealKeepingControlsAnchored();
+                  setRevealed((prev) => !prev);
                 }}
               >
                 {revealed ? "Hide Answer" : "Reveal Answer"}
               </button>
 
-              <div ref={ratingSectionRef}>
+              <div>
                 <p className="small">Rate recall quality:</p>
                 <p className="small">Space: Reveal / Hide answer</p>
                 <p className="small">1: Forgot, 2: Hard, 3: Good, 4: Easy</p>
