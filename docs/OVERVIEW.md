@@ -16,8 +16,8 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
   - DynamoDB for app state (courses/assignments, cards, reviews, topics, tokens).
   - S3 for uploaded source files.
 - **Text extraction:**
-  - Fast path: PDF text extraction
-  - Fallback: AWS Textract for scanned PDFs/images
+  - Fast path: PyMuPDF text extraction
+  - Fallback: AWS Textract async OCR when extracted text is insufficient (< 200 chars)
 - **AI features:**
   - Model provider: **Amazon Bedrock**.
   - RAG index over uploaded sources (chunk + embeddings + retrieval).
@@ -61,7 +61,8 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 1. User uploads syllabus + slides/notes (PDF, plaintext).
 2. Backend stores to S3, extracts text.
 3. Chunk, embed, and store chunk metadata + vectors.
-4. Parse syllabus to produce:
+4. Ingestion uses `POST /docs/ingest` (start) + `GET /docs/ingest/{jobId}` (poll) backed by Step Functions.
+5. Parse syllabus to produce:
    - Topics (topicId, name)
    - Mapping: examId -> [topicId...]
 

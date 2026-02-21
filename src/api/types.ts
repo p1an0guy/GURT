@@ -45,6 +45,29 @@ export interface CalendarTokenResponse {
   createdAt: string;
 }
 
+export interface IngestStartRequest {
+  docId: string;
+  courseId: string;
+  key: string;
+}
+
+export interface IngestStartResponse {
+  jobId: string;
+  status: "RUNNING";
+  updatedAt: string;
+}
+
+export type IngestStatus = "RUNNING" | "FINISHED" | "FAILED";
+
+export interface IngestStatusResponse {
+  jobId: string;
+  status: IngestStatus;
+  textLength: number;
+  usedTextract: boolean;
+  updatedAt: string;
+  error: string;
+}
+
 export interface TopicMastery {
   topicId: string;
   courseId: string;

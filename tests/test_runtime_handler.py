@@ -22,6 +22,18 @@ class _MemoryCalendarTokenStore:
         return self.rows.get(token)
 
 
+class _MemoryDocsTable:
+    def __init__(self) -> None:
+        self.rows: dict[str, dict] = {}
+
+    def put_item(self, Item: dict) -> None:  # noqa: N803 - boto3 shape
+        self.rows[str(Item["docId"])] = Item
+
+    def get_item(self, Key: dict) -> dict:  # noqa: N803 - boto3 shape
+        row = self.rows.get(str(Key["docId"]))
+        return {"Item": row} if row is not None else {}
+
+
 class RuntimeHandlerTests(unittest.TestCase):
     def _invoke(self, event: dict, env: dict[str, str] | None = None) -> dict:
         env_vars = {"DEMO_MODE": "true"}
@@ -282,6 +294,69 @@ class RuntimeHandlerTests(unittest.TestCase):
             response = self._invoke(event, env={"DEMO_MODE": "false"})
 
         self.assertEqual(response["statusCode"], 502)
+
+    def test_docs_ingest_start_returns_202_and_starts_step_function(self) -> None:
+        docs_table = _MemoryDocsTable()
+        sfn_client = unittest.mock.Mock()
+        event = {
+            "httpMethod": "POST",
+            "path": "/docs/ingest",
+            "body": json.dumps(
+                {
+                    "docId": "doc-123",
+                    "courseId": "course-psych-101",
+                    "key": "uploads/course-psych-101/doc-123/syllabus.pdf",
+                }
+            ),
+        }
+
+        with (
+            patch("backend.runtime._docs_table", return_value=docs_table),
+            patch("backend.runtime._stepfunctions_client", return_value=sfn_client),
+            patch("backend.runtime._ingest_state_machine_arn", return_value="arn:aws:states:::stateMachine:test"),
+        ):
+            response = self._invoke(
+                event,
+                env={"DEMO_MODE": "false", "UPLOADS_BUCKET": "bucket-name"},
+            )
+
+        self.assertEqual(response["statusCode"], 202)
+        body = json.loads(response["body"])
+        self.assertEqual(body["status"], "RUNNING")
+        self.assertTrue(body["jobId"].startswith("ingest-"))
+        sfn_client.start_execution.assert_called_once()
+
+    def test_docs_ingest_status_returns_404_for_missing_job(self) -> None:
+        docs_table = _MemoryDocsTable()
+        event = {"httpMethod": "GET", "path": "/docs/ingest/ingest-missing"}
+        with patch("backend.runtime._docs_table", return_value=docs_table):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 404)
+
+    def test_docs_ingest_status_returns_row(self) -> None:
+        docs_table = _MemoryDocsTable()
+        docs_table.put_item(
+            Item={
+                "docId": "ingest-abc",
+                "entityType": "IngestJob",
+                "jobId": "ingest-abc",
+                "status": "FINISHED",
+                "textLength": 321,
+                "usedTextract": True,
+                "updatedAt": "2026-09-01T10:15:00Z",
+                "error": "",
+            }
+        )
+        event = {"httpMethod": "GET", "path": "/docs/ingest/ingest-abc"}
+        with patch("backend.runtime._docs_table", return_value=docs_table):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 200)
+        body = json.loads(response["body"])
+        self.assertEqual(body["jobId"], "ingest-abc")
+        self.assertEqual(body["status"], "FINISHED")
+        self.assertEqual(body["textLength"], 321)
 
     def test_scheduled_canvas_sync_processes_all_connections_and_continues_on_user_failures(self) -> None:
         event = {"source": "aws.events", "detail-type": "Scheduled Event"}

@@ -8,6 +8,9 @@ import type {
   Card,
   Course,
   HealthStatus,
+  IngestStartRequest,
+  IngestStartResponse,
+  IngestStatusResponse,
   StudyReviewAck,
   TopicMastery,
 } from "./types.ts";
@@ -23,6 +26,7 @@ const courses = coursesRaw as Course[];
 const canvasItems = canvasItemsRaw as CanvasItem[];
 const cards = cardsRaw as Card[];
 const topics = topicsRaw as TopicFixture[];
+const ingestPollCountByJobId: Record<string, number> = {};
 
 function clone<T>(value: T): T {
   return structuredClone(value);
@@ -104,5 +108,28 @@ export function getFixtureCalendarTokenResponse(baseUrl: string): CalendarTokenR
     token,
     feedUrl,
     createdAt: "2026-09-02T09:00:00Z",
+  };
+}
+
+export function getFixtureIngestStartResponse(request: IngestStartRequest): IngestStartResponse {
+  const jobId = `ingest-${request.docId}`;
+  ingestPollCountByJobId[jobId] = 0;
+  return {
+    jobId,
+    status: "RUNNING",
+    updatedAt: "2026-09-02T09:00:00Z",
+  };
+}
+
+export function getFixtureIngestStatusResponse(jobId: string): IngestStatusResponse {
+  ingestPollCountByJobId[jobId] = (ingestPollCountByJobId[jobId] ?? 0) + 1;
+  const finished = ingestPollCountByJobId[jobId] >= 2;
+  return {
+    jobId,
+    status: finished ? "FINISHED" : "RUNNING",
+    textLength: finished ? 1024 : 0,
+    usedTextract: finished,
+    updatedAt: "2026-09-02T09:00:00Z",
+    error: "",
   };
 }

@@ -26,6 +26,9 @@ EXAMPLE_SCHEMA_MAP = {
     "CalendarTokenResponse.example.json": "CalendarTokenResponse.json",
     "UploadRequest.example.json": "UploadRequest.json",
     "UploadResponse.example.json": "UploadResponse.json",
+    "IngestStartRequest.example.json": "IngestStartRequest.json",
+    "IngestStartResponse.example.json": "IngestStartResponse.json",
+    "IngestStatusResponse.example.json": "IngestStatusResponse.json",
 }
 
 

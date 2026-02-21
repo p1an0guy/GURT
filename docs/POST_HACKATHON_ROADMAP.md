@@ -32,6 +32,7 @@ This document tracks features intentionally out of scope for hackathon delivery 
 
 ## Phase 5: Frontend and Operational Excellence
 
+- Add `react-dropzone` upload UX for PDF drag/drop, then call `/uploads` and `/docs/ingest`.
 - Add full UX for sync status, retry flows, and data freshness timestamps.
 - Add observability dashboards (CloudWatch, traces, error budgets).
 - Add staging/prod environment split with promotion pipeline.

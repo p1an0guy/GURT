@@ -128,6 +128,60 @@
         }
       }
     },
+    "/docs/ingest": {
+      "post": {
+        "operationId": "startDocsIngest",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IngestStartRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Ingest workflow started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestStartResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/docs/ingest/{jobId}": {
+      "get": {
+        "operationId": "getDocsIngestStatus",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "jobId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ingest workflow status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestStatusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/courses/{courseId}/items": {
       "get": {
         "operationId": "listCourseItems",
@@ -341,6 +395,15 @@
       },
       "UploadResponse": {
         "$ref": "./schemas/UploadResponse.json"
+      },
+      "IngestStartRequest": {
+        "$ref": "./schemas/IngestStartRequest.json"
+      },
+      "IngestStartResponse": {
+        "$ref": "./schemas/IngestStartResponse.json"
+      },
+      "IngestStatusResponse": {
+        "$ref": "./schemas/IngestStatusResponse.json"
       }
     }
   }
