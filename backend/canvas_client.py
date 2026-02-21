@@ -19,6 +19,10 @@ class CanvasApiError(RuntimeError):
     """Raised when Canvas API requests fail or return malformed payloads."""
 
 
+class CanvasAccessDeniedError(CanvasApiError):
+    """Raised when Canvas returns 403 (user not authorized)."""
+
+
 def normalize_canvas_base_url(base_url: str) -> str:
     """Normalize user-provided Canvas base URL to a host root URL."""
     normalized = base_url.strip().rstrip("/")
@@ -45,6 +49,8 @@ def _request_json(*, url: str, token: str, user_agent: str) -> tuple[Any, dict[s
             return payload, headers
     except HTTPError as exc:  # pragma: no cover - network path
         detail = exc.read().decode("utf-8", errors="ignore")
+        if exc.code == 403:
+            raise CanvasAccessDeniedError(f"canvas access denied (403) for {url}: {detail}") from exc
         raise CanvasApiError(f"canvas request failed ({exc.code}) for {url}: {detail}") from exc
     except URLError as exc:  # pragma: no cover - network path
         raise CanvasApiError(f"canvas request failed for {url}: {exc.reason}") from exc
