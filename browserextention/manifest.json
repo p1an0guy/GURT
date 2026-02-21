@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "Gurt — Canvas Chatbot",
+  "version": "1.0.0",
+  "description": "A chatbot side panel for Canvas that answers student questions about courses, assignments, and deadlines.",
+  "permissions": [
+    "sidePanel",
+    "storage",
+    "activeTab",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://canvas.calpoly.edu/*",
+    "https://hpthlfk5ql.execute-api.us-west-2.amazonaws.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://canvas.calpoly.edu/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "options_page": "options.html",
+  "action": {
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+    "default_title": "Open Gurt"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
