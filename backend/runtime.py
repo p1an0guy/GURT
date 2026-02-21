@@ -85,6 +85,12 @@ def _request_method(event: Mapping[str, Any]) -> str:
     return ""
 
 
+def _is_scheduled_event(event: Mapping[str, Any]) -> bool:
+    source = event.get("source")
+    detail_type = event.get("detail-type")
+    return source == "aws.events" and detail_type == "Scheduled Event"
+
+
 def _request_path(event: Mapping[str, Any]) -> str:
     raw_path = event.get("rawPath")
     if isinstance(raw_path, str) and raw_path:
@@ -352,6 +358,42 @@ def _read_canvas_connection(user_id: str) -> dict[str, Any] | None:
     return item
 
 
+def _list_canvas_connections() -> list[dict[str, str]]:
+    table = _canvas_data_table()
+    response = table.scan()
+    rows = list(response.get("Items", []))
+
+    while "LastEvaluatedKey" in response:
+        response = table.scan(ExclusiveStartKey=response["LastEvaluatedKey"])
+        rows.extend(response.get("Items", []))
+
+    connections: list[dict[str, str]] = []
+    for row in rows:
+        if row.get("entityType") != _ENTITY_CANVAS_CONNECTION:
+            continue
+        user_id = row.get("userId")
+        canvas_base_url = row.get("canvasBaseUrl")
+        access_token = row.get("accessToken")
+        if not (
+            isinstance(user_id, str)
+            and user_id
+            and isinstance(canvas_base_url, str)
+            and canvas_base_url
+            and isinstance(access_token, str)
+            and access_token
+        ):
+            continue
+        connections.append(
+            {
+                "userId": user_id,
+                "canvasBaseUrl": canvas_base_url,
+                "accessToken": access_token,
+            }
+        )
+
+    return connections
+
+
 def _upsert_canvas_connection(*, user_id: str, canvas_base_url: str, access_token: str, updated_at: str) -> None:
     table = _canvas_data_table()
     pk, sk = _canvas_connection_keys(user_id)
@@ -472,6 +514,54 @@ def _handle_canvas_sync(event: Mapping[str, Any]) -> Dict[str, Any]:
             "coursesUpserted": courses_upserted,
             "itemsUpserted": items_upserted,
             "failedCourseIds": failed_course_ids,
+            "updatedAt": updated_at,
+        },
+    )
+
+
+def _handle_scheduled_canvas_sync() -> Dict[str, Any]:
+    updated_at = _utc_now_rfc3339()
+    try:
+        connections = _list_canvas_connections()
+    except RuntimeError as exc:
+        return _json_response(500, {"error": str(exc)})
+
+    users_succeeded = 0
+    users_failed = 0
+    courses_total = 0
+    items_total = 0
+    failed_course_ids_by_user: dict[str, list[str]] = {}
+    user_errors: dict[str, str] = {}
+
+    for connection in connections:
+        user_id = connection["userId"]
+        try:
+            courses_upserted, items_upserted, failed_course_ids = _sync_canvas_assignments_for_user(
+                user_id=user_id,
+                canvas_base_url=connection["canvasBaseUrl"],
+                access_token=connection["accessToken"],
+                updated_at=updated_at,
+            )
+            users_succeeded += 1
+            courses_total += courses_upserted
+            items_total += items_upserted
+            if failed_course_ids:
+                failed_course_ids_by_user[user_id] = failed_course_ids
+        except (CanvasApiError, ModelValidationError, RuntimeError) as exc:
+            users_failed += 1
+            user_errors[user_id] = str(exc)
+
+    return _json_response(
+        200,
+        {
+            "scheduled": True,
+            "connectionsProcessed": len(connections),
+            "usersSucceeded": users_succeeded,
+            "usersFailed": users_failed,
+            "coursesUpserted": courses_total,
+            "itemsUpserted": items_total,
+            "failedCourseIdsByUser": failed_course_ids_by_user,
+            "userErrors": user_errors,
             "updatedAt": updated_at,
         },
     )
@@ -609,6 +699,9 @@ def _handle_calendar(token: str) -> Dict[str, Any]:
 
 def lambda_handler(event: Mapping[str, Any], context: Any) -> Dict[str, Any]:
     """API Gateway Lambda entrypoint for fixture-backed demo routes."""
+    if _is_scheduled_event(event):
+        return _handle_scheduled_canvas_sync()
+
     method = _request_method(event)
     path = _normalized_path(event, _request_path(event))
     path_params = _path_params(event)

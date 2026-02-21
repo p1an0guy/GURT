@@ -131,6 +131,7 @@ CDK context defaults for demo deploys (`infra/cdk.json`):
 - `calendarToken`: default seeded token used by `/calendar/{token}.ics`
 - `calendarTokenUserId`: optional seeded user lock for calendar feed requests
 - `calendarFixtureFallback`: when `1`, `/calendar/{token}.ics` falls back to fixture events if user schedule rows are empty (demo-only behavior)
+- `canvasSyncScheduleHours`: EventBridge periodic sync cadence for all stored Canvas connections (default `24`)
 
 Where to add them in GitHub:
 

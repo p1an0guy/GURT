@@ -54,6 +54,7 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 3. Backend stores Canvas items and exposes them to UI.
 4. UI shows timeline + flags an exam date (user can mark an item as an exam if needed).
 5. Current scaffold supports `POST /canvas/connect` + `POST /canvas/sync` with assignments-only Canvas sync (`published=true` and non-null `dueAt`), including per-course partial failure reporting.
+6. EventBridge runs periodic Canvas sync every 24 hours for all users with stored Canvas connections.
 
 ### Flow B — Upload materials and build knowledge base
 

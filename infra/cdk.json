@@ -7,6 +7,7 @@
     "calendarTokenMintingPath": "endpoint",
     "calendarToken": "demo-calendar-token",
     "calendarTokenUserId": "demo-user",
-    "calendarFixtureFallback": "1"
+    "calendarFixtureFallback": "1",
+    "canvasSyncScheduleHours": "24"
   }
 }
