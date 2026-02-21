@@ -166,15 +166,22 @@ def _retrieve_context(*, course_id: str, query: str, k: int = 8) -> list[dict[st
     return context[:k]
 
 
-def _invoke_model_json(prompt: str, *, max_tokens: int = 1800) -> Any:
+def _invoke_model_json(
+    prompt: str,
+    *,
+    max_tokens: int = 1800,
+    system: str | None = None,
+) -> Any:
     model_id = _require_env("BEDROCK_MODEL_ID")
     client = _bedrock_runtime()
-    body = {
+    body: dict[str, Any] = {
         "anthropic_version": "bedrock-2023-05-31",
         "max_tokens": max_tokens,
         "temperature": 0.2,
         "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}],
     }
+    if system:
+        body["system"] = [{"type": "text", "text": system}]
     try:
         response = client.invoke_model(
             modelId=model_id,
@@ -193,21 +200,38 @@ def _invoke_model_json(prompt: str, *, max_tokens: int = 1800) -> Any:
     chunks = payload.get("content", [])
     if not isinstance(chunks, list) or not chunks:
         raise GenerationError("model returned empty response")
-    text = chunks[0].get("text")
+    # Find the first text block (skip thinking blocks from newer models)
+    text = None
+    for chunk in chunks:
+        if isinstance(chunk, dict) and chunk.get("type") == "text":
+            text = chunk.get("text")
+            break
+    if text is None:
+        # Fallback: try first chunk regardless of type
+        text = chunks[0].get("text") if isinstance(chunks[0], dict) else None
     if not isinstance(text, str) or not text.strip():
         raise GenerationError("model returned non-text response")
-    # Try direct parse first, then strip markdown fences if needed
+    # Try direct parse first
     try:
         return json.loads(text)
     except json.JSONDecodeError:
         pass
     import re
+    # Try markdown fenced JSON
     md_match = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
     if md_match:
         try:
             return json.loads(md_match.group(1).strip())
         except json.JSONDecodeError:
             pass
+    # Try to find a JSON object anywhere in the text (model may think before responding)
+    brace_match = re.search(r"\{.*\}", text, re.DOTALL)
+    if brace_match:
+        try:
+            return json.loads(brace_match.group(0))
+        except json.JSONDecodeError:
+            pass
+    logger.error("model returned invalid JSON: %s", text[:500])
     raise GenerationError("model returned invalid JSON payload")
 
 
@@ -348,15 +372,32 @@ def format_canvas_items(items: list[dict[str, Any]]) -> str | None:
 
 
 def chat_answer(*, course_id: str, question: str, canvas_context: str | None = None) -> dict[str, Any]:
+    # Primary retrieval for the user's question
     context = _retrieve_context(course_id=course_id, query=question, k=10)
+    # Secondary retrieval for broad course context (schedule, syllabus overview)
+    extra = _retrieve_context(
+        course_id=course_id,
+        query="complete course schedule dates syllabus grading policy",
+        k=8,
+    )
+    # Merge, dedup by text content
+    seen_texts: set[str] = set()
+    merged: list[dict[str, str]] = []
+    for row in context + extra:
+        text_key = row["text"][:200]
+        if text_key not in seen_texts:
+            seen_texts.add(text_key)
+            merged.append(row)
+    context = merged
     if not context:
         raise GenerationError("no knowledge base context available for chat")
 
-    context_block = "\n\n".join(row["text"] for row in context[:10])
+    context_block = "\n\n---\n\n".join(row["text"] for row in context[:15])
     canvas_section = ""
     if canvas_context:
         canvas_section = f"\n\nCanvas assignment data:\n{canvas_context}"
-    prompt = (
+
+    system_msg = (
         "You are GURT (Generative Uni Revision Tool) 🍦 — a friendly, concise AI study buddy "
         "for a student at Cal Poly (California Polytechnic State University, San Luis Obispo). "
         "You have a fun yogurt-themed personality — upbeat, encouraging, and to the point. "
@@ -368,16 +409,22 @@ def chat_answer(*, course_id: str, question: str, canvas_context: str | None = N
         "C+ ≥ 77%, C ≥ 73%, C- ≥ 70%, D+ ≥ 67%, D ≥ 63%, D- ≥ 60%, F < 60% "
         "unless the syllabus specifies a different scale.\n"
         "- Use the provided course context AND your general knowledge.\n"
+        "- Read ALL the context carefully — information may be spread across multiple sections.\n"
         "- Use markdown: **bold** for emphasis, bullet lists for multiple items. Keep answers short.\n"
         "- Use emojis where they add clarity (✅ ❌ 📅 📊 etc.) but don't overdo it.\n"
         "- Only say you don't know if truly unanswerable.\n\n"
-        "Return ONLY a JSON object: "
-        '{"answer":"...","citations":["source1","source2"]}\n\n'
+        "CRITICAL: Your entire response must be a single valid JSON object and nothing else. "
+        "No thinking, no explanation, no preamble — just the JSON.\n"
+        "Format: "
+        '{"answer":"your answer here with markdown","citations":["source1","source2"]}'
+    )
+
+    prompt = (
         f"Question: {question}\n\n"
         f"Course context:\n{context_block}"
         f"{canvas_section}"
     )
-    payload = _invoke_model_json(prompt, max_tokens=4096)
+    payload = _invoke_model_json(prompt, max_tokens=4096, system=system_msg)
     if not isinstance(payload, dict):
         raise GenerationError("chat model response must be an object")
 
