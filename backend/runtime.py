@@ -690,7 +690,7 @@ def _handle_scheduled_canvas_sync() -> Dict[str, Any]:
     )
 
 
-def _scan_canvas_items_for_user(user_id: str) -> list[dict[str, Any]]:
+def _query_canvas_items_for_user(user_id: str) -> list[dict[str, Any]]:
     table_name = os.getenv("CANVAS_DATA_TABLE", "").strip()
     if not table_name:
         return []
@@ -751,7 +751,7 @@ def _scan_canvas_items_for_user(user_id: str) -> list[dict[str, Any]]:
 
 
 def _load_schedule_items_for_user(user_id: str) -> list[dict[str, Any]]:
-    items = _scan_canvas_items_for_user(user_id)
+    items = _query_canvas_items_for_user(user_id)
     if items:
         return items
 

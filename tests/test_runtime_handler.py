@@ -642,7 +642,7 @@ class RuntimeHandlerTests(unittest.TestCase):
 
         with (
             patch("backend.runtime._calendar_token_store", return_value=store),
-            patch("backend.runtime._scan_canvas_items_for_user", return_value=[]),
+            patch("backend.runtime._query_canvas_items_for_user", return_value=[]),
         ):
             response = self._invoke(
                 {
@@ -668,7 +668,7 @@ class RuntimeHandlerTests(unittest.TestCase):
 
         with (
             patch("backend.runtime._calendar_token_store", return_value=store),
-            patch("backend.runtime._scan_canvas_items_for_user", return_value=[]),
+            patch("backend.runtime._query_canvas_items_for_user", return_value=[]),
         ):
             response = self._invoke(
                 {
@@ -695,7 +695,7 @@ class RuntimeHandlerTests(unittest.TestCase):
 
         with (
             patch("backend.runtime._calendar_token_store", return_value=store),
-            patch("backend.runtime._scan_canvas_items_for_user", return_value=[]),
+            patch("backend.runtime._query_canvas_items_for_user", return_value=[]),
         ):
             response = self._invoke(
                 {
