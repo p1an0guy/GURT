@@ -133,7 +133,11 @@ class ApiStack(Stack):
             handler="backend.ingest_workflow.finalize_handler",
             timeout=Duration.seconds(30),
             memory_size=256,
-            environment={"DOCS_TABLE": data_stack.docs_table.table_name},
+            environment={
+                "DOCS_TABLE": data_stack.docs_table.table_name,
+                "KNOWLEDGE_BASE_ID": knowledge_base_id,
+                "KNOWLEDGE_BASE_DATA_SOURCE_ID": knowledge_base_data_source_id,
+            },
         )
 
         data_stack.uploads_bucket.grant_read_write(app_api_handler)

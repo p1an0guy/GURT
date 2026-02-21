@@ -68,8 +68,9 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 2. Backend stores to S3, extracts text.
 3. Chunk, embed, and store chunk metadata + vectors.
 4. Ingestion uses `POST /docs/ingest` (start) + `GET /docs/ingest/{jobId}` (poll) backed by Step Functions.
-5. When materials are mirrored during Canvas sync and KB IDs are configured, backend starts a Bedrock KB ingestion job automatically.
-6. Parse syllabus to produce:
+5. When non-Canvas uploads finish Step Functions finalize and KB IDs are configured, backend starts a Bedrock KB ingestion job automatically.
+6. When materials are mirrored during Canvas sync and KB IDs are configured, backend starts a Bedrock KB ingestion job automatically.
+7. Parse syllabus to produce:
    - Topics (topicId, name)
    - Mapping: examId -> [topicId...]
 

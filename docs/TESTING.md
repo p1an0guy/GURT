@@ -110,7 +110,7 @@ Docs ingest workflow (Step Functions + PyMuPDF/Textract fallback + Bedrock KB):
 2. Start ingest: `POST /docs/ingest` with `{docId, courseId, key}`.
 3. Poll ingest status: `GET /docs/ingest/{jobId}` until `status` is `FINISHED` or `FAILED`.
 4. If PyMuPDF extraction yields fewer than 200 chars, workflow falls back to async Textract OCR.
-5. On successful finalize, Bedrock Knowledge Base `StartIngestionJob` is triggered automatically (no manual CLI). Set `KNOWLEDGE_BASE_ID` and `DATA_SOURCE_ID` in the IngestFinalizeHandler Lambda env (Console) for KB ingestion.
+5. On successful finalize, Bedrock Knowledge Base `StartIngestionJob` is triggered automatically (no manual CLI) when `KNOWLEDGE_BASE_ID` and `KNOWLEDGE_BASE_DATA_SOURCE_ID` are configured.
 6. Status response may include `kbIngestionJobId` (when trigger succeeded) or `kbIngestionError` (when trigger failed) for traceability.
 
 ## CDK infra synth and deploy (demo scaffold)

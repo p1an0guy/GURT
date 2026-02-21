@@ -24,7 +24,7 @@
    - `POST /uploads`: S3 upload flow (presign/direct).
    - `POST /docs/ingest`: extract text, chunk, embed, persist metadata.
    - KB ingestion auto-triggers after Canvas materials sync when `KNOWLEDGE_BASE_ID` + `KNOWLEDGE_BASE_DATA_SOURCE_ID` are configured.
-   - Next: trigger `StartIngestionJob` automatically after docs ingest finalize path (non-Canvas uploads).
+   - KB ingestion auto-triggers after Step Functions finalize for non-Canvas uploads (`POST /docs/ingest`) when KB IDs are configured.
    - Add citation structure for downstream flashcard/practice generation.
 
 4. Wire study/generation endpoints from scaffold to runtime
