@@ -1,4 +1,4 @@
-"""Canvas course and item domain models with DynamoDB mapping helpers."""
+"""Canvas course, item, and material models with DynamoDB mapping helpers."""
 
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ ATTR_GSI2_SK = "gsi2sk"
 
 ENTITY_COURSE = "CanvasCourse"
 ENTITY_ITEM = "CanvasItem"
+ENTITY_MATERIAL = "CanvasMaterial"
 
 
 class ModelValidationError(ValueError):
@@ -114,6 +115,19 @@ def user_due_sort_key(due_at: str, course_id: str, item_id: str) -> str:
     cid = _validate_non_empty_string(course_id, "courseId")
     iid = _validate_non_empty_string(item_id, "itemId")
     return f"DUE#{due}#COURSE#{cid}#ITEM#{iid}"
+
+
+def material_sort_key(canvas_file_id: str) -> str:
+    """Sort key for a mirrored Canvas material row."""
+    fid = _validate_non_empty_string(canvas_file_id, "canvasFileId")
+    return f"MATERIAL#{fid}"
+
+
+def material_updated_sort_key(updated_at: str, canvas_file_id: str) -> str:
+    """Stable sort key for course-level material ordering."""
+    stamp = _validate_date_time(updated_at, "updatedAt")
+    fid = _validate_non_empty_string(canvas_file_id, "canvasFileId")
+    return f"MATERIAL_UPDATED#{stamp}#MATERIAL#{fid}"
 
 
 @dataclass(frozen=True)
@@ -277,5 +291,115 @@ class CanvasItem:
                 "itemType": item.get("itemType"),
                 "dueAt": item.get("dueAt"),
                 "pointsPossible": item.get("pointsPossible"),
+            }
+        )
+
+
+@dataclass(frozen=True)
+class CanvasMaterial:
+    """Normalized Canvas file metadata for mirrored course materials."""
+
+    canvas_file_id: str
+    course_id: str
+    display_name: str
+    content_type: str
+    size_bytes: int
+    updated_at: str
+    download_url: str
+    s3_key: str
+
+    def __post_init__(self) -> None:
+        _validate_non_empty_string(self.canvas_file_id, "canvasFileId")
+        _validate_non_empty_string(self.course_id, "courseId")
+        _validate_non_empty_string(self.display_name, "displayName")
+        _validate_non_empty_string(self.content_type, "contentType")
+        if not isinstance(self.size_bytes, int) or isinstance(self.size_bytes, bool) or self.size_bytes < 0:
+            raise ModelValidationError("sizeBytes: expected integer >= 0")
+        _validate_date_time(self.updated_at, "updatedAt")
+        _validate_non_empty_string(self.download_url, "downloadUrl")
+        _validate_non_empty_string(self.s3_key, "s3Key")
+
+    @classmethod
+    def from_api_dict(cls, payload: Mapping[str, Any]) -> "CanvasMaterial":
+        """Build model from normalized Canvas file metadata payload."""
+        required = {
+            "canvasFileId",
+            "courseId",
+            "displayName",
+            "contentType",
+            "sizeBytes",
+            "updatedAt",
+            "downloadUrl",
+            "s3Key",
+        }
+        _validate_required_exact_keys(payload, required, "CanvasMaterial")
+        return cls(
+            canvas_file_id=payload["canvasFileId"],
+            course_id=payload["courseId"],
+            display_name=payload["displayName"],
+            content_type=payload["contentType"],
+            size_bytes=payload["sizeBytes"],
+            updated_at=payload["updatedAt"],
+            download_url=payload["downloadUrl"],
+            s3_key=payload["s3Key"],
+        )
+
+    def to_api_dict(self) -> dict[str, Any]:
+        """Serialize model with stable external field names."""
+        return {
+            "canvasFileId": self.canvas_file_id,
+            "courseId": self.course_id,
+            "displayName": self.display_name,
+            "contentType": self.content_type,
+            "sizeBytes": self.size_bytes,
+            "updatedAt": self.updated_at,
+            "downloadUrl": self.download_url,
+            "s3Key": self.s3_key,
+        }
+
+    def to_dynamodb_item(self, user_id: str, updated_at: str) -> dict[str, Any]:
+        """Serialize into DynamoDB attributes for material storage."""
+        uid = _validate_non_empty_string(user_id, "userId")
+        sync_stamp = _validate_date_time(updated_at, "updatedAt")
+        return {
+            ATTR_PK: item_partition_key(uid, self.course_id),
+            ATTR_SK: material_sort_key(self.canvas_file_id),
+            ATTR_ENTITY_TYPE: ENTITY_MATERIAL,
+            "userId": uid,
+            "canvasFileId": self.canvas_file_id,
+            "courseId": self.course_id,
+            "displayName": self.display_name,
+            "contentType": self.content_type,
+            "sizeBytes": self.size_bytes,
+            "canvasUpdatedAt": self.updated_at,
+            "downloadUrl": self.download_url,
+            "s3Key": self.s3_key,
+            ATTR_GSI1_PK: item_partition_key(uid, self.course_id),
+            ATTR_GSI1_SK: material_updated_sort_key(self.updated_at, self.canvas_file_id),
+            ATTR_UPDATED_AT: sync_stamp,
+        }
+
+    @classmethod
+    def from_dynamodb_item(
+        cls,
+        item: Mapping[str, Any],
+        expected_user_id: str | None = None,
+        expected_course_id: str | None = None,
+    ) -> "CanvasMaterial":
+        """Build model from DynamoDB attributes with optional key checks."""
+        if expected_user_id is not None and expected_course_id is not None:
+            expected_pk = item_partition_key(expected_user_id, expected_course_id)
+            if item.get(ATTR_PK) != expected_pk:
+                raise ModelValidationError("CanvasMaterial DynamoDB record has unexpected partition key")
+        return cls.from_api_dict(
+            {
+                "canvasFileId": item.get("canvasFileId"),
+                "courseId": item.get("courseId"),
+                "displayName": item.get("displayName"),
+                "contentType": item.get("contentType"),
+                "sizeBytes": int(item.get("sizeBytes", 0)),
+                "updatedAt": item.get("canvasUpdatedAt"),
+                "downloadUrl": item.get("downloadUrl"),
+                "s3Key": item.get("s3Key"),
             }
         )

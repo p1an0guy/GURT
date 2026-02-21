@@ -10,6 +10,7 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 - **Backend:** AWS **API Gateway + Lambda** (Lambda proxy integration).
 - **IaC scaffold:** AWS CDK (Python) under `infra/` with split stacks:
   - `GurtDataStack` for S3 + DynamoDB.
+  - `GurtKnowledgeBaseStack` for Bedrock Knowledge Base + OpenSearch Serverless vector store.
   - `GurtApiStack` for API Gateway + Lambda wiring.
 - **Deploy automation:** `./scripts/deploy.sh` runs build + CDK checks + bootstrap + deploy in one command.
 - **Storage:**
@@ -55,7 +56,10 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 2. Backend fetches courses + upcoming assignments/events.
 3. Backend stores Canvas items and exposes them to UI.
 4. UI shows timeline + flags an exam date (user can mark an item as an exam if needed).
-5. Current scaffold supports `POST /canvas/connect` + `POST /canvas/sync` with assignments-only Canvas sync (`published=true` and non-null `dueAt`), including per-course partial failure reporting.
+5. Current scaffold supports `POST /canvas/connect` + `POST /canvas/sync` with:
+   - assignments sync (`published=true` and non-null `dueAt`)
+   - published/visible course file sync (materials metadata + S3 mirror)
+   - per-course partial failure reporting (`failedCourseIds`)
 6. EventBridge runs periodic Canvas sync every 24 hours for all users with stored Canvas connections.
 
 ### Flow B — Upload materials and build knowledge base
@@ -64,7 +68,8 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 2. Backend stores to S3, extracts text.
 3. Chunk, embed, and store chunk metadata + vectors.
 4. Ingestion uses `POST /docs/ingest` (start) + `GET /docs/ingest/{jobId}` (poll) backed by Step Functions.
-5. Parse syllabus to produce:
+5. When materials are mirrored during Canvas sync and KB IDs are configured, backend starts a Bedrock KB ingestion job automatically.
+6. Parse syllabus to produce:
    - Topics (topicId, name)
    - Mapping: examId -> [topicId...]
 

@@ -5,7 +5,17 @@
   "description": "Response payload for Canvas sync completion",
   "type": "object",
   "additionalProperties": false,
-  "required": ["synced", "coursesUpserted", "itemsUpserted", "failedCourseIds", "updatedAt"],
+  "required": [
+    "synced",
+    "coursesUpserted",
+    "itemsUpserted",
+    "materialsUpserted",
+    "materialsMirrored",
+    "knowledgeBaseIngestionStarted",
+    "knowledgeBaseIngestionJobId",
+    "failedCourseIds",
+    "updatedAt"
+  ],
   "properties": {
     "synced": {
       "type": "boolean"
@@ -17,6 +27,20 @@
     "itemsUpserted": {
       "type": "integer",
       "minimum": 0
+    },
+    "materialsUpserted": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "materialsMirrored": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "knowledgeBaseIngestionStarted": {
+      "type": "boolean"
+    },
+    "knowledgeBaseIngestionJobId": {
+      "type": "string"
     },
     "failedCourseIds": {
       "type": "array",

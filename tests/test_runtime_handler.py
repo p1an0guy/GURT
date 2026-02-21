@@ -263,6 +263,14 @@ class RuntimeHandlerTests(unittest.TestCase):
                 "backend.runtime._sync_canvas_assignments_for_user",
                 return_value=(2, 3, ["42"]),
             ) as sync_rows,
+            patch(
+                "backend.runtime._sync_canvas_materials_for_user",
+                return_value=(4, 4, ["99"]),
+            ) as sync_materials,
+            patch(
+                "backend.runtime._start_knowledge_base_ingestion",
+                return_value=(True, "ingest-job-1"),
+            ),
         ):
             response = self._invoke(event, env={"DEMO_MODE": "false"})
 
@@ -271,8 +279,13 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertEqual(body["synced"], True)
         self.assertEqual(body["coursesUpserted"], 2)
         self.assertEqual(body["itemsUpserted"], 3)
-        self.assertEqual(body["failedCourseIds"], ["42"])
+        self.assertEqual(body["materialsUpserted"], 4)
+        self.assertEqual(body["materialsMirrored"], 4)
+        self.assertEqual(body["knowledgeBaseIngestionStarted"], True)
+        self.assertEqual(body["knowledgeBaseIngestionJobId"], "ingest-job-1")
+        self.assertEqual(body["failedCourseIds"], ["42", "99"])
         sync_rows.assert_called_once()
+        sync_materials.assert_called_once()
 
     def test_canvas_sync_returns_502_when_canvas_fetch_fails(self) -> None:
         event = {
@@ -289,6 +302,10 @@ class RuntimeHandlerTests(unittest.TestCase):
             patch(
                 "backend.runtime._sync_canvas_assignments_for_user",
                 side_effect=CanvasApiError("canvas request failed"),
+            ),
+            patch(
+                "backend.runtime._sync_canvas_materials_for_user",
+                return_value=(0, 0, []),
             ),
         ):
             response = self._invoke(event, env={"DEMO_MODE": "false"})
@@ -497,6 +514,14 @@ class RuntimeHandlerTests(unittest.TestCase):
                 "backend.runtime._sync_canvas_assignments_for_user",
                 side_effect=[(2, 7, ["42"]), CanvasApiError("invalid token")],
             ),
+            patch(
+                "backend.runtime._sync_canvas_materials_for_user",
+                return_value=(5, 5, []),
+            ),
+            patch(
+                "backend.runtime._start_knowledge_base_ingestion",
+                return_value=(True, "ingest-job-2"),
+            ),
         ):
             response = self._invoke(event, env={"DEMO_MODE": "false"})
 
@@ -508,6 +533,10 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertEqual(body["usersFailed"], 1)
         self.assertEqual(body["coursesUpserted"], 2)
         self.assertEqual(body["itemsUpserted"], 7)
+        self.assertEqual(body["materialsUpserted"], 5)
+        self.assertEqual(body["materialsMirrored"], 5)
+        self.assertEqual(body["knowledgeBaseIngestionStarted"], True)
+        self.assertEqual(body["knowledgeBaseIngestionJobId"], "ingest-job-2")
         self.assertEqual(body["failedCourseIdsByUser"]["user-1"], ["42"])
         self.assertIn("user-2", body["userErrors"])
 

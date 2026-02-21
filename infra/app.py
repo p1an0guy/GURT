@@ -20,7 +20,12 @@ env = cdk.Environment(
 stage_name = app.node.try_get_context("stageName") or "dev"
 demo_mode = app.node.try_get_context("demoMode") or "1"
 bedrock_model_id = app.node.try_get_context("bedrockModelId") or "us.anthropic.claude-sonnet-4-6"
-knowledge_base_id = app.node.try_get_context("knowledgeBaseId") or ""
+knowledge_base_id_context = app.node.try_get_context("knowledgeBaseId") or ""
+knowledge_base_id_env = os.getenv("KNOWLEDGE_BASE_ID", "")
+knowledge_base_data_source_id_context = app.node.try_get_context("knowledgeBaseDataSourceId") or ""
+knowledge_base_data_source_id_env = os.getenv("KNOWLEDGE_BASE_DATA_SOURCE_ID", "")
+create_kb_stack_context = app.node.try_get_context("createKnowledgeBaseStack") or "0"
+embedding_model_id = app.node.try_get_context("embeddingModelId") or "amazon.titan-embed-text-v2:0"
 calendar_token_minting_path = app.node.try_get_context("calendarTokenMintingPath") or "endpoint"
 calendar_token = app.node.try_get_context("calendarToken") or "demo-calendar-token"
 calendar_token_user_id = app.node.try_get_context("calendarTokenUserId") or "demo-user"
@@ -33,6 +38,27 @@ data_stack = DataStack(
     env=env,
 )
 
+knowledge_base_stack = None
+knowledge_base_id = (knowledge_base_id_env or knowledge_base_id_context).strip()
+knowledge_base_data_source_id = (
+    knowledge_base_data_source_id_env or knowledge_base_data_source_id_context
+).strip()
+create_kb_stack = str(create_kb_stack_context).strip().lower() in {"1", "true", "yes", "on"}
+if create_kb_stack and not knowledge_base_id:
+    from stacks.knowledge_base_stack import KnowledgeBaseStack
+
+    knowledge_base_stack = KnowledgeBaseStack(
+        app,
+        "GurtKnowledgeBaseStack",
+        env=env,
+        data_stack=data_stack,
+        stage_name=stage_name,
+        embedding_model_id=embedding_model_id,
+    )
+    knowledge_base_stack.add_dependency(data_stack)
+    knowledge_base_id = knowledge_base_stack.knowledge_base_id
+    knowledge_base_data_source_id = knowledge_base_stack.data_source_id
+
 api_stack = ApiStack(
     app,
     "GurtApiStack",
@@ -42,6 +68,7 @@ api_stack = ApiStack(
     demo_mode=demo_mode,
     bedrock_model_id=bedrock_model_id,
     knowledge_base_id=knowledge_base_id,
+    knowledge_base_data_source_id=knowledge_base_data_source_id,
     calendar_token_minting_path=calendar_token_minting_path,
     calendar_token=calendar_token,
     calendar_token_user_id=calendar_token_user_id,
@@ -49,5 +76,7 @@ api_stack = ApiStack(
     canvas_sync_schedule_hours=canvas_sync_schedule_hours,
 )
 api_stack.add_dependency(data_stack)
+if knowledge_base_stack is not None:
+    api_stack.add_dependency(knowledge_base_stack)
 
 app.synth()

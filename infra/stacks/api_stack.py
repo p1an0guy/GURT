@@ -30,6 +30,7 @@ class ApiStack(Stack):
         demo_mode: str,
         bedrock_model_id: str,
         knowledge_base_id: str,
+        knowledge_base_data_source_id: str,
         calendar_token_minting_path: str,
         calendar_token: str,
         calendar_token_user_id: str,
@@ -59,6 +60,7 @@ class ApiStack(Stack):
             "DEMO_MODE": demo_mode,
             "BEDROCK_MODEL_ID": bedrock_model_id,
             "KNOWLEDGE_BASE_ID": knowledge_base_id,
+            "KNOWLEDGE_BASE_DATA_SOURCE_ID": knowledge_base_data_source_id,
             "CALENDAR_TOKEN_MINTING_PATH": calendar_token_minting_path,
             "CANVAS_DATA_TABLE": data_stack.canvas_data_table.table_name,
             "CALENDAR_TOKENS_TABLE": data_stack.calendar_tokens_table.table_name,
@@ -76,7 +78,7 @@ class ApiStack(Stack):
             runtime=lambda_.Runtime.PYTHON_3_12,
             code=lambda_code,
             handler="backend.runtime.lambda_handler",
-            timeout=Duration.seconds(15),
+            timeout=Duration.seconds(29),
             memory_size=256,
             environment=env,
         )
@@ -216,6 +218,7 @@ class ApiStack(Stack):
                     "bedrock:InvokeModel",
                     "bedrock:InvokeModelWithResponseStream",
                     "bedrock:Retrieve",
+                    "bedrock:StartIngestionJob",
                 ],
                 resources=["*"],
             )

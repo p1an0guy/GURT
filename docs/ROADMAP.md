@@ -6,6 +6,7 @@
 - Dev smoke workflow passes against deployed API.
 - Calendar token mint + ICS feed endpoints are live.
 - Temporary fallback is enabled for calendar ICS when no user schedule rows exist.
+- Canvas sync now includes published/visible course materials metadata + S3 mirroring, and can auto-start KB ingestion when KB IDs are configured.
 
 ## Next steps (execution order)
 
@@ -22,7 +23,8 @@
 3. Build Bedrock-backed ingestion + RAG scaffold
    - `POST /uploads`: S3 upload flow (presign/direct).
    - `POST /docs/ingest`: extract text, chunk, embed, persist metadata.
-   - Integrate Bedrock Knowledge Base (pre-provisioned KB) and point retrieval at extracted course documents stored from S3 ingest outputs.
+   - KB ingestion auto-triggers after Canvas materials sync when `KNOWLEDGE_BASE_ID` + `KNOWLEDGE_BASE_DATA_SOURCE_ID` are configured.
+   - Next: trigger `StartIngestionJob` automatically after docs ingest finalize path (non-Canvas uploads).
    - Add citation structure for downstream flashcard/practice generation.
 
 4. Wire study/generation endpoints from scaffold to runtime

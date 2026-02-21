@@ -86,7 +86,7 @@
     "/canvas/sync": {
       "post": {
         "operationId": "postCanvasSync",
-        "description": "Syncs Canvas course/items into DynamoDB for the authenticated caller.",
+        "description": "Syncs Canvas courses, due-date assignments, and published course files into AWS storage for the authenticated caller.",
         "responses": {
           "200": {
             "description": "Canvas sync completed",
