@@ -226,12 +226,24 @@ npm run build
 Run the Next.js demo shell that calls the typed API client:
 
 ```bash
-export NEXT_PUBLIC_API_BASE_URL="https://<api-id>.execute-api.<region>.amazonaws.com/dev"
-export NEXT_PUBLIC_USE_FIXTURES="true"   # switch to false for live API calls
 npm run dev
 ```
 
 Then open `http://localhost:3000`.
+
+Notes:
+
+- Node.js must be `>=18.18.0` (recommended: Node 20 LTS).
+- No frontend env vars are required for fixture mode.
+- Product dashboard at `/` intentionally hides runtime controls.
+- Runtime/API controls are available at `/dev-tools` for internal debugging.
+- Use these only for live API calls:
+
+```bash
+export NEXT_PUBLIC_API_BASE_URL="https://<api-id>.execute-api.<region>.amazonaws.com/dev"
+export NEXT_PUBLIC_USE_FIXTURES="false"
+npm run dev
+```
 
 If browser calls fail with `Failed to fetch`, verify deployed API has CORS enabled (OPTIONS preflight + response headers) and that `NEXT_PUBLIC_API_BASE_URL` matches the deployed stage URL exactly.
 
