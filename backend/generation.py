@@ -136,7 +136,7 @@ def _retrieve_response_with_fallback(*, client: Any, kb_id: str, query: str, num
 def _retrieve_context(*, course_id: str, query: str, k: int = 8) -> list[dict[str, str]]:
     kb_id = _require_env("KNOWLEDGE_BASE_ID")
     client = _bedrock_agent_runtime()
-    num_results = max(k * 4, k)
+    num_results = min(max(k * 5, 50), 100)
     try:
         response = _retrieve_response_with_fallback(
             client=client,
@@ -150,7 +150,8 @@ def _retrieve_context(*, course_id: str, query: str, k: int = 8) -> list[dict[st
 
     results = response.get("retrievalResults", [])
     print(f"[KB-DEBUG] course_id={course_id} raw_results={len(results)}")
-    context: list[dict[str, str]] = []
+    scoped: list[dict[str, str]] = []
+    all_valid: list[dict[str, str]] = []
     for row in results:
         content = row.get("content")
         text = content.get("text") if isinstance(content, dict) else None
@@ -158,11 +159,22 @@ def _retrieve_context(*, course_id: str, query: str, k: int = 8) -> list[dict[st
             print(f"[KB-DEBUG] skipped result: empty text")
             continue
         source = _extract_source(row.get("location"))
-        if not _source_in_course_scope(source=source, course_id=course_id):
+        entry = {"text": text.strip(), "source": source}
+        all_valid.append(entry)
+        if _source_in_course_scope(source=source, course_id=course_id):
+            scoped.append(entry)
+        else:
             print(f"[KB-DEBUG] filtered out: source={source} course_id={course_id}")
-            continue
-        context.append({"text": text.strip(), "source": source})
-    print(f"[KB-DEBUG] course_id={course_id} after_filter={len(context)} from_raw={len(results)}")
+    # If course scope filter eliminated everything, fall back to all results
+    # (handles course ID mismatches between extension and uploaded data)
+    if scoped:
+        context = scoped
+    elif all_valid:
+        print(f"[KB-DEBUG] course scope filter removed all results, falling back to all {len(all_valid)} results")
+        context = all_valid
+    else:
+        context = []
+    print(f"[KB-DEBUG] course_id={course_id} scoped={len(scoped)} all_valid={len(all_valid)} returning={len(context[:k])}")
     return context[:k]
 
 
@@ -171,13 +183,14 @@ def _invoke_model_json(
     *,
     max_tokens: int = 1800,
     system: str | None = None,
+    temperature: float = 0.2,
 ) -> Any:
     model_id = _require_env("BEDROCK_MODEL_ID")
     client = _bedrock_runtime()
     body: dict[str, Any] = {
         "anthropic_version": "bedrock-2023-05-31",
         "max_tokens": max_tokens,
-        "temperature": 0.2,
+        "temperature": temperature,
         "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}],
     }
     if system:
@@ -371,70 +384,103 @@ def format_canvas_items(items: list[dict[str, Any]]) -> str | None:
     return "\n".join(lines)
 
 
-def chat_answer(*, course_id: str, question: str, canvas_context: str | None = None) -> dict[str, Any]:
-    # Primary retrieval for the user's question
-    context = _retrieve_context(course_id=course_id, query=question, k=10)
-    # Secondary retrieval for broad course context (schedule, syllabus overview)
-    extra = _retrieve_context(
-        course_id=course_id,
-        query="complete course schedule dates syllabus grading policy",
-        k=8,
-    )
-    # Merge, dedup by text content
-    seen_texts: set[str] = set()
-    merged: list[dict[str, str]] = []
-    for row in context + extra:
-        text_key = row["text"][:200]
-        if text_key not in seen_texts:
-            seen_texts.add(text_key)
-            merged.append(row)
-    context = merged
-    if not context:
-        raise GenerationError("no knowledge base context available for chat")
+def _retrieve_and_generate(*, kb_id: str, model_arn: str, query: str, system_prompt: str) -> dict[str, Any]:
+    """Use Bedrock RetrieveAndGenerate for end-to-end RAG with maximum context."""
+    client = _bedrock_agent_runtime()
+    try:
+        response = client.retrieve_and_generate(
+            input={"text": query},
+            retrieveAndGenerateConfiguration={
+                "type": "KNOWLEDGE_BASE",
+                "knowledgeBaseConfiguration": {
+                    "knowledgeBaseId": kb_id,
+                    "modelArn": model_arn,
+                    "retrievalConfiguration": {
+                        "vectorSearchConfiguration": {
+                            "numberOfResults": 100,
+                        }
+                    },
+                    "generationConfiguration": {
+                        "inferenceConfig": {
+                            "textInferenceConfig": {
+                                "maxTokens": 8192,
+                                "temperature": 0.1,
+                                "topP": 0.95,
+                            }
+                        },
+                        "promptTemplate": {
+                            "textPromptTemplate": (
+                                f"{system_prompt}\n\n"
+                                "Here are the search results from the course knowledge base:\n"
+                                "$search_results$\n\n"
+                                "$output_format_instructions$"
+                            ),
+                        },
+                    },
+                    "orchestrationConfiguration": {
+                        "queryTransformationConfiguration": {
+                            "type": "QUERY_DECOMPOSITION",
+                        }
+                    },
+                },
+            },
+        )
+    except Exception as exc:
+        raise GenerationError(f"retrieve_and_generate failed: {exc}") from exc
+    return response
 
-    context_block = "\n\n---\n\n".join(row["text"] for row in context[:15])
+
+def chat_answer(*, course_id: str, question: str, canvas_context: str | None = None) -> dict[str, Any]:
+    kb_id = _require_env("KNOWLEDGE_BASE_ID")
+    model_arn = _require_env("BEDROCK_MODEL_ARN")
+
     canvas_section = ""
     if canvas_context:
-        canvas_section = f"\n\nCanvas assignment data:\n{canvas_context}"
+        canvas_section = f"\nCanvas assignment data:\n{canvas_context}\n"
 
-    system_msg = (
-        "You are GURT (Generative Uni Revision Tool) 🍦 — a friendly, concise AI study buddy "
+    system_prompt = (
+        "You are GURT (Generative Uni Revision Tool) — a friendly, concise AI study buddy "
         "for a student at Cal Poly (California Polytechnic State University, San Luis Obispo). "
         "You have a fun yogurt-themed personality — upbeat, encouraging, and to the point. "
-        "Occasionally use yogurt/frozen treat puns or the 🍦 emoji, but keep it subtle and natural.\n\n"
+        "Occasionally use yogurt/frozen treat puns or the ice cream emoji, but keep it subtle and natural.\n\n"
         "Rules:\n"
         "- Be CONCISE. Answer the question directly first, then add brief context only if needed.\n"
         "- Do math and calculations when asked (grades, averages, projections). Show the key numbers, not every step.\n"
-        "- Use Cal Poly grading scale: A ≥ 93%, A- ≥ 90%, B+ ≥ 87%, B ≥ 83%, B- ≥ 80%, "
-        "C+ ≥ 77%, C ≥ 73%, C- ≥ 70%, D+ ≥ 67%, D ≥ 63%, D- ≥ 60%, F < 60% "
+        "- Use Cal Poly grading scale: A >= 93%, A- >= 90%, B+ >= 87%, B >= 83%, B- >= 80%, "
+        "C+ >= 77%, C >= 73%, C- >= 70%, D+ >= 67%, D >= 63%, D- >= 60%, F < 60% "
         "unless the syllabus specifies a different scale.\n"
         "- Use the provided course context AND your general knowledge.\n"
-        "- Read ALL the context carefully — information may be spread across multiple sections.\n"
+        "- Read ALL the search results carefully — information may be spread across multiple chunks.\n"
         "- Use markdown: **bold** for emphasis, bullet lists for multiple items. Keep answers short.\n"
-        "- Use emojis where they add clarity (✅ ❌ 📅 📊 etc.) but don't overdo it.\n"
-        "- Only say you don't know if truly unanswerable.\n\n"
-        "CRITICAL: Your entire response must be a single valid JSON object and nothing else. "
-        "No thinking, no explanation, no preamble — just the JSON.\n"
-        "Format: "
-        '{"answer":"your answer here with markdown","citations":["source1","source2"]}'
+        "- Use emojis where they add clarity but don't overdo it.\n"
+        "- Only say you don't know if truly unanswerable.\n"
     )
 
-    prompt = (
-        f"Question: {question}\n\n"
-        f"Course context:\n{context_block}"
-        f"{canvas_section}"
-    )
-    payload = _invoke_model_json(prompt, max_tokens=4096, system=system_msg)
-    if not isinstance(payload, dict):
-        raise GenerationError("chat model response must be an object")
+    query = f"{question}{canvas_section}"
 
-    answer = str(payload.get("answer", "")).strip()
+    try:
+        response = _retrieve_and_generate(
+            kb_id=kb_id,
+            model_arn=model_arn,
+            query=query,
+            system_prompt=system_prompt,
+        )
+    except GenerationError:
+        raise
+    except Exception as exc:
+        raise GenerationError(f"chat retrieval failed: {exc}") from exc
+
+    output = response.get("output", {})
+    answer = output.get("text", "").strip()
     if not answer:
-        raise GenerationError("chat model response missing answer")
+        raise GenerationError("retrieve_and_generate returned empty response")
 
-    default_citations = [
-        str(row.get("source", "")).strip() for row in context[:4] if str(row.get("source", "")).strip()
-    ]
-    citations = _normalize_citations(payload.get("citations"), default_citations)
+    citations_list: list[str] = []
+    for citation_group in response.get("citations", []):
+        for ref in citation_group.get("retrievedReferences", []):
+            source = _extract_source(ref.get("location"))
+            if source and source not in citations_list:
+                citations_list.append(source)
 
-    return {"answer": answer, "citations": citations}
+    print(f"[RAG-DEBUG] answer_length={len(answer)} citations={len(citations_list)}")
+    return {"answer": answer, "citations": citations_list}
