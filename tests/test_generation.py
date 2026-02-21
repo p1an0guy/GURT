@@ -99,5 +99,74 @@ class RetrieveContextTests(unittest.TestCase):
         self.assertNotIn("filter", second_vector)
 
 
+class GenerationCitationTests(unittest.TestCase):
+    def test_generate_flashcards_falls_back_to_context_citations(self) -> None:
+        with (
+            patch(
+                "backend.generation._retrieve_context",
+                return_value=[
+                    {"text": "Context row 1", "source": "s3://bucket/uploads/170880/doc-a/ch1.pdf#chunk-1"},
+                    {"text": "Context row 2", "source": "s3://bucket/uploads/170880/doc-a/ch1.pdf#chunk-2"},
+                ],
+            ),
+            patch(
+                "backend.generation._invoke_model_json",
+                return_value=[
+                    {
+                        "id": "card-1",
+                        "courseId": "170880",
+                        "topicId": "topic-a",
+                        "prompt": "What is federalism?",
+                        "answer": "A division of powers.",
+                    }
+                ],
+            ),
+        ):
+            cards = generation.generate_flashcards(course_id="170880", num_cards=1)
+
+        self.assertEqual(len(cards), 1)
+        self.assertEqual(
+            cards[0]["citations"],
+            [
+                "s3://bucket/uploads/170880/doc-a/ch1.pdf#chunk-1",
+                "s3://bucket/uploads/170880/doc-a/ch1.pdf#chunk-2",
+            ],
+        )
+
+    def test_generate_practice_exam_prefers_model_citations(self) -> None:
+        with (
+            patch(
+                "backend.generation._retrieve_context",
+                return_value=[
+                    {"text": "Context row 1", "source": "s3://bucket/uploads/170880/doc-a/ch1.pdf#chunk-1"},
+                ],
+            ),
+            patch(
+                "backend.generation._invoke_model_json",
+                return_value={
+                    "courseId": "170880",
+                    "generatedAt": "2026-09-02T08:30:00Z",
+                    "questions": [
+                        {
+                            "id": "q-1",
+                            "prompt": "Which branch interprets laws?",
+                            "choices": ["Judicial", "Executive"],
+                            "answerIndex": 0,
+                            "citations": ["s3://bucket/uploads/170880/doc-a/ch1.pdf#chunk-9"],
+                        }
+                    ],
+                },
+            ),
+        ):
+            exam = generation.generate_practice_exam(course_id="170880", num_questions=1)
+
+        self.assertEqual(exam["courseId"], "170880")
+        self.assertEqual(len(exam["questions"]), 1)
+        self.assertEqual(
+            exam["questions"][0]["citations"],
+            ["s3://bucket/uploads/170880/doc-a/ch1.pdf#chunk-9"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -181,6 +181,13 @@ def _invoke_model_json(prompt: str) -> Any:
         raise GenerationError("model returned invalid JSON payload") from exc
 
 
+def _normalize_citations(raw: Any, fallback: list[str]) -> list[str]:
+    if not isinstance(raw, list):
+        return list(fallback)
+    citations = [str(value).strip() for value in raw if isinstance(value, str) and value.strip()]
+    return citations or list(fallback)
+
+
 def generate_flashcards(*, course_id: str, num_cards: int) -> list[dict[str, Any]]:
     context = _retrieve_context(
         course_id=course_id,
@@ -193,7 +200,8 @@ def generate_flashcards(*, course_id: str, num_cards: int) -> list[dict[str, Any
     prompt = (
         "Return ONLY JSON array. No markdown.\n"
         f"Create exactly {num_cards} flashcards using this schema: "
-        '[{"id":"card-1","courseId":"...","topicId":"topic-...","prompt":"...","answer":"..."}].\n'
+        '[{"id":"card-1","courseId":"...","topicId":"topic-...","prompt":"...","answer":"...",'
+        '"citations":["s3://..."]}].\n'
         f"courseId must be {course_id}.\n"
         "Use grounded facts only from context.\n"
         f"Context:\n{context_block}"
@@ -202,6 +210,9 @@ def generate_flashcards(*, course_id: str, num_cards: int) -> list[dict[str, Any
     if not isinstance(payload, list):
         raise GenerationError("flashcard model response must be an array")
 
+    default_citations = [
+        str(row.get("source", "")).strip() for row in context[:3] if str(row.get("source", "")).strip()
+    ]
     cards: list[dict[str, Any]] = []
     for index, row in enumerate(payload, start=1):
         if not isinstance(row, dict):
@@ -212,6 +223,7 @@ def generate_flashcards(*, course_id: str, num_cards: int) -> list[dict[str, Any
             "topicId": str(row.get("topicId", "topic-unknown")).strip() or "topic-unknown",
             "prompt": str(row.get("prompt", "")).strip(),
             "answer": str(row.get("answer", "")).strip(),
+            "citations": _normalize_citations(row.get("citations"), default_citations),
         }
         if not card["prompt"] or not card["answer"]:
             continue
@@ -234,7 +246,8 @@ def generate_practice_exam(*, course_id: str, num_questions: int) -> dict[str, A
     prompt = (
         "Return ONLY JSON object. No markdown.\n"
         "Schema: {\"courseId\":\"...\",\"generatedAt\":\"RFC3339Z\",\"questions\":["
-        "{\"id\":\"q1\",\"prompt\":\"...\",\"choices\":[\"...\",\"...\"],\"answerIndex\":0}"
+        "{\"id\":\"q1\",\"prompt\":\"...\",\"choices\":[\"...\",\"...\"],\"answerIndex\":0,"
+        "\"citations\":[\"s3://...\"]}"
         "]}\n"
         f"courseId must be {course_id}. Use exactly {num_questions} questions.\n"
         f"generatedAt must be {_utc_now_rfc3339()} format.\n"
@@ -249,6 +262,9 @@ def generate_practice_exam(*, course_id: str, num_questions: int) -> dict[str, A
     if not isinstance(questions_raw, list):
         raise GenerationError("practice exam must include questions array")
 
+    default_citations = [
+        str(row.get("source", "")).strip() for row in context[:3] if str(row.get("source", "")).strip()
+    ]
     questions: list[dict[str, Any]] = []
     for index, row in enumerate(questions_raw, start=1):
         if not isinstance(row, dict):
@@ -268,6 +284,7 @@ def generate_practice_exam(*, course_id: str, num_questions: int) -> dict[str, A
                 "prompt": prompt_text,
                 "choices": choices,
                 "answerIndex": answer_index,
+                "citations": _normalize_citations(row.get("citations"), default_citations),
             }
         )
 
