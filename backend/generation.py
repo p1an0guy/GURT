@@ -324,9 +324,9 @@ def chat_answer(*, course_id: str, question: str) -> dict[str, Any]:
     if not answer:
         raise GenerationError("chat model response missing answer")
 
-    citations_raw = payload.get("citations", [])
-    citations: list[str] = []
-    if isinstance(citations_raw, list):
-        citations = [str(value).strip() for value in citations_raw if str(value).strip()]
+    default_citations = [
+        str(row.get("source", "")).strip() for row in context[:4] if str(row.get("source", "")).strip()
+    ]
+    citations = _normalize_citations(payload.get("citations"), default_citations)
 
     return {"answer": answer, "citations": citations}
