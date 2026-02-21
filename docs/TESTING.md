@@ -213,8 +213,10 @@ Where to add them in GitHub:
 Runs typed API client tests and lightweight source linting for `src/api`.
 
 ```bash
+npm run typecheck
 npm run lint
 npm test
+npm run build
 ```
 
 ## Frontend browser shell (local)
