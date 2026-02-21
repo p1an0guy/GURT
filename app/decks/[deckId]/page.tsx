@@ -12,6 +12,19 @@ function nowIso(): string {
   return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  if (target.isContentEditable) {
+    return true;
+  }
+
+  const tagName = target.tagName;
+  return tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT";
+}
+
 export default function DeckStudyPage() {
   const params = useParams<{ deckId: string }>();
   const deckId = typeof params.deckId === "string" ? params.deckId : "";
@@ -68,6 +81,64 @@ export default function DeckStudyPage() {
       setIsSubmittingReview(false);
     }
   }
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent): void {
+      if (!deck || !activeCard || isFinished || isSubmittingReview) {
+        return;
+      }
+
+      if (isEditableTarget(event.target)) {
+        return;
+      }
+
+      if (event.code === "Space") {
+        event.preventDefault();
+        setRevealed((prev) => !prev);
+        return;
+      }
+
+      if (!revealed) {
+        return;
+      }
+
+      let rating: 1 | 2 | 3 | 4 | 5 | null = null;
+      switch (event.code) {
+        case "Digit1":
+        case "Numpad1":
+          rating = 1;
+          break;
+        case "Digit2":
+        case "Numpad2":
+          rating = 2;
+          break;
+        case "Digit3":
+        case "Numpad3":
+          rating = 3;
+          break;
+        case "Digit4":
+        case "Numpad4":
+          rating = 4;
+          break;
+        case "Digit5":
+        case "Numpad5":
+          rating = 5;
+          break;
+        default:
+          break;
+      }
+
+      if (rating !== null) {
+        event.preventDefault();
+        void handleRate(rating);
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [activeCard, deck, handleRate, isFinished, isSubmittingReview, revealed]);
 
   if (!deck) {
     return (
@@ -131,6 +202,7 @@ export default function DeckStudyPage() {
               </button>
 
               <p className="small">Rate recall quality:</p>
+              <p className="small">Shortcuts: Space = reveal/hide, 1-5 = rate</p>
               <div className="rating-row">
                 <button type="button" onClick={() => void handleRate(1)} disabled={isSubmittingReview}>
                   1
