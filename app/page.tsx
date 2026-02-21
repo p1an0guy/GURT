@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { createApiClient } from "../src/api/client.ts";
-import type { CanvasItem, Course, IngestStatusResponse, TopicMastery } from "../src/api/types.ts";
+import type { CanvasItem, CanvasSyncResponse, Course, IngestStatusResponse, TopicMastery } from "../src/api/types.ts";
 
 const DEFAULT_COURSE_ID = "course-psych-101";
 const DEFAULT_CALENDAR_TOKEN =
@@ -22,6 +22,9 @@ export default function HomePage() {
   );
   const [courseId, setCourseId] = useState(DEFAULT_COURSE_ID);
   const [calendarToken, setCalendarToken] = useState(DEFAULT_CALENDAR_TOKEN);
+  const [canvasBaseUrl, setCanvasBaseUrl] = useState("https://canvas.calpoly.edu/");
+  const [canvasAccessToken, setCanvasAccessToken] = useState("");
+  const [lastCanvasSync, setLastCanvasSync] = useState<CanvasSyncResponse | null>(null);
   const [ingestDocId, setIngestDocId] = useState("");
   const [ingestKey, setIngestKey] = useState("");
   const [ingestStatus, setIngestStatus] = useState<IngestStatusResponse | null>(null);
@@ -89,6 +92,41 @@ export default function HomePage() {
       setCalendarToken(minted.token);
       setCalendarUrl(minted.feedUrl);
       setMessage(`Minted calendar token at ${minted.createdAt}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unknown error");
+    }
+  }
+
+  async function handleCanvasConnect(): Promise<void> {
+    setMessage("");
+    try {
+      const response = await client.connectCanvas({
+        canvasBaseUrl,
+        accessToken: canvasAccessToken,
+      });
+      setMessage(`Canvas connected at ${response.updatedAt}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unknown error");
+    }
+  }
+
+  async function handleCanvasSync(): Promise<void> {
+    setMessage("");
+    try {
+      const sync = await client.syncCanvas();
+      setLastCanvasSync(sync);
+      const failed = sync.failedCourseIds.length > 0 ? ` (failed: ${sync.failedCourseIds.join(", ")})` : "";
+      setMessage(
+        `Canvas sync: ${sync.coursesUpserted} course(s), ${sync.itemsUpserted} item(s), ${sync.materialsMirrored} material(s) mirrored${failed}.`,
+      );
+      const [coursesResp, itemsResp, masteryResp] = await Promise.all([
+        client.listCourses(),
+        client.listCourseItems(courseId),
+        client.getStudyMastery(courseId),
+      ]);
+      setCourses(coursesResp);
+      setItems(itemsResp);
+      setMastery(masteryResp);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unknown error");
     }
@@ -181,6 +219,27 @@ export default function HomePage() {
             <button type="button" onClick={handleLoadOverview}>
               Load Data
             </button>
+            <label htmlFor="canvasBaseUrl">Canvas Base URL</label>
+            <input
+              id="canvasBaseUrl"
+              value={canvasBaseUrl}
+              onChange={(event) => setCanvasBaseUrl(event.target.value)}
+              placeholder="https://canvas.calpoly.edu/"
+            />
+            <label htmlFor="canvasAccessToken">Canvas Access Token</label>
+            <input
+              id="canvasAccessToken"
+              value={canvasAccessToken}
+              onChange={(event) => setCanvasAccessToken(event.target.value)}
+              placeholder="paste token for live sync"
+              type="password"
+            />
+            <button type="button" onClick={handleCanvasConnect}>
+              Connect Canvas
+            </button>
+            <button type="button" onClick={handleCanvasSync}>
+              Sync Canvas
+            </button>
             <button type="button" onClick={handleSubmitReview}>
               Send Review Event
             </button>
@@ -217,6 +276,12 @@ export default function HomePage() {
               Health: {health}
             </p>
             <p className="small">{message || "No requests yet."}</p>
+            {lastCanvasSync && (
+              <p className="small">
+                Last Canvas sync: {lastCanvasSync.updatedAt} ({lastCanvasSync.itemsUpserted} items,{" "}
+                {lastCanvasSync.materialsMirrored} mirrored)
+              </p>
+            )}
             {ingestStatus && (
               <p className="small">
                 Ingest job {ingestStatus.jobId}: {ingestStatus.status} (text {ingestStatus.textLength}, Textract{" "}

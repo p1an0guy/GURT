@@ -1,4 +1,6 @@
 import {
+  getFixtureCanvasConnect,
+  getFixtureCanvasSync,
   getFixtureCalendarIcs,
   getFixtureCalendarTokenResponse,
   getFixtureCourseItems,
@@ -11,8 +13,11 @@ import {
   getFixtureStudyToday,
 } from "./fixtures.ts";
 import type {
+  CanvasConnectRequest,
+  CanvasConnectResponse,
   CalendarTokenResponse,
   CanvasItem,
+  CanvasSyncResponse,
   Card,
   Course,
   HealthStatus,
@@ -35,6 +40,8 @@ declare const process:
 
 export interface ApiClient {
   getHealth(): Promise<HealthStatus>;
+  connectCanvas(request: CanvasConnectRequest): Promise<CanvasConnectResponse>;
+  syncCanvas(): Promise<CanvasSyncResponse>;
   listCourses(): Promise<Course[]>;
   listCourseItems(courseId: string): Promise<CanvasItem[]>;
   getStudyToday(courseId: string): Promise<Card[]>;
@@ -163,6 +170,28 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
       }
 
       return requestJson<HealthStatus>("/health");
+    },
+
+    async connectCanvas(request: CanvasConnectRequest): Promise<CanvasConnectResponse> {
+      if (useFixtures) {
+        return getFixtureCanvasConnect(request);
+      }
+      return requestJson<CanvasConnectResponse>("/canvas/connect", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(request),
+      });
+    },
+
+    async syncCanvas(): Promise<CanvasSyncResponse> {
+      if (useFixtures) {
+        return getFixtureCanvasSync();
+      }
+      return requestJson<CanvasSyncResponse>("/canvas/sync", {
+        method: "POST",
+      });
     },
 
     async listCourses(): Promise<Course[]> {
