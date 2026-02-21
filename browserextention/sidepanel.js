@@ -72,10 +72,77 @@ async function sendMessage() {
   userInput.focus();
 }
 
+function renderMarkdown(text) {
+  // Escape HTML first to prevent XSS
+  const escaped = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  const lines = escaped.split("\n");
+  const out = [];
+  let inList = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // Headers
+    if (trimmed.startsWith("### ")) {
+      if (inList) { out.push("</ul>"); inList = false; }
+      out.push(`<h4>${trimmed.slice(4)}</h4>`);
+      continue;
+    }
+    if (trimmed.startsWith("## ")) {
+      if (inList) { out.push("</ul>"); inList = false; }
+      out.push(`<h3>${trimmed.slice(3)}</h3>`);
+      continue;
+    }
+
+    // List items (- or *)
+    if (/^[-*]\s/.test(trimmed)) {
+      if (!inList) { out.push("<ul>"); inList = true; }
+      out.push(`<li>${trimmed.slice(2)}</li>`);
+      continue;
+    }
+    // Numbered list items
+    if (/^\d+\.\s/.test(trimmed)) {
+      if (!inList) { out.push("<ol>"); inList = true; }
+      out.push(`<li>${trimmed.replace(/^\d+\.\s/, "")}</li>`);
+      continue;
+    }
+
+    if (inList) {
+      out.push(inList ? "</ul>" : "</ol>");
+      inList = false;
+    }
+
+    // Empty line = paragraph break
+    if (trimmed === "") {
+      out.push("<br>");
+      continue;
+    }
+
+    out.push(`<p>${trimmed}</p>`);
+  }
+  if (inList) out.push("</ul>");
+
+  // Inline formatting
+  let html = out.join("");
+  html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+  html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, "<em>$1</em>");
+
+  return html;
+}
+
 function appendMessage(role, text, save = true) {
   const div = document.createElement("div");
   div.className = `message ${role}`;
-  div.textContent = text;
+  if (role === "bot") {
+    div.innerHTML = renderMarkdown(text);
+  } else {
+    div.textContent = text;
+  }
   messagesContainer.appendChild(div);
   scrollToBottom();
 

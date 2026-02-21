@@ -244,7 +244,7 @@ class ChatCanvasContextTests(unittest.TestCase):
         prompt_text = invoke_mock.call_args.args[0]
         self.assertIn("Canvas assignment data:", prompt_text)
         self.assertIn("Midterm", prompt_text)
-        self.assertIn("canvas data", prompt_text)
+        self.assertIn("assignment data", prompt_text)
 
     def test_chat_answer_works_without_canvas_context(self) -> None:
         with (

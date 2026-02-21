@@ -78,6 +78,51 @@ body {
   border-bottom-left-radius: 4px;
 }
 
+/* Markdown rendering inside bot messages */
+.message.bot h3,
+.message.bot h4 {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 8px 0 4px;
+}
+
+.message.bot h3:first-child,
+.message.bot h4:first-child {
+  margin-top: 0;
+}
+
+.message.bot p {
+  margin: 2px 0;
+}
+
+.message.bot ul,
+.message.bot ol {
+  margin: 4px 0;
+  padding-left: 18px;
+}
+
+.message.bot li {
+  margin: 2px 0;
+}
+
+.message.bot code {
+  background: #f3f4f6;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 13px;
+  font-family: "SF Mono", Menlo, monospace;
+}
+
+.message.bot strong {
+  font-weight: 600;
+}
+
+.message.bot br {
+  display: block;
+  content: "";
+  margin: 4px 0;
+}
+
 .typing-indicator {
   align-self: flex-start;
   background: #fff;

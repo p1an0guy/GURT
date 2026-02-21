@@ -166,12 +166,12 @@ def _retrieve_context(*, course_id: str, query: str, k: int = 8) -> list[dict[st
     return context[:k]
 
 
-def _invoke_model_json(prompt: str) -> Any:
+def _invoke_model_json(prompt: str, *, max_tokens: int = 1800) -> Any:
     model_id = _require_env("BEDROCK_MODEL_ID")
     client = _bedrock_runtime()
     body = {
         "anthropic_version": "bedrock-2023-05-31",
-        "max_tokens": 1800,
+        "max_tokens": max_tokens,
         "temperature": 0.2,
         "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}],
     }
@@ -357,14 +357,25 @@ def chat_answer(*, course_id: str, question: str, canvas_context: str | None = N
     if canvas_context:
         canvas_section = f"\n\nCanvas assignment data:\n{canvas_context}"
     prompt = (
-        "Return ONLY JSON object. No markdown.\n"
-        'Schema: {"answer":"...","citations":["source1","source2"]}\n'
-        "Answer using only the provided context and canvas data. If unknown, say you cannot find it.\n"
-        f"Question: {question}\n"
-        f"Context:\n{context_block}"
+        "You are GURT (Generative Uni Revision Tool) 🍦 — a friendly, concise AI study buddy "
+        "for a student at Cal Poly (California Polytechnic State University, San Luis Obispo). "
+        "You have a fun yogurt-themed personality — upbeat, encouraging, and to the point. "
+        "Occasionally use yogurt/frozen treat puns or the 🍦 emoji, but keep it subtle and natural.\n\n"
+        "Rules:\n"
+        "- Be CONCISE. Answer the question directly first, then add brief context only if needed.\n"
+        "- Do math and calculations when asked (grades, averages, projections). Show the key numbers, not every step.\n"
+        "- Use standard grading: A ≥ 90%, B ≥ 80%, C ≥ 70%, D ≥ 60%, F < 60% unless the syllabus says otherwise.\n"
+        "- Use the provided course context AND your general knowledge.\n"
+        "- Use markdown: **bold** for emphasis, bullet lists for multiple items. Keep answers short.\n"
+        "- Use emojis where they add clarity (✅ ❌ 📅 📊 etc.) but don't overdo it.\n"
+        "- Only say you don't know if truly unanswerable.\n\n"
+        "Return ONLY a JSON object: "
+        '{"answer":"...","citations":["source1","source2"]}\n\n'
+        f"Question: {question}\n\n"
+        f"Course context:\n{context_block}"
         f"{canvas_section}"
     )
-    payload = _invoke_model_json(prompt)
+    payload = _invoke_model_json(prompt, max_tokens=4096)
     if not isinstance(payload, dict):
         raise GenerationError("chat model response must be an object")
 
