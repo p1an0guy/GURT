@@ -40,6 +40,19 @@ source .venv/bin/activate
 python scripts/test_uploads.py
 ```
 
+Run all unit tests (including ingest workflow and KB trigger tests):
+
+```bash
+source .venv/bin/activate
+python -m pytest -q
+```
+
+Or with unittest:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
 ## Smoke tests (local, mock mode)
 
 Runs the full smoke sequence without deployed lambdas by serving fixture-backed endpoints from an in-process mock server.
@@ -88,12 +101,14 @@ Canvas bootstrap for demo schedule rows:
    - Current live scope syncs published assignments with non-null due dates.
 3. Mint calendar token and fetch `/calendar/{token}.ics`.
 
-Docs ingest workflow (Step Functions + PyMuPDF/Textract fallback):
+Docs ingest workflow (Step Functions + PyMuPDF/Textract fallback + Bedrock KB):
 
 1. Upload source file via `POST /uploads` and complete S3 `PUT`.
 2. Start ingest: `POST /docs/ingest` with `{docId, courseId, key}`.
 3. Poll ingest status: `GET /docs/ingest/{jobId}` until `status` is `FINISHED` or `FAILED`.
 4. If PyMuPDF extraction yields fewer than 200 chars, workflow falls back to async Textract OCR.
+5. On successful finalize, Bedrock Knowledge Base `StartIngestionJob` is triggered automatically (no manual CLI). Set `KNOWLEDGE_BASE_ID` and `DATA_SOURCE_ID` in the IngestFinalizeHandler Lambda env (Console) for KB ingestion.
+6. Status response may include `kbIngestionJobId` (when trigger succeeded) or `kbIngestionError` (when trigger failed) for traceability.
 
 ## CDK infra synth and deploy (demo scaffold)
 

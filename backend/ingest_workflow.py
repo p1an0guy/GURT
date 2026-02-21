@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from typing import Any, Mapping
+
+logger = logging.getLogger(__name__)
 
 
 def _utc_now_rfc3339() -> str:
@@ -37,6 +41,12 @@ def _dynamodb_table() -> Any:
     if not table_name:
         raise RuntimeError("server misconfiguration: DOCS_TABLE missing")
     return boto3.resource("dynamodb").Table(table_name)
+
+
+def _bedrock_agent_client() -> Any:
+    import boto3
+
+    return boto3.client("bedrock-agent")
 
 
 def _read_s3_bytes(bucket: str, key: str) -> bytes:
@@ -89,6 +99,30 @@ def _persist_status(
             "updatedAt": now,
             "error": error,
         }
+    )
+
+
+def _persist_kb_ingestion_result(
+    job_id: str,
+    *,
+    ingestion_job_id: str | None = None,
+    ingestion_error: str | None = None,
+) -> None:
+    """Update the ingest job row with KB ingestion job id or error for traceability."""
+    table = _dynamodb_table()
+    now = _utc_now_rfc3339()
+    updates: list[str] = ["kbIngestionUpdatedAt = :now"]
+    values: dict[str, Any] = {":now": now}
+    if ingestion_job_id is not None:
+        updates.append("kbIngestionJobId = :jid")
+        values[":jid"] = ingestion_job_id
+    if ingestion_error is not None:
+        updates.append("kbIngestionError = :err")
+        values[":err"] = ingestion_error
+    table.update_item(
+        Key={"docId": job_id},
+        UpdateExpression="SET " + ", ".join(updates),
+        ExpressionAttributeValues=values,
     )
 
 
@@ -194,6 +228,35 @@ def finalize_handler(event: Mapping[str, Any], _context: Any) -> dict[str, Any]:
         used_textract=used_textract,
         error=error,
     )
+
+    if status == "FINISHED":
+        kb_id = os.getenv("KNOWLEDGE_BASE_ID", "").strip()
+        ds_id = os.getenv("DATA_SOURCE_ID", "").strip()
+        if not kb_id or not ds_id:
+            err_msg = "server misconfiguration: KNOWLEDGE_BASE_ID and DATA_SOURCE_ID required for KB ingestion"
+            logger.error(err_msg)
+            _persist_kb_ingestion_result(job_id, ingestion_error=err_msg)
+        else:
+            client_token = hashlib.sha256(
+                f"{source_key}:{len(text)}".encode()
+            ).hexdigest()
+            try:
+                response = _bedrock_agent_client().start_ingestion_job(
+                    knowledgeBaseId=kb_id,
+                    dataSourceId=ds_id,
+                    clientToken=client_token,
+                )
+                ingestion_job_id = response["ingestionJob"]["ingestionJobId"]
+                logger.info(
+                    "KB ingestion started for job %s: ingestionJobId=%s",
+                    job_id,
+                    ingestion_job_id,
+                )
+                _persist_kb_ingestion_result(job_id, ingestion_job_id=ingestion_job_id)
+            except Exception as exc:  # noqa: BLE001
+                err_msg = f"KB ingestion trigger failed: {exc}"
+                logger.exception(err_msg)
+                _persist_kb_ingestion_result(job_id, ingestion_error=err_msg)
 
     return {
         "jobId": job_id,

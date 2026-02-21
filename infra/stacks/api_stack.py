@@ -153,6 +153,12 @@ class ApiStack(Stack):
                     resources=["*"],
                 )
             )
+        ingest_finalize_handler.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["bedrock:StartIngestionJob"],
+                resources=["*"],
+            )
+        )
 
         ingest_extract_step = sfn_tasks.LambdaInvoke(
             self,
