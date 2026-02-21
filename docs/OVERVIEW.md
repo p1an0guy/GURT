@@ -79,9 +79,11 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 
 1. Generate flashcards from materials for selected course/exam/topics.
 2. Store cards with topicId and citations.
-3. “Today’s Plan” endpoint returns:
-   - Due cards (FSRS dueAt <= now)
-   - Plus exam-aware boosters (if exam soon or mastery low)
+3. “Today’s Plan” endpoint returns a deterministic queue:
+   - Due cards first (FSRS `dueAt <= now`), sorted by due time then card ID.
+   - If exam is near (`<= 7` days): include low-mastery topic boosters after due cards.
+     - Exam context is `examId` when provided; otherwise nearest upcoming exam in the course.
+   - Apply deterministic cap after ordering (due-first priority is preserved under cap).
 4. Review session:
    - User sees card
    - clicks rating (Again/Hard/Good/Easy equivalent -> 1..4)

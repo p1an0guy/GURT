@@ -38,6 +38,10 @@ _ENTITY_CANVAS_ITEM = "CanvasItem"
 _ENTITY_CANVAS_CONNECTION = "CanvasConnection"
 _ENTITY_INGEST_JOB = "IngestJob"
 _MATERIAL_FILENAME_SANITIZE = re.compile(r"[^A-Za-z0-9._-]+")
+_STUDY_TODAY_DEFAULT_COUNT = 5
+_STUDY_TODAY_MAX_COUNT = 50
+_STUDY_TODAY_NEAR_EXAM_DAYS = 7
+_STUDY_TODAY_LOW_MASTERY_THRESHOLD = 0.5
 
 
 @lru_cache(maxsize=1)
@@ -1026,10 +1030,16 @@ def _safe_timestamp_for_sort(value: str) -> str:
         return "9999-12-31T23:59:59+00:00"
 
 
-def _is_due_timestamp(value: str, now: datetime) -> bool:
+def _parse_rfc3339_utc(value: str) -> datetime | None:
     try:
-        due = datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
     except ValueError:
+        return None
+
+
+def _is_due_timestamp(value: str, now: datetime) -> bool:
+    due = _parse_rfc3339_utc(value)
+    if due is None:
         return True
     return due <= now
 
@@ -1104,6 +1114,55 @@ def _list_runtime_cards_for_course(course_id: str) -> list[dict[str, Any]]:
         )
     cards.sort(key=lambda row: (_safe_timestamp_for_sort(str(row.get("dueAt", ""))), str(row.get("id", ""))))
     return cards
+
+
+def _compute_topic_mastery(cards: list[dict[str, Any]]) -> dict[str, float]:
+    by_topic: dict[str, list[dict[str, Any]]] = {}
+    for row in cards:
+        topic_id = str(row["topicId"])
+        by_topic.setdefault(topic_id, []).append(row)
+
+    mastery_by_topic: dict[str, float] = {}
+    for topic_id, topic_cards in by_topic.items():
+        mastery_scores: list[float] = []
+        for row in topic_cards:
+            fsrs_state = row.get("fsrsState")
+            if not isinstance(fsrs_state, dict):
+                mastery_scores.append(0.0)
+                continue
+            stability = _safe_float(fsrs_state.get("stability"), 0.0)
+            mastery_scores.append(min(1.0, max(0.0, stability / 10.0)))
+        mastery_by_topic[topic_id] = sum(mastery_scores) / max(len(mastery_scores), 1)
+    return mastery_by_topic
+
+
+def _resolve_exam_due_at(
+    *,
+    items: list[dict[str, Any]],
+    exam_id: str | None,
+    now: datetime,
+) -> datetime | None:
+    exam_rows: list[tuple[datetime, str]] = []
+    for item in items:
+        if str(item.get("itemType", "")).lower() != "exam":
+            continue
+        item_id = str(item.get("id", "")).strip()
+        due_at = _parse_rfc3339_utc(str(item.get("dueAt", "")))
+        if not item_id or due_at is None:
+            continue
+        exam_rows.append((due_at, item_id))
+
+    if exam_id:
+        for due_at, item_id in exam_rows:
+            if item_id == exam_id:
+                return due_at
+        return None
+
+    upcoming = [(due_at, item_id) for due_at, item_id in exam_rows if due_at >= now]
+    if not upcoming:
+        return None
+    upcoming.sort(key=lambda row: (row[0].isoformat(), row[1]))
+    return upcoming[0][0]
 
 
 def _persist_generated_cards(cards: list[dict[str, Any]]) -> None:
@@ -1202,14 +1261,55 @@ def _update_card_review_state(*, payload: Mapping[str, Any], reviewed_at: str) -
     table.put_item(Item=row)
 
 
-def _runtime_study_today(course_id: str) -> list[dict[str, Any]]:
+def _runtime_study_today(
+    course_id: str,
+    *,
+    user_id: str | None = None,
+    exam_id: str | None = None,
+) -> list[dict[str, Any]]:
     cards = _list_runtime_cards_for_course(course_id)
     if not cards:
         return []
 
     now = datetime.now(timezone.utc)
     due_cards = [row for row in cards if _is_due_timestamp(str(row.get("dueAt", "")), now)]
-    chosen = due_cards if due_cards else cards[:5]
+    due_cards.sort(key=lambda row: (_safe_timestamp_for_sort(str(row.get("dueAt", ""))), str(row.get("id", ""))))
+    chosen: list[dict[str, Any]] = list(due_cards)
+
+    items: list[dict[str, Any]] = []
+    if user_id is not None:
+        try:
+            items = _query_canvas_course_items_for_user(user_id=user_id, course_id=course_id)
+        except RuntimeError:
+            items = []
+
+    exam_due_at = _resolve_exam_due_at(items=items, exam_id=exam_id, now=now)
+    near_exam = exam_due_at is not None and now <= exam_due_at <= now + timedelta(days=_STUDY_TODAY_NEAR_EXAM_DAYS)
+    if near_exam:
+        mastery_by_topic = _compute_topic_mastery(cards)
+        low_mastery_topics = {
+            topic_id
+            for topic_id, mastery in mastery_by_topic.items()
+            if mastery < _STUDY_TODAY_LOW_MASTERY_THRESHOLD
+        }
+        due_card_ids = {str(row.get("id", "")) for row in due_cards}
+        boosters = [
+            row
+            for row in cards
+            if str(row.get("id", "")) not in due_card_ids and str(row.get("topicId", "")) in low_mastery_topics
+        ]
+        boosters.sort(
+            key=lambda row: (
+                mastery_by_topic.get(str(row.get("topicId", "")), 1.0),
+                _safe_timestamp_for_sort(str(row.get("dueAt", ""))),
+                str(row.get("id", "")),
+            )
+        )
+        chosen.extend(boosters)
+
+    if not chosen:
+        chosen = cards[:_STUDY_TODAY_DEFAULT_COUNT]
+
     return [
         {
             "id": str(row["id"]),
@@ -1218,7 +1318,7 @@ def _runtime_study_today(course_id: str) -> list[dict[str, Any]]:
             "prompt": str(row["prompt"]),
             "answer": str(row["answer"]),
         }
-        for row in chosen[:50]
+        for row in chosen[:_STUDY_TODAY_MAX_COUNT]
     ]
 
 
@@ -1232,20 +1332,12 @@ def _runtime_study_mastery(course_id: str) -> list[dict[str, Any]]:
     for row in cards:
         topic_id = str(row["topicId"])
         by_topic.setdefault(topic_id, []).append(row)
+    mastery_by_topic = _compute_topic_mastery(cards)
 
     rows: list[dict[str, Any]] = []
     for topic_id, topic_cards in by_topic.items():
         due_cards = sum(1 for row in topic_cards if _is_due_timestamp(str(row.get("dueAt", "")), now))
-        mastery_scores: list[float] = []
-        for row in topic_cards:
-            fsrs_state = row.get("fsrsState")
-            if not isinstance(fsrs_state, dict):
-                mastery_scores.append(0.0)
-                continue
-            stability = _safe_float(fsrs_state.get("stability"), 0.0)
-            mastery_scores.append(min(1.0, max(0.0, stability / 10.0)))
-
-        mastery_level = round(sum(mastery_scores) / max(len(mastery_scores), 1), 4)
+        mastery_level = round(mastery_by_topic.get(topic_id, 0.0), 4)
         rows.append(
             {
                 "topicId": topic_id,
@@ -1681,12 +1773,18 @@ def lambda_handler(event: Mapping[str, Any], context: Any) -> Dict[str, Any]:
         if error is not None:
             return error
 
-        runtime_cards = _runtime_study_today(course_id)
+        query_params = _query_params(event)
+        exam_id = query_params.get("examId", "").strip() or None
+        user_id = _extract_authenticated_user_id(event)
+        if user_id is None and _is_demo_mode():
+            user_id = _demo_user_id()
+
+        runtime_cards = _runtime_study_today(course_id, user_id=user_id, exam_id=exam_id)
         if runtime_cards:
             return _text_response(200, json.dumps(runtime_cards), content_type="application/json")
 
         cards = [row for row in _load_fixtures()["cards"] if row.get("courseId") == course_id]
-        return _text_response(200, json.dumps(cards[:5]), content_type="application/json")
+        return _text_response(200, json.dumps(cards[:_STUDY_TODAY_DEFAULT_COUNT]), content_type="application/json")
 
     if method == "POST" and path == "/study/review":
         payload, error = _parse_json_body(event)
