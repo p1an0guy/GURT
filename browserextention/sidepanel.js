@@ -1,6 +1,7 @@
 const messagesContainer = document.getElementById("messages");
 const userInput = document.getElementById("userInput");
 const sendBtn = document.getElementById("sendBtn");
+const courseTabsContainer = document.getElementById("courseTabs");
 const scrapeBtn = document.getElementById("scrapeBtn");
 const retryScrapeBtn = document.getElementById("retryScrapeBtn");
 const scrapeStatusText = document.getElementById("scrapeStatusText");
@@ -16,6 +17,11 @@ const counterEls = {
 const SCRAPE_START_MESSAGE_TYPE = "SCRAPE_MODULES_START";
 const MAX_FILE_ROWS = 200;
 
+// --- Per-course state ---
+let currentCourseId = null;
+let currentCourseName = null;
+let courseRegistry = []; // [{courseId, courseName}]
+
 const scrapeState = {
   phase: "idle",
   statusText: "Idle",
@@ -25,13 +31,8 @@ const scrapeState = {
 
 renderScrapeUI();
 
-// Load chat history on open
-chrome.storage.local.get("chatHistory", ({ chatHistory }) => {
-  if (chatHistory && chatHistory.length > 0) {
-    chatHistory.forEach(msg => appendMessage(msg.role, msg.text, false));
-    scrollToBottom();
-  }
-});
+// Initialize: load course registry, detect current course, load chat
+initCourseContext();
 
 sendBtn.addEventListener("click", sendMessage);
 if (scrapeBtn) {
@@ -61,6 +62,11 @@ chrome.runtime.onMessage.addListener((message) => {
 
   const payload = extractPayload(message);
   switch (message.type) {
+    case "COURSE_CHANGED":
+      if (message.courseId) {
+        switchCourse(message.courseId, message.courseName || `Course ${message.courseId}`);
+      }
+      break;
     case "SCRAPE_PROGRESS":
       handleScrapeProgress(payload);
       break;
@@ -580,11 +586,12 @@ async function sendMessage() {
     // Content script may not be available — that's fine
   }
 
-  // Send query to background service worker
+  // Send query to background service worker with explicit courseId
   try {
     const response = await chrome.runtime.sendMessage({
       type: "CHAT_QUERY",
       query: text,
+      courseId: currentCourseId,
       context: pageContext
     });
 
@@ -723,13 +730,146 @@ function scrollToBottom() {
 }
 
 function saveChatMessage(role, text) {
-  chrome.storage.local.get("chatHistory", ({ chatHistory }) => {
-    const history = chatHistory || [];
+  if (!currentCourseId) return;
+  const key = `chatHistory_${currentCourseId}`;
+  chrome.storage.local.get(key, (result) => {
+    const history = result[key] || [];
     history.push({ role, text });
-    // Keep last 100 messages
     if (history.length > 100) {
       history.splice(0, history.length - 100);
     }
-    chrome.storage.local.set({ chatHistory: history });
+    chrome.storage.local.set({ [key]: history });
   });
+}
+
+// --- Course tab management ---
+
+async function initCourseContext() {
+  // Load course registry
+  const stored = await chromeStorageGet("gurtCourses");
+  courseRegistry = stored.gurtCourses || [];
+
+  // Detect current course from active tab
+  let detectedCourseId = null;
+  let detectedCourseName = null;
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab && tab.url) {
+      const match = tab.url.match(/\/courses\/(\d+)/);
+      if (match) {
+        detectedCourseId = match[1];
+        // Try to get course name from content script
+        try {
+          const ctx = await chrome.tabs.sendMessage(tab.id, { type: "GET_CONTEXT" });
+          if (ctx && ctx.courseName) {
+            detectedCourseName = ctx.courseName;
+          }
+        } catch { /* content script not available */ }
+      }
+    }
+  } catch { /* tabs API unavailable */ }
+
+  // Migrate old flat chatHistory if needed
+  const oldData = await chromeStorageGet("chatHistory");
+  if (oldData.chatHistory && oldData.chatHistory.length > 0 && detectedCourseId) {
+    const newKey = `chatHistory_${detectedCourseId}`;
+    const existing = await chromeStorageGet(newKey);
+    if (!existing[newKey] || existing[newKey].length === 0) {
+      await chromeStorageSet({ [newKey]: oldData.chatHistory });
+    }
+    await chromeStorageRemove("chatHistory");
+  }
+
+  if (detectedCourseId) {
+    detectedCourseName = detectedCourseName || `Course ${detectedCourseId}`;
+    addCourseToRegistry(detectedCourseId, detectedCourseName);
+    currentCourseId = detectedCourseId;
+    currentCourseName = detectedCourseName;
+  } else if (courseRegistry.length > 0) {
+    // No Canvas page open — default to last used course
+    const last = courseRegistry[courseRegistry.length - 1];
+    currentCourseId = last.courseId;
+    currentCourseName = last.courseName;
+  }
+
+  renderCourseTabs();
+  if (currentCourseId) {
+    await loadChatHistory(currentCourseId);
+  }
+}
+
+function addCourseToRegistry(courseId, courseName) {
+  const existing = courseRegistry.find(c => c.courseId === courseId);
+  if (existing) {
+    if (courseName && courseName !== `Course ${courseId}`) {
+      existing.courseName = courseName;
+    }
+    return;
+  }
+  courseRegistry.push({ courseId, courseName: courseName || `Course ${courseId}` });
+  saveCourseRegistry();
+}
+
+function saveCourseRegistry() {
+  chromeStorageSet({ gurtCourses: courseRegistry });
+}
+
+function renderCourseTabs() {
+  if (!courseTabsContainer) return;
+  courseTabsContainer.innerHTML = "";
+  for (const course of courseRegistry) {
+    const btn = document.createElement("button");
+    btn.className = "course-tab" + (course.courseId === currentCourseId ? " active" : "");
+    btn.textContent = shortenCourseName(course.courseName);
+    btn.title = course.courseName;
+    btn.addEventListener("click", () => switchCourse(course.courseId, course.courseName));
+    courseTabsContainer.appendChild(btn);
+  }
+}
+
+function shortenCourseName(name) {
+  if (!name) return "Course";
+  // Try to extract "CSC 202" or "PHYS 141" style short names
+  const match = name.match(/([A-Z]{2,5}[\s-]\d{3}[A-Z]?)/i);
+  if (match) return match[1].toUpperCase();
+  // Truncate long names
+  return name.length > 20 ? name.slice(0, 18) + "..." : name;
+}
+
+async function switchCourse(courseId, courseName) {
+  if (courseId === currentCourseId) return;
+
+  currentCourseId = courseId;
+  currentCourseName = courseName || `Course ${courseId}`;
+  addCourseToRegistry(courseId, courseName);
+
+  // Clear current messages
+  messagesContainer.innerHTML = "";
+
+  // Load this course's chat history
+  await loadChatHistory(courseId);
+
+  // Update tabs UI
+  renderCourseTabs();
+}
+
+async function loadChatHistory(courseId) {
+  const key = `chatHistory_${courseId}`;
+  const data = await chromeStorageGet(key);
+  const history = data[key] || [];
+  if (history.length > 0) {
+    history.forEach(msg => appendMessage(msg.role, msg.text, false));
+    scrollToBottom();
+  }
+}
+
+// Chrome storage helpers (Promise-based)
+function chromeStorageGet(keys) {
+  return new Promise(resolve => chrome.storage.local.get(keys, resolve));
+}
+function chromeStorageSet(items) {
+  return new Promise(resolve => chrome.storage.local.set(items, resolve));
+}
+function chromeStorageRemove(keys) {
+  return new Promise(resolve => chrome.storage.local.remove(keys, resolve));
 }

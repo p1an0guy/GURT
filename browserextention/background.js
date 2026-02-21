@@ -60,6 +60,45 @@ const API_BASE_URL = CHAT_API_URL.replace(/\/chat\/?$/, "");
 
 let activeScrapeRun = null;
 
+// --- Course change detection ---
+// Notify side panel when the user navigates to a different Canvas course
+function notifyCourseChange(tabId, url) {
+  if (!url || !url.includes("canvas.calpoly.edu")) return;
+  const match = url.match(/\/courses\/(\d+)/);
+  if (!match) return;
+  const courseId = match[1];
+  // Try to get course name from content script
+  chrome.tabs.sendMessage(tabId, { type: "GET_CONTEXT" }).then(ctx => {
+    chrome.runtime.sendMessage({
+      type: "COURSE_CHANGED",
+      courseId,
+      courseName: (ctx && ctx.courseName) || `Course ${courseId}`
+    }).catch(() => { /* side panel not open */ });
+  }).catch(() => {
+    // Content script not ready, send without name
+    chrome.runtime.sendMessage({
+      type: "COURSE_CHANGED",
+      courseId,
+      courseName: `Course ${courseId}`
+    }).catch(() => { /* side panel not open */ });
+  });
+}
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.url) {
+    notifyCourseChange(tabId, changeInfo.url);
+  }
+});
+
+chrome.tabs.onActivated.addListener(async (activeInfo) => {
+  try {
+    const tab = await chrome.tabs.get(activeInfo.tabId);
+    if (tab && tab.url) {
+      notifyCourseChange(tab.id, tab.url);
+    }
+  } catch { /* tab may not be accessible */ }
+});
+
 // Handle messages from the side panel
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || typeof message.type !== "string") {
@@ -72,7 +111,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === "CHAT_QUERY") {
-    handleChatQuery(message.query, message.context).then(sendResponse);
+    handleChatQuery(message.query, message.context, message.courseId).then(sendResponse);
     return true; // Keep the message channel open for async response
   }
 
@@ -741,24 +780,31 @@ async function handleScrapeModulesStart(message) {
   }
 }
 
-async function handleChatQuery(query, pageContext) {
+async function handleChatQuery(query, pageContext, explicitCourseId) {
   try {
     const body = { question: query };
 
-    // Get courseId from the active tab URL directly
-    try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (tab && tab.url) {
-        const match = tab.url.match(/\/courses\/(\d+)/);
-        if (match) {
-          body.courseId = match[1];
-        }
-      }
-    } catch {
-      // tabs API unavailable — fall back to context
+    // Use explicit courseId from side panel (per-course tabs) first
+    if (explicitCourseId) {
+      body.courseId = explicitCourseId;
     }
 
-    // Fall back to content script context if we didn't get courseId
+    // Fall back to active tab URL
+    if (!body.courseId) {
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tab && tab.url) {
+          const match = tab.url.match(/\/courses\/(\d+)/);
+          if (match) {
+            body.courseId = match[1];
+          }
+        }
+      } catch {
+        // tabs API unavailable — fall back to context
+      }
+    }
+
+    // Fall back to content script context
     if (!body.courseId && pageContext && pageContext.courseId) {
       body.courseId = pageContext.courseId;
     }
