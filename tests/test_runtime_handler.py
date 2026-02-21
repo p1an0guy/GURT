@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import unittest
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 from backend.canvas_client import CanvasApiError
@@ -269,6 +270,261 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["id"], "card-runtime-1")
         self.assertEqual(rows[0]["prompt"], "Runtime prompt")
+
+    def test_study_today_includes_near_exam_boosters_in_deterministic_order(self) -> None:
+        now = datetime.now(timezone.utc)
+        due_early = (now - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        due_late = (now - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        not_due_early = (now + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        not_due_late = (now + timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        exam_due = (now + timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        cards_table = _MemoryCardsTable()
+        for row in (
+            {
+                "cardId": "card-due-1",
+                "entityType": "Card",
+                "courseId": "course-psych-101",
+                "topicId": "topic-high",
+                "prompt": "Due 1",
+                "answer": "A1",
+                "dueAt": due_early,
+                "fsrsState": {"stability": "9.0"},
+            },
+            {
+                "cardId": "card-due-2",
+                "entityType": "Card",
+                "courseId": "course-psych-101",
+                "topicId": "topic-high",
+                "prompt": "Due 2",
+                "answer": "A2",
+                "dueAt": due_late,
+                "fsrsState": {"stability": "9.0"},
+            },
+            {
+                "cardId": "card-boost-1",
+                "entityType": "Card",
+                "courseId": "course-psych-101",
+                "topicId": "topic-low",
+                "prompt": "Boost 1",
+                "answer": "B1",
+                "dueAt": not_due_early,
+                "fsrsState": {"stability": "1.0"},
+            },
+            {
+                "cardId": "card-boost-2",
+                "entityType": "Card",
+                "courseId": "course-psych-101",
+                "topicId": "topic-low",
+                "prompt": "Boost 2",
+                "answer": "B2",
+                "dueAt": not_due_late,
+                "fsrsState": {"stability": "1.0"},
+            },
+            {
+                "cardId": "card-non-boost",
+                "entityType": "Card",
+                "courseId": "course-psych-101",
+                "topicId": "topic-high",
+                "prompt": "Non boost",
+                "answer": "C1",
+                "dueAt": not_due_early,
+                "fsrsState": {"stability": "9.0"},
+            },
+        ):
+            cards_table.put_item(Item=row)
+
+        event = {
+            "httpMethod": "GET",
+            "path": "/study/today",
+            "queryStringParameters": {"courseId": "course-psych-101"},
+            "requestContext": {"authorizer": {"principalId": "demo-user"}},
+        }
+        with (
+            patch("backend.runtime._cards_table", return_value=cards_table),
+            patch(
+                "backend.runtime._query_canvas_course_items_for_user",
+                return_value=[
+                    {
+                        "id": "exam-near",
+                        "courseId": "course-psych-101",
+                        "title": "Midterm",
+                        "itemType": "exam",
+                        "dueAt": exam_due,
+                        "pointsPossible": 100,
+                    }
+                ],
+            ),
+        ):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 200)
+        rows = json.loads(response["body"])
+        self.assertEqual([row["id"] for row in rows], ["card-due-1", "card-due-2", "card-boost-1", "card-boost-2"])
+
+    def test_study_today_does_not_include_boosters_when_exam_not_near(self) -> None:
+        now = datetime.now(timezone.utc)
+        due_at = (now - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        not_due = (now + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        far_exam = (now + timedelta(days=14)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        cards_table = _MemoryCardsTable()
+        cards_table.put_item(
+            Item={
+                "cardId": "card-due",
+                "entityType": "Card",
+                "courseId": "course-psych-101",
+                "topicId": "topic-high",
+                "prompt": "Due",
+                "answer": "A1",
+                "dueAt": due_at,
+                "fsrsState": {"stability": "9.0"},
+            }
+        )
+        cards_table.put_item(
+            Item={
+                "cardId": "card-possible-boost",
+                "entityType": "Card",
+                "courseId": "course-psych-101",
+                "topicId": "topic-low",
+                "prompt": "Low mastery",
+                "answer": "B1",
+                "dueAt": not_due,
+                "fsrsState": {"stability": "1.0"},
+            }
+        )
+
+        event = {
+            "httpMethod": "GET",
+            "path": "/study/today",
+            "queryStringParameters": {"courseId": "course-psych-101"},
+            "requestContext": {"authorizer": {"principalId": "demo-user"}},
+        }
+        with (
+            patch("backend.runtime._cards_table", return_value=cards_table),
+            patch(
+                "backend.runtime._query_canvas_course_items_for_user",
+                return_value=[
+                    {
+                        "id": "exam-far",
+                        "courseId": "course-psych-101",
+                        "title": "Final",
+                        "itemType": "exam",
+                        "dueAt": far_exam,
+                        "pointsPossible": 100,
+                    }
+                ],
+            ),
+        ):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 200)
+        rows = json.loads(response["body"])
+        self.assertEqual([row["id"] for row in rows], ["card-due"])
+
+    def test_study_today_exam_id_precedence_over_fallback_exam(self) -> None:
+        now = datetime.now(timezone.utc)
+        far_exam = (now + timedelta(days=20)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        near_exam = (now + timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        not_due = (now + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        cards_table = _MemoryCardsTable()
+        cards_table.put_item(
+            Item={
+                "cardId": "card-low-1",
+                "entityType": "Card",
+                "courseId": "course-psych-101",
+                "topicId": "topic-low",
+                "prompt": "Low mastery 1",
+                "answer": "A1",
+                "dueAt": not_due,
+                "fsrsState": {"stability": "1.0"},
+            }
+        )
+        cards_table.put_item(
+            Item={
+                "cardId": "card-low-2",
+                "entityType": "Card",
+                "courseId": "course-psych-101",
+                "topicId": "topic-low",
+                "prompt": "Low mastery 2",
+                "answer": "A2",
+                "dueAt": not_due,
+                "fsrsState": {"stability": "1.0"},
+            }
+        )
+
+        event = {
+            "httpMethod": "GET",
+            "path": "/study/today",
+            "queryStringParameters": {"courseId": "course-psych-101", "examId": "exam-far"},
+            "requestContext": {"authorizer": {"principalId": "demo-user"}},
+        }
+        with (
+            patch("backend.runtime._cards_table", return_value=cards_table),
+            patch(
+                "backend.runtime._query_canvas_course_items_for_user",
+                return_value=[
+                    {
+                        "id": "exam-near",
+                        "courseId": "course-psych-101",
+                        "title": "Quiz",
+                        "itemType": "exam",
+                        "dueAt": near_exam,
+                        "pointsPossible": 10,
+                    },
+                    {
+                        "id": "exam-far",
+                        "courseId": "course-psych-101",
+                        "title": "Final",
+                        "itemType": "exam",
+                        "dueAt": far_exam,
+                        "pointsPossible": 100,
+                    },
+                ],
+            ),
+        ):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 200)
+        rows = json.loads(response["body"])
+        # No due cards and selected exam is not near, so behavior remains fallback-first selection.
+        self.assertEqual([row["id"] for row in rows], ["card-low-1", "card-low-2"])
+
+    def test_study_today_cap_and_order_are_deterministic(self) -> None:
+        now = datetime.now(timezone.utc)
+        due_at = (now - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        cards_table = _MemoryCardsTable()
+        for index in range(70):
+            cards_table.put_item(
+                Item={
+                    "cardId": f"card-{index:03d}",
+                    "entityType": "Card",
+                    "courseId": "course-psych-101",
+                    "topicId": "topic-memory",
+                    "prompt": f"Prompt {index}",
+                    "answer": f"Answer {index}",
+                    "dueAt": due_at,
+                    "fsrsState": {"stability": "8.0"},
+                }
+            )
+
+        event = {
+            "httpMethod": "GET",
+            "path": "/study/today",
+            "queryStringParameters": {"courseId": "course-psych-101"},
+        }
+        with patch("backend.runtime._cards_table", return_value=cards_table):
+            first_response = self._invoke(event, env={"DEMO_MODE": "false"})
+            second_response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(first_response["statusCode"], 200)
+        self.assertEqual(second_response["statusCode"], 200)
+        first_rows = json.loads(first_response["body"])
+        second_rows = json.loads(second_response["body"])
+        self.assertEqual(len(first_rows), 50)
+        self.assertEqual([row["id"] for row in first_rows], [row["id"] for row in second_rows])
+        self.assertEqual([row["id"] for row in first_rows], [f"card-{index:03d}" for index in range(50)])
 
     def test_study_review_updates_runtime_fsrs_state(self) -> None:
         cards_table = _MemoryCardsTable()
