@@ -332,8 +332,18 @@ def _to_ics_datetime(value: str) -> str:
     return parsed.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
+def _parse_rfc3339_utc(value: str) -> datetime | None:
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
+    except ValueError:
+        return None
+
+
 def _resolve_event_window(item: Mapping[str, Any]) -> tuple[str, str]:
     due_at = str(item["dueAt"])
+    due_dt = _parse_rfc3339_utc(due_at)
+    if due_dt is None:
+        raise ValueError(f"invalid dueAt value: {due_at}")
 
     start_at_raw = item.get("startAt")
     if isinstance(start_at_raw, str) and start_at_raw.strip():
@@ -347,8 +357,8 @@ def _resolve_event_window(item: Mapping[str, Any]) -> tuple[str, str]:
     else:
         end_at = due_at
 
-    start_dt = datetime.fromisoformat(start_at.replace("Z", "+00:00")).astimezone(timezone.utc)
-    end_dt = datetime.fromisoformat(end_at.replace("Z", "+00:00")).astimezone(timezone.utc)
+    start_dt = _parse_rfc3339_utc(start_at) or due_dt
+    end_dt = _parse_rfc3339_utc(end_at) or due_dt
     if end_dt <= start_dt:
         end_dt = start_dt + timedelta(minutes=60)
 
