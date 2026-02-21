@@ -2,6 +2,10 @@
   "synced": true,
   "coursesUpserted": 2,
   "itemsUpserted": 3,
+  "materialsUpserted": 4,
+  "materialsMirrored": 4,
+  "knowledgeBaseIngestionStarted": true,
+  "knowledgeBaseIngestionJobId": "Z8A2P2VPRQ",
   "failedCourseIds": [],
   "updatedAt": "2026-02-20T23:10:10Z"
 }

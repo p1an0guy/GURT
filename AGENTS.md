@@ -5,7 +5,7 @@ This file is strict policy for all contributors and agents working in parallel o
 
 ## Stack Context
 - Backend: Python with `boto3`, deployed on AWS serverless infrastructure (API Gateway + Lambda).
-- IaC: AWS CDK in Python (`infra/`).
+- IaC: AWS CDK in Python (`infra/`) with split stacks (`GurtDataStack`, `GurtKnowledgeBaseStack`, `GurtApiStack`).
 - Data/storage: DynamoDB + S3.
 - Frontend: React/Next.js, deployed on AWS services.
 - AI provider: Amazon Bedrock.
@@ -101,8 +101,12 @@ When modifying API behavior or shapes, update all relevant files in one PR:
 - `GET /health`
 - `POST /canvas/connect`
 - `POST /canvas/sync`
+- `POST /uploads`
 - `POST /docs/ingest`
 - `GET /docs/ingest/{jobId}`
+- `POST /generate/flashcards`
+- `POST /generate/practice-exam`
+- `POST /chat`
 - `GET /courses`
 - `GET /courses/{courseId}/items`
 - `GET /study/today?courseId=...`

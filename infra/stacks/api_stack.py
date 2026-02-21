@@ -29,6 +29,8 @@ class ApiStack(Stack):
         stage_name: str,
         demo_mode: str,
         bedrock_model_id: str,
+        knowledge_base_id: str,
+        knowledge_base_data_source_id: str,
         calendar_token_minting_path: str,
         calendar_token: str,
         calendar_token_user_id: str,
@@ -57,6 +59,8 @@ class ApiStack(Stack):
         env = {
             "DEMO_MODE": demo_mode,
             "BEDROCK_MODEL_ID": bedrock_model_id,
+            "KNOWLEDGE_BASE_ID": knowledge_base_id,
+            "KNOWLEDGE_BASE_DATA_SOURCE_ID": knowledge_base_data_source_id,
             "CALENDAR_TOKEN_MINTING_PATH": calendar_token_minting_path,
             "CANVAS_DATA_TABLE": data_stack.canvas_data_table.table_name,
             "CALENDAR_TOKENS_TABLE": data_stack.calendar_tokens_table.table_name,
@@ -74,7 +78,7 @@ class ApiStack(Stack):
             runtime=lambda_.Runtime.PYTHON_3_12,
             code=lambda_code,
             handler="backend.runtime.lambda_handler",
-            timeout=Duration.seconds(15),
+            timeout=Duration.seconds(29),
             memory_size=256,
             environment=env,
         )
@@ -191,15 +195,16 @@ class ApiStack(Stack):
         )
 
         ingest_poll_choice = sfn.Choice(self, "IngestPollDone")
+        ingest_wait_poll_loop = ingest_wait_step.next(ingest_poll_textract_step).next(ingest_poll_choice)
         ingest_poll_choice.when(
             sfn.Condition.boolean_equals("$.done", True),
             ingest_finalize_step,
-        ).otherwise(ingest_wait_step.next(ingest_poll_textract_step).next(ingest_poll_choice))
+        ).otherwise(ingest_wait_step)
 
         ingest_choice = sfn.Choice(self, "IngestNeedsTextract")
         ingest_choice.when(
             sfn.Condition.boolean_equals("$.needsTextract", True),
-            ingest_start_textract_step.next(ingest_wait_step).next(ingest_poll_textract_step).next(ingest_poll_choice),
+            ingest_start_textract_step.next(ingest_wait_poll_loop),
         ).otherwise(ingest_finalize_step)
 
         ingest_definition = ingest_extract_step.next(ingest_choice)
@@ -213,11 +218,14 @@ class ApiStack(Stack):
         ingest_state_machine.grant_start_execution(app_api_handler)
         app_api_handler.add_environment("INGEST_STATE_MACHINE_ARN", ingest_state_machine.state_machine_arn)
 
-        # Bedrock integration is implemented in later handlers, but grant now so
-        # those code paths can be added without reshaping IAM in a follow-up.
         app_api_handler.add_to_role_policy(
             iam.PolicyStatement(
-                actions=["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+                actions=[
+                    "bedrock:InvokeModel",
+                    "bedrock:InvokeModelWithResponseStream",
+                    "bedrock:Retrieve",
+                    "bedrock:StartIngestionJob",
+                ],
                 resources=["*"],
             )
         )
@@ -255,6 +263,19 @@ class ApiStack(Stack):
         docs_ingest.add_method("POST", app_integration, authorization_type=apigateway.AuthorizationType.NONE)
         docs_ingest_job = docs_ingest.add_resource("{jobId}")
         docs_ingest_job.add_method("GET", app_integration, authorization_type=apigateway.AuthorizationType.NONE)
+
+        generate = self.rest_api.root.add_resource("generate")
+        generate_flashcards = generate.add_resource("flashcards")
+        generate_flashcards.add_method("POST", app_integration, authorization_type=apigateway.AuthorizationType.NONE)
+        generate_practice_exam = generate.add_resource("practice-exam")
+        generate_practice_exam.add_method(
+            "POST",
+            app_integration,
+            authorization_type=apigateway.AuthorizationType.NONE,
+        )
+
+        chat = self.rest_api.root.add_resource("chat")
+        chat.add_method("POST", app_integration, authorization_type=apigateway.AuthorizationType.NONE)
 
         study = self.rest_api.root.add_resource("study")
         study_today = study.add_resource("today")

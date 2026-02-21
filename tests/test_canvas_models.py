@@ -12,6 +12,7 @@ from studybuddy.models.canvas import (
     ATTR_GSI2_SK,
     ATTR_PK,
     ATTR_SK,
+    CanvasMaterial,
     CanvasItem,
     Course,
     ModelValidationError,
@@ -216,6 +217,47 @@ class CanvasItemModelTests(unittest.TestCase):
                 expected_user_id="demo-user",
                 expected_course_id="course-bio-220",
             )
+
+
+class CanvasMaterialModelTests(unittest.TestCase):
+    def test_canvas_material_round_trip_api_payload(self) -> None:
+        payload = {
+            "canvasFileId": "file-42",
+            "courseId": "course-psych-101",
+            "displayName": "Syllabus.pdf",
+            "contentType": "application/pdf",
+            "sizeBytes": 4096,
+            "updatedAt": "2026-09-01T10:15:00Z",
+            "downloadUrl": "https://canvas.calpoly.edu/files/42/download",
+            "s3Key": "canvas-materials/demo-user/course-psych-101/file-42/Syllabus.pdf",
+        }
+        model = CanvasMaterial.from_api_dict(payload)
+        self.assertEqual(model.to_api_dict(), payload)
+
+    def test_canvas_material_dynamodb_mapping(self) -> None:
+        model = CanvasMaterial(
+            canvas_file_id="file-42",
+            course_id="course-psych-101",
+            display_name="Syllabus.pdf",
+            content_type="application/pdf",
+            size_bytes=4096,
+            updated_at="2026-09-01T10:15:00Z",
+            download_url="https://canvas.calpoly.edu/files/42/download",
+            s3_key="canvas-materials/demo-user/course-psych-101/file-42/Syllabus.pdf",
+        )
+        record = model.to_dynamodb_item(
+            user_id="demo-user",
+            updated_at="2026-09-01T10:20:00Z",
+        )
+        self.assertEqual(record[ATTR_PK], item_partition_key("demo-user", "course-psych-101"))
+        self.assertEqual(record[ATTR_SK], "MATERIAL#file-42")
+        self.assertTrue(record[ATTR_GSI1_SK].startswith("MATERIAL_UPDATED#2026-09-01T10:15:00Z#"))
+        material = CanvasMaterial.from_dynamodb_item(
+            record,
+            expected_user_id="demo-user",
+            expected_course_id="course-psych-101",
+        )
+        self.assertEqual(material.canvas_file_id, "file-42")
 
 
 if __name__ == "__main__":

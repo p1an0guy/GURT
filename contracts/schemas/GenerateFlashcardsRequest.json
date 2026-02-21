@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "GenerateFlashcardsRequest.json",
+  "title": "GenerateFlashcardsRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["courseId"],
+  "properties": {
+    "courseId": {"type": "string", "minLength": 1},
+    "numCards": {"type": "integer", "minimum": 1, "maximum": 100}
+  }
+}

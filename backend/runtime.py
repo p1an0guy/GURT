@@ -12,7 +12,14 @@ from pathlib import Path
 from uuid import uuid4
 from typing import Any, Dict, Mapping
 
-from backend.canvas_client import CanvasApiError, fetch_active_courses, fetch_course_assignments
+from backend.canvas_client import (
+    CanvasApiError,
+    fetch_active_courses,
+    fetch_course_assignments,
+    fetch_course_files,
+    fetch_file_bytes,
+)
+from backend.generation import GenerationError, chat_answer, generate_flashcards, generate_practice_exam
 from backend import uploads
 from gurt.calendar_tokens.minting import (
     CalendarTokenMintingError,
@@ -20,7 +27,7 @@ from gurt.calendar_tokens.minting import (
     mint_calendar_token,
 )
 from gurt.calendar_tokens.repository import DynamoDbCalendarTokenStore
-from studybuddy.models.canvas import CanvasItem, Course, ModelValidationError
+from studybuddy.models.canvas import CanvasItem, CanvasMaterial, Course, ModelValidationError
 
 _ROOT_DIR = Path(__file__).resolve().parent.parent
 _FIXTURES_DIR = _ROOT_DIR / "fixtures"
@@ -28,6 +35,7 @@ _DEMO_MODE_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 _ENTITY_CANVAS_ITEM = "CanvasItem"
 _ENTITY_CANVAS_CONNECTION = "CanvasConnection"
 _ENTITY_INGEST_JOB = "IngestJob"
+_MATERIAL_FILENAME_SANITIZE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
 @lru_cache(maxsize=1)
@@ -343,6 +351,18 @@ def _stepfunctions_client() -> Any:
     return boto3.client("stepfunctions")
 
 
+def _s3_client() -> Any:
+    import boto3
+
+    return boto3.client("s3")
+
+
+def _bedrock_agent_client() -> Any:
+    import boto3
+
+    return boto3.client("bedrock-agent")
+
+
 def _calendar_token_store() -> DynamoDbCalendarTokenStore:
     table_name = os.getenv("CALENDAR_TOKENS_TABLE", "").strip()
     if not table_name:
@@ -492,6 +512,67 @@ def _get_ingest_job(job_id: str) -> dict[str, Any] | None:
     return item
 
 
+def _int_env(name: str, default_value: int) -> int:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default_value
+    try:
+        parsed = int(raw)
+    except ValueError:
+        return default_value
+    return parsed if parsed > 0 else default_value
+
+
+def _safe_material_filename(name: str) -> str:
+    cleaned = _MATERIAL_FILENAME_SANITIZE.sub("_", name.strip())
+    cleaned = cleaned.strip("._")
+    return cleaned or "material"
+
+
+def _material_s3_key(*, user_id: str, course_id: str, canvas_file_id: str, display_name: str) -> str:
+    safe_name = _safe_material_filename(display_name)
+    return f"canvas-materials/{user_id}/{course_id}/{canvas_file_id}/{safe_name}"
+
+
+def _start_knowledge_base_ingestion() -> tuple[bool, str]:
+    knowledge_base_id = os.getenv("KNOWLEDGE_BASE_ID", "").strip()
+    data_source_id = os.getenv("KNOWLEDGE_BASE_DATA_SOURCE_ID", "").strip()
+    if not knowledge_base_id or not data_source_id:
+        print(
+            "KB ingestion skipped: missing configuration",
+            {
+                "hasKnowledgeBaseId": bool(knowledge_base_id),
+                "hasDataSourceId": bool(data_source_id),
+            },
+        )
+        return False, ""
+
+    try:
+        response = _bedrock_agent_client().start_ingestion_job(
+            knowledgeBaseId=knowledge_base_id,
+            dataSourceId=data_source_id,
+            clientToken=str(uuid4()),
+        )
+    except Exception as exc:
+        print(
+            "KB ingestion start failed",
+            {
+                "knowledgeBaseId": knowledge_base_id,
+                "dataSourceId": data_source_id,
+                "error": str(exc),
+            },
+        )
+        return False, ""
+    ingestion_job = response.get("ingestionJob")
+    if not isinstance(ingestion_job, dict):
+        return True, ""
+
+    job_id = ingestion_job.get("ingestionJobId")
+    if isinstance(job_id, str):
+        return True, job_id
+    return True, ""
+
+
 def _sync_canvas_assignments_for_user(
     *,
     user_id: str,
@@ -535,6 +616,138 @@ def _sync_canvas_assignments_for_user(
     return len(courses), items_upserted, failed_course_ids
 
 
+def _sync_canvas_materials_for_user(
+    *,
+    user_id: str,
+    canvas_base_url: str,
+    access_token: str,
+    updated_at: str,
+) -> tuple[int, int, list[str]]:
+    table = _canvas_data_table()
+    user_agent = os.getenv("CANVAS_USER_AGENT", "GURT-DemoCanvasSync/0.1")
+    uploads_bucket = os.getenv("UPLOADS_BUCKET", "").strip()
+    if not uploads_bucket:
+        raise RuntimeError("server misconfiguration: UPLOADS_BUCKET missing")
+
+    max_material_bytes = _int_env("CANVAS_MAX_FILE_BYTES", 20_000_000)
+    max_files_per_course = _int_env("CANVAS_MAX_FILES_PER_COURSE", 5)
+    max_files_total = _int_env("CANVAS_MAX_FILES_TOTAL", 20)
+    allowed_types_raw = os.getenv("CANVAS_ALLOWED_MATERIAL_CONTENT_TYPES", "application/pdf,text/plain")
+    allowed_types = {
+        part.strip().lower()
+        for part in allowed_types_raw.split(",")
+        if part.strip()
+    }
+    s3_client = _s3_client()
+
+    course_payloads = fetch_active_courses(
+        base_url=canvas_base_url,
+        token=access_token,
+        user_agent=user_agent,
+    )
+    courses = [Course.from_api_dict(row) for row in course_payloads]
+    failed_course_ids: list[str] = []
+    failed_course_set: set[str] = set()
+    materials_upserted = 0
+    materials_mirrored = 0
+
+    with table.batch_writer(overwrite_by_pkeys=["pk", "sk"]) as batch:
+        for course in courses:
+            if max_files_total > 0 and materials_upserted >= max_files_total:
+                break
+            try:
+                file_payloads = fetch_course_files(
+                    base_url=canvas_base_url,
+                    token=access_token,
+                    course_id=course.id,
+                    user_agent=user_agent,
+                )
+            except CanvasApiError:
+                print(
+                    "Canvas materials course fetch failed",
+                    {"courseId": course.id},
+                )
+                failed_course_ids.append(course.id)
+                failed_course_set.add(course.id)
+                continue
+
+            if max_files_per_course > 0:
+                file_payloads = file_payloads[:max_files_per_course]
+
+            for payload in file_payloads:
+                if max_files_total > 0 and materials_upserted >= max_files_total:
+                    break
+                try:
+                    material_key = _material_s3_key(
+                        user_id=user_id,
+                        course_id=course.id,
+                        canvas_file_id=str(payload.get("canvasFileId", "")),
+                        display_name=str(payload.get("displayName", "")),
+                    )
+                    payload_with_s3_key = dict(payload)
+                    payload_with_s3_key["s3Key"] = material_key
+                    material = CanvasMaterial.from_api_dict(payload_with_s3_key)
+
+                    if material.size_bytes > max_material_bytes:
+                        continue
+                    if allowed_types and material.content_type not in allowed_types:
+                        if not material.display_name.lower().endswith(".pdf"):
+                            continue
+
+                    file_body, downloaded_content_type = fetch_file_bytes(
+                        url=material.download_url,
+                        token=access_token,
+                        user_agent=user_agent,
+                    )
+                    if len(file_body) > max_material_bytes:
+                        continue
+
+                    put_args: dict[str, Any] = {
+                        "Bucket": uploads_bucket,
+                        "Key": material.s3_key,
+                        "Body": file_body,
+                        "Metadata": {
+                            "source": "canvas",
+                            "userid": user_id,
+                            "courseid": course.id,
+                            "canvasfileid": material.canvas_file_id,
+                        },
+                    }
+                    content_type = downloaded_content_type or material.content_type
+                    if content_type:
+                        put_args["ContentType"] = content_type
+
+                    s3_client.put_object(**put_args)
+                    batch.put_item(Item=material.to_dynamodb_item(user_id=user_id, updated_at=updated_at))
+                    materials_upserted += 1
+                    materials_mirrored += 1
+                except Exception as exc:
+                    print(
+                        "Canvas material mirror failed",
+                        {
+                            "courseId": course.id,
+                            "canvasFileId": str(payload.get("canvasFileId", "")),
+                            "displayName": str(payload.get("displayName", "")),
+                            "error": str(exc),
+                        },
+                    )
+                    if course.id not in failed_course_set:
+                        failed_course_ids.append(course.id)
+                        failed_course_set.add(course.id)
+                    continue
+
+    print(
+        "Canvas materials sync summary",
+        {
+            "coursesDiscovered": len(courses),
+            "materialsUpserted": materials_upserted,
+            "materialsMirrored": materials_mirrored,
+            "failedCourseIds": failed_course_ids,
+        },
+    )
+    return materials_upserted, materials_mirrored, failed_course_ids
+
+
 def _handle_canvas_connect(event: Mapping[str, Any]) -> Dict[str, Any]:
     user_id, auth_error = _require_authenticated_user_id(event)
     if auth_error is not None or user_id is None:
@@ -576,18 +789,35 @@ def _handle_canvas_sync(event: Mapping[str, Any]) -> Dict[str, Any]:
             return _json_response(400, {"error": "canvas connection not found; call POST /canvas/connect first"})
 
         updated_at = _utc_now_rfc3339()
-        courses_upserted, items_upserted, failed_course_ids = _sync_canvas_assignments_for_user(
+        courses_upserted, items_upserted, failed_assignment_course_ids = _sync_canvas_assignments_for_user(
             user_id=user_id,
             canvas_base_url=str(connection.get("canvasBaseUrl", "")),
             access_token=str(connection.get("accessToken", "")),
             updated_at=updated_at,
         )
+        materials_upserted, materials_mirrored, failed_material_course_ids = _sync_canvas_materials_for_user(
+            user_id=user_id,
+            canvas_base_url=str(connection.get("canvasBaseUrl", "")),
+            access_token=str(connection.get("accessToken", "")),
+            updated_at=updated_at,
+        )
+
+        failed_course_ids = sorted(
+            set(failed_assignment_course_ids).union(failed_material_course_ids),
+            key=lambda value: str(value),
+        )
+        kb_ingestion_started = False
+        kb_ingestion_job_id = ""
+        if materials_mirrored > 0:
+            kb_ingestion_started, kb_ingestion_job_id = _start_knowledge_base_ingestion()
     except CanvasApiError as exc:
         return _json_response(502, {"error": str(exc)})
     except RuntimeError as exc:
         return _json_response(500, {"error": str(exc)})
     except ModelValidationError as exc:
         return _json_response(500, {"error": f"canvas normalization failed: {exc}"})
+    except Exception as exc:
+        return _json_response(500, {"error": f"canvas sync unexpected failure: {exc}"})
 
     return _json_response(
         200,
@@ -595,6 +825,10 @@ def _handle_canvas_sync(event: Mapping[str, Any]) -> Dict[str, Any]:
             "synced": True,
             "coursesUpserted": courses_upserted,
             "itemsUpserted": items_upserted,
+            "materialsUpserted": materials_upserted,
+            "materialsMirrored": materials_mirrored,
+            "knowledgeBaseIngestionStarted": kb_ingestion_started,
+            "knowledgeBaseIngestionJobId": kb_ingestion_job_id,
             "failedCourseIds": failed_course_ids,
             "updatedAt": updated_at,
         },
@@ -644,6 +878,66 @@ def _handle_docs_ingest_status(job_id: str) -> Dict[str, Any]:
     return _json_response(200, payload)
 
 
+def _handle_generate_flashcards(event: Mapping[str, Any]) -> Dict[str, Any]:
+    payload, parse_error = _parse_json_body(event)
+    if parse_error is not None or payload is None:
+        return _json_response(400, {"error": parse_error or "request body must be valid JSON"})
+    try:
+        course_id = _require_non_empty_string(payload, "courseId")
+        num_cards_raw = payload.get("numCards", 20)
+        num_cards = int(num_cards_raw)
+        if num_cards < 1:
+            return _json_response(400, {"error": "numCards must be >= 1"})
+        cards = generate_flashcards(course_id=course_id, num_cards=min(num_cards, 100))
+    except ValueError as exc:
+        return _json_response(400, {"error": str(exc)})
+    except GenerationError as exc:
+        return _json_response(502, {"error": str(exc)})
+    except RuntimeError as exc:
+        return _json_response(502, {"error": str(exc)})
+
+    return _text_response(200, json.dumps(cards), content_type="application/json")
+
+
+def _handle_generate_practice_exam(event: Mapping[str, Any]) -> Dict[str, Any]:
+    payload, parse_error = _parse_json_body(event)
+    if parse_error is not None or payload is None:
+        return _json_response(400, {"error": parse_error or "request body must be valid JSON"})
+    try:
+        course_id = _require_non_empty_string(payload, "courseId")
+        num_questions_raw = payload.get("numQuestions", 10)
+        num_questions = int(num_questions_raw)
+        if num_questions < 1:
+            return _json_response(400, {"error": "numQuestions must be >= 1"})
+        exam = generate_practice_exam(course_id=course_id, num_questions=min(num_questions, 20))
+    except ValueError as exc:
+        return _json_response(400, {"error": str(exc)})
+    except GenerationError as exc:
+        return _json_response(502, {"error": str(exc)})
+    except RuntimeError as exc:
+        return _json_response(502, {"error": str(exc)})
+
+    return _text_response(200, json.dumps(exam), content_type="application/json")
+
+
+def _handle_chat(event: Mapping[str, Any]) -> Dict[str, Any]:
+    payload, parse_error = _parse_json_body(event)
+    if parse_error is not None or payload is None:
+        return _json_response(400, {"error": parse_error or "request body must be valid JSON"})
+    try:
+        course_id = _require_non_empty_string(payload, "courseId")
+        question = _require_non_empty_string(payload, "question")
+        answer = chat_answer(course_id=course_id, question=question)
+    except ValueError as exc:
+        return _json_response(400, {"error": str(exc)})
+    except GenerationError as exc:
+        return _json_response(502, {"error": str(exc)})
+    except RuntimeError as exc:
+        return _json_response(502, {"error": str(exc)})
+
+    return _text_response(200, json.dumps(answer), content_type="application/json")
+
+
 def _handle_scheduled_canvas_sync() -> Dict[str, Any]:
     updated_at = _utc_now_rfc3339()
     try:
@@ -655,26 +949,49 @@ def _handle_scheduled_canvas_sync() -> Dict[str, Any]:
     users_failed = 0
     courses_total = 0
     items_total = 0
+    materials_total = 0
+    materials_mirrored_total = 0
     failed_course_ids_by_user: dict[str, list[str]] = {}
     user_errors: dict[str, str] = {}
 
     for connection in connections:
         user_id = connection["userId"]
         try:
-            courses_upserted, items_upserted, failed_course_ids = _sync_canvas_assignments_for_user(
+            courses_upserted, items_upserted, failed_assignment_course_ids = _sync_canvas_assignments_for_user(
                 user_id=user_id,
                 canvas_base_url=connection["canvasBaseUrl"],
                 access_token=connection["accessToken"],
                 updated_at=updated_at,
             )
+            materials_upserted, materials_mirrored, failed_material_course_ids = _sync_canvas_materials_for_user(
+                user_id=user_id,
+                canvas_base_url=connection["canvasBaseUrl"],
+                access_token=connection["accessToken"],
+                updated_at=updated_at,
+            )
+            failed_course_ids = sorted(
+                set(failed_assignment_course_ids).union(failed_material_course_ids),
+                key=lambda value: str(value),
+            )
             users_succeeded += 1
             courses_total += courses_upserted
             items_total += items_upserted
+            materials_total += materials_upserted
+            materials_mirrored_total += materials_mirrored
             if failed_course_ids:
                 failed_course_ids_by_user[user_id] = failed_course_ids
-        except (CanvasApiError, ModelValidationError, RuntimeError) as exc:
+        except Exception as exc:
             users_failed += 1
             user_errors[user_id] = str(exc)
+
+    kb_ingestion_started = False
+    kb_ingestion_job_id = ""
+    if materials_mirrored_total > 0:
+        try:
+            kb_ingestion_started, kb_ingestion_job_id = _start_knowledge_base_ingestion()
+        except RuntimeError:
+            kb_ingestion_started = False
+            kb_ingestion_job_id = ""
 
     return _json_response(
         200,
@@ -685,6 +1002,10 @@ def _handle_scheduled_canvas_sync() -> Dict[str, Any]:
             "usersFailed": users_failed,
             "coursesUpserted": courses_total,
             "itemsUpserted": items_total,
+            "materialsUpserted": materials_total,
+            "materialsMirrored": materials_mirrored_total,
+            "knowledgeBaseIngestionStarted": kb_ingestion_started,
+            "knowledgeBaseIngestionJobId": kb_ingestion_job_id,
             "failedCourseIdsByUser": failed_course_ids_by_user,
             "userErrors": user_errors,
             "updatedAt": updated_at,
@@ -853,6 +1174,15 @@ def lambda_handler(event: Mapping[str, Any], context: Any) -> Dict[str, Any]:
 
     if method == "POST" and path == "/canvas/sync":
         return _handle_canvas_sync(event)
+
+    if method == "POST" and path == "/generate/flashcards":
+        return _handle_generate_flashcards(event)
+
+    if method == "POST" and path == "/generate/practice-exam":
+        return _handle_generate_practice_exam(event)
+
+    if method == "POST" and path == "/chat":
+        return _handle_chat(event)
 
     if method == "GET":
         token = _extract_calendar_token(path, path_params)

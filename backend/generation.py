@@ -1,0 +1,228 @@
+"""Bedrock Knowledge Base-backed generation helpers."""
+
+from __future__ import annotations
+
+import json
+import os
+from datetime import datetime, timezone
+from typing import Any
+
+
+class GenerationError(RuntimeError):
+    """Raised for retrieval or model generation failures."""
+
+
+def _require_env(name: str) -> str:
+    value = os.getenv(name, "").strip()
+    if not value:
+        raise GenerationError(f"server misconfiguration: {name} missing")
+    return value
+
+
+def _bedrock_agent_runtime() -> Any:
+    import boto3
+
+    return boto3.client("bedrock-agent-runtime")
+
+
+def _bedrock_runtime() -> Any:
+    import boto3
+
+    return boto3.client("bedrock-runtime")
+
+
+def _utc_now_rfc3339() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _retrieve_context(*, course_id: str, query: str, k: int = 8) -> list[dict[str, str]]:
+    kb_id = _require_env("KNOWLEDGE_BASE_ID")
+    client = _bedrock_agent_runtime()
+    try:
+        response = client.retrieve(
+            knowledgeBaseId=kb_id,
+            retrievalQuery={"text": f"course:{course_id}\n{query}"},
+            retrievalConfiguration={"vectorSearchConfiguration": {"numberOfResults": k}},
+        )
+    except Exception as exc:  # pragma: no cover - boto3 service failure path
+        raise GenerationError(f"knowledge base retrieval failed: {exc}") from exc
+
+    results = response.get("retrievalResults", [])
+    context: list[dict[str, str]] = []
+    for row in results:
+        content = row.get("content")
+        text = content.get("text") if isinstance(content, dict) else None
+        if not isinstance(text, str) or not text.strip():
+            continue
+        context.append({"text": text.strip(), "source": str(row.get("location", ""))})
+    return context
+
+
+def _invoke_model_json(prompt: str) -> Any:
+    model_id = _require_env("BEDROCK_MODEL_ID")
+    client = _bedrock_runtime()
+    body = {
+        "anthropic_version": "bedrock-2023-05-31",
+        "max_tokens": 1800,
+        "temperature": 0.2,
+        "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}],
+    }
+    try:
+        response = client.invoke_model(
+            modelId=model_id,
+            contentType="application/json",
+            accept="application/json",
+            body=json.dumps(body).encode("utf-8"),
+        )
+    except Exception as exc:  # pragma: no cover - boto3 service failure path
+        raise GenerationError(f"model invocation failed: {exc}") from exc
+
+    try:
+        payload = json.loads(response["body"].read().decode("utf-8"))
+    except (json.JSONDecodeError, KeyError, AttributeError) as exc:
+        raise GenerationError("model returned unreadable response") from exc
+
+    chunks = payload.get("content", [])
+    if not isinstance(chunks, list) or not chunks:
+        raise GenerationError("model returned empty response")
+    text = chunks[0].get("text")
+    if not isinstance(text, str) or not text.strip():
+        raise GenerationError("model returned non-text response")
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise GenerationError("model returned invalid JSON payload") from exc
+
+
+def generate_flashcards(*, course_id: str, num_cards: int) -> list[dict[str, Any]]:
+    context = _retrieve_context(
+        course_id=course_id,
+        query=f"Generate {num_cards} flashcards for key concepts.",
+    )
+    if not context:
+        raise GenerationError("no knowledge base context available for flashcard generation")
+
+    context_block = "\n\n".join(row["text"] for row in context[:8])
+    prompt = (
+        "Return ONLY JSON array. No markdown.\n"
+        f"Create exactly {num_cards} flashcards using this schema: "
+        '[{"id":"card-1","courseId":"...","topicId":"topic-...","prompt":"...","answer":"..."}].\n'
+        f"courseId must be {course_id}.\n"
+        "Use grounded facts only from context.\n"
+        f"Context:\n{context_block}"
+    )
+    payload = _invoke_model_json(prompt)
+    if not isinstance(payload, list):
+        raise GenerationError("flashcard model response must be an array")
+
+    cards: list[dict[str, Any]] = []
+    for index, row in enumerate(payload, start=1):
+        if not isinstance(row, dict):
+            continue
+        card = {
+            "id": str(row.get("id", f"card-{index}")).strip() or f"card-{index}",
+            "courseId": str(row.get("courseId", course_id)).strip() or course_id,
+            "topicId": str(row.get("topicId", "topic-unknown")).strip() or "topic-unknown",
+            "prompt": str(row.get("prompt", "")).strip(),
+            "answer": str(row.get("answer", "")).strip(),
+        }
+        if not card["prompt"] or not card["answer"]:
+            continue
+        cards.append(card)
+
+    if not cards:
+        raise GenerationError("flashcard model response did not contain valid cards")
+    return cards[:num_cards]
+
+
+def generate_practice_exam(*, course_id: str, num_questions: int) -> dict[str, Any]:
+    context = _retrieve_context(
+        course_id=course_id,
+        query=f"Generate {num_questions} practice exam questions.",
+    )
+    if not context:
+        raise GenerationError("no knowledge base context available for practice exam generation")
+
+    context_block = "\n\n".join(row["text"] for row in context[:8])
+    prompt = (
+        "Return ONLY JSON object. No markdown.\n"
+        "Schema: {\"courseId\":\"...\",\"generatedAt\":\"RFC3339Z\",\"questions\":["
+        "{\"id\":\"q1\",\"prompt\":\"...\",\"choices\":[\"...\",\"...\"],\"answerIndex\":0}"
+        "]}\n"
+        f"courseId must be {course_id}. Use exactly {num_questions} questions.\n"
+        f"generatedAt must be {_utc_now_rfc3339()} format.\n"
+        "Use grounded facts only from context.\n"
+        f"Context:\n{context_block}"
+    )
+    payload = _invoke_model_json(prompt)
+    if not isinstance(payload, dict):
+        raise GenerationError("practice exam model response must be an object")
+
+    questions_raw = payload.get("questions")
+    if not isinstance(questions_raw, list):
+        raise GenerationError("practice exam must include questions array")
+
+    questions: list[dict[str, Any]] = []
+    for index, row in enumerate(questions_raw, start=1):
+        if not isinstance(row, dict):
+            continue
+        prompt_text = str(row.get("prompt", "")).strip()
+        choices_raw = row.get("choices")
+        if not prompt_text or not isinstance(choices_raw, list):
+            continue
+        choices = [str(choice).strip() for choice in choices_raw if str(choice).strip()]
+        answer_index = row.get("answerIndex")
+        if len(choices) < 2 or not isinstance(answer_index, int) or answer_index < 0:
+            continue
+
+        questions.append(
+            {
+                "id": str(row.get("id", f"q-{index}")).strip() or f"q-{index}",
+                "prompt": prompt_text,
+                "choices": choices,
+                "answerIndex": answer_index,
+            }
+        )
+
+    if not questions:
+        raise GenerationError("practice exam model response did not contain valid questions")
+
+    generated_at = payload.get("generatedAt")
+    generated_at_str = str(generated_at).strip() if generated_at is not None else _utc_now_rfc3339()
+    if not generated_at_str:
+        generated_at_str = _utc_now_rfc3339()
+
+    return {
+        "courseId": str(payload.get("courseId", course_id)).strip() or course_id,
+        "generatedAt": generated_at_str,
+        "questions": questions[:num_questions],
+    }
+
+
+def chat_answer(*, course_id: str, question: str) -> dict[str, Any]:
+    context = _retrieve_context(course_id=course_id, query=question, k=6)
+    if not context:
+        raise GenerationError("no knowledge base context available for chat")
+
+    context_block = "\n\n".join(row["text"] for row in context[:6])
+    prompt = (
+        "Return ONLY JSON object. No markdown.\n"
+        'Schema: {"answer":"...","citations":["source1","source2"]}\n'
+        "Answer using only the provided context. If unknown, say you cannot find it.\n"
+        f"Question: {question}\n"
+        f"Context:\n{context_block}"
+    )
+    payload = _invoke_model_json(prompt)
+    if not isinstance(payload, dict):
+        raise GenerationError("chat model response must be an object")
+
+    answer = str(payload.get("answer", "")).strip()
+    if not answer:
+        raise GenerationError("chat model response missing answer")
+
+    citations_raw = payload.get("citations", [])
+    citations: list[str] = []
+    if isinstance(citations_raw, list):
+        citations = [str(value).strip() for value in citations_raw if str(value).strip()]
+
+    return {"answer": answer, "citations": citations}

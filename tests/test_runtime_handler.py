@@ -263,6 +263,14 @@ class RuntimeHandlerTests(unittest.TestCase):
                 "backend.runtime._sync_canvas_assignments_for_user",
                 return_value=(2, 3, ["42"]),
             ) as sync_rows,
+            patch(
+                "backend.runtime._sync_canvas_materials_for_user",
+                return_value=(4, 4, ["99"]),
+            ) as sync_materials,
+            patch(
+                "backend.runtime._start_knowledge_base_ingestion",
+                return_value=(True, "ingest-job-1"),
+            ),
         ):
             response = self._invoke(event, env={"DEMO_MODE": "false"})
 
@@ -271,8 +279,13 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertEqual(body["synced"], True)
         self.assertEqual(body["coursesUpserted"], 2)
         self.assertEqual(body["itemsUpserted"], 3)
-        self.assertEqual(body["failedCourseIds"], ["42"])
+        self.assertEqual(body["materialsUpserted"], 4)
+        self.assertEqual(body["materialsMirrored"], 4)
+        self.assertEqual(body["knowledgeBaseIngestionStarted"], True)
+        self.assertEqual(body["knowledgeBaseIngestionJobId"], "ingest-job-1")
+        self.assertEqual(body["failedCourseIds"], ["42", "99"])
         sync_rows.assert_called_once()
+        sync_materials.assert_called_once()
 
     def test_canvas_sync_returns_502_when_canvas_fetch_fails(self) -> None:
         event = {
@@ -289,6 +302,10 @@ class RuntimeHandlerTests(unittest.TestCase):
             patch(
                 "backend.runtime._sync_canvas_assignments_for_user",
                 side_effect=CanvasApiError("canvas request failed"),
+            ),
+            patch(
+                "backend.runtime._sync_canvas_materials_for_user",
+                return_value=(0, 0, []),
             ),
         ):
             response = self._invoke(event, env={"DEMO_MODE": "false"})
@@ -358,6 +375,122 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertEqual(body["status"], "FINISHED")
         self.assertEqual(body["textLength"], 321)
 
+    def test_generate_flashcards_returns_generated_cards(self) -> None:
+        event = {
+            "httpMethod": "POST",
+            "path": "/generate/flashcards",
+            "body": json.dumps({"courseId": "course-psych-101", "numCards": 5}),
+        }
+
+        with patch(
+            "backend.runtime.generate_flashcards",
+            return_value=[
+                {
+                    "id": "card-1",
+                    "courseId": "course-psych-101",
+                    "topicId": "topic-memory",
+                    "prompt": "What is retrieval practice?",
+                    "answer": "Actively recalling information from memory.",
+                }
+            ],
+        ) as generate_cards:
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 200)
+        body = json.loads(response["body"])
+        self.assertEqual(len(body), 1)
+        self.assertEqual(body[0]["id"], "card-1")
+        generate_cards.assert_called_once_with(course_id="course-psych-101", num_cards=5)
+
+    def test_generate_flashcards_rejects_non_positive_num_cards(self) -> None:
+        event = {
+            "httpMethod": "POST",
+            "path": "/generate/flashcards",
+            "body": json.dumps({"courseId": "course-psych-101", "numCards": 0}),
+        }
+
+        response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 400)
+        self.assertIn("numCards must be >= 1", json.loads(response["body"])["error"])
+
+    def test_generate_practice_exam_returns_generated_exam(self) -> None:
+        event = {
+            "httpMethod": "POST",
+            "path": "/generate/practice-exam",
+            "body": json.dumps({"courseId": "course-psych-101", "numQuestions": 10}),
+        }
+
+        with patch(
+            "backend.runtime.generate_practice_exam",
+            return_value={
+                "courseId": "course-psych-101",
+                "generatedAt": "2026-09-02T08:30:00Z",
+                "questions": [
+                    {
+                        "id": "q-1",
+                        "prompt": "Which process transfers information to long-term memory?",
+                        "choices": ["Encoding", "Recognition"],
+                        "answerIndex": 0,
+                    }
+                ],
+            },
+        ) as generate_exam:
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 200)
+        body = json.loads(response["body"])
+        self.assertEqual(body["courseId"], "course-psych-101")
+        self.assertEqual(len(body["questions"]), 1)
+        generate_exam.assert_called_once_with(course_id="course-psych-101", num_questions=10)
+
+    def test_chat_returns_answer_with_citations(self) -> None:
+        event = {
+            "httpMethod": "POST",
+            "path": "/chat",
+            "body": json.dumps(
+                {
+                    "courseId": "course-psych-101",
+                    "question": "What is working memory?",
+                }
+            ),
+        }
+
+        with patch(
+            "backend.runtime.chat_answer",
+            return_value={
+                "answer": "Working memory temporarily stores and manipulates information.",
+                "citations": ["s3://bucket/doc.pdf#chunk-3"],
+            },
+        ) as chat_answer:
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 200)
+        body = json.loads(response["body"])
+        self.assertIn("answer", body)
+        self.assertEqual(len(body["citations"]), 1)
+        chat_answer.assert_called_once_with(
+            course_id="course-psych-101",
+            question="What is working memory?",
+        )
+
+    def test_chat_returns_502_when_generation_fails(self) -> None:
+        event = {
+            "httpMethod": "POST",
+            "path": "/chat",
+            "body": json.dumps(
+                {
+                    "courseId": "course-psych-101",
+                    "question": "What is working memory?",
+                }
+            ),
+        }
+
+        with patch("backend.runtime.chat_answer", side_effect=RuntimeError("downstream failed")):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 502)
+
     def test_scheduled_canvas_sync_processes_all_connections_and_continues_on_user_failures(self) -> None:
         event = {"source": "aws.events", "detail-type": "Scheduled Event"}
 
@@ -381,6 +514,14 @@ class RuntimeHandlerTests(unittest.TestCase):
                 "backend.runtime._sync_canvas_assignments_for_user",
                 side_effect=[(2, 7, ["42"]), CanvasApiError("invalid token")],
             ),
+            patch(
+                "backend.runtime._sync_canvas_materials_for_user",
+                return_value=(5, 5, []),
+            ),
+            patch(
+                "backend.runtime._start_knowledge_base_ingestion",
+                return_value=(True, "ingest-job-2"),
+            ),
         ):
             response = self._invoke(event, env={"DEMO_MODE": "false"})
 
@@ -392,6 +533,10 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertEqual(body["usersFailed"], 1)
         self.assertEqual(body["coursesUpserted"], 2)
         self.assertEqual(body["itemsUpserted"], 7)
+        self.assertEqual(body["materialsUpserted"], 5)
+        self.assertEqual(body["materialsMirrored"], 5)
+        self.assertEqual(body["knowledgeBaseIngestionStarted"], True)
+        self.assertEqual(body["knowledgeBaseIngestionJobId"], "ingest-job-2")
         self.assertEqual(body["failedCourseIdsByUser"]["user-1"], ["42"])
         self.assertIn("user-2", body["userErrors"])
 

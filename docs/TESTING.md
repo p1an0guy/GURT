@@ -98,7 +98,10 @@ Canvas bootstrap for demo schedule rows:
    `{"canvasBaseUrl":"https://canvas.example.edu","accessToken":"demo-token"}`
 2. `POST <DEV_BASE_URL>/canvas/sync`
    - Response includes `failedCourseIds` for per-course retry visibility.
-   - Current live scope syncs published assignments with non-null due dates.
+   - Current live scope syncs:
+     - published assignments with non-null due dates
+     - published/visible course files (materials metadata + S3 mirror)
+   - If KB env vars are configured and files are mirrored, sync automatically starts a Bedrock ingestion job.
 3. Mint calendar token and fetch `/calendar/{token}.ics`.
 
 Docs ingest workflow (Step Functions + PyMuPDF/Textract fallback + Bedrock KB):
@@ -112,7 +115,7 @@ Docs ingest workflow (Step Functions + PyMuPDF/Textract fallback + Bedrock KB):
 
 ## CDK infra synth and deploy (demo scaffold)
 
-Infrastructure is scaffolded in `infra/` with `GurtDataStack` and `GurtApiStack`.
+Infrastructure is scaffolded in `infra/` with `GurtDataStack`, `GurtKnowledgeBaseStack`, and `GurtApiStack`.
 
 ```bash
 python3 -m venv .venv
@@ -121,7 +124,7 @@ python -m pip install --upgrade pip
 python -m pip install -r infra/requirements.txt
 cd infra
 cdk synth
-cdk deploy GurtDataStack GurtApiStack
+cdk deploy GurtDataStack GurtKnowledgeBaseStack GurtApiStack
 ```
 
 Or use one command from repo root (build + CDK checks + bootstrap + deploy):
@@ -136,6 +139,17 @@ Recommended usage with AWS SSO profile:
 AWS_PROFILE=<your-sso-profile> ./scripts/deploy.sh
 ```
 
+If generation/chat endpoints should hit a real Bedrock KB and Canvas sync should auto-start KB ingestion, pass:
+
+```bash
+AWS_PROFILE=<your-sso-profile> \
+KNOWLEDGE_BASE_ID=<kb-id> \
+KNOWLEDGE_BASE_DATA_SOURCE_ID=<data-source-id> \
+./scripts/deploy.sh
+```
+
+If `KNOWLEDGE_BASE_ID` is omitted, CDK provisions a Bedrock Knowledge Base stack automatically.
+
 Optional override for CDK CLI package/version:
 
 ```bash
@@ -147,9 +161,15 @@ Key stack outputs to use for smoke/dev secrets:
 - `ApiBaseUrl` (or `SuggestedSmokeBaseUrlSecret`) -> `DEV_BASE_URL`
 - `CalendarTokenMintEndpoint` -> call this endpoint to mint `DEV_CALENDAR_TOKEN`
 - `SuggestedSmokeCourseIdSecret` -> `DEV_COURSE_ID` (defaults to `course-psych-101`)
+- `KnowledgeBaseId` (from `GurtKnowledgeBaseStack`) -> runtime `KNOWLEDGE_BASE_ID`
+- `KnowledgeBaseDataSourceId` -> for `aws bedrock-agent start-ingestion-job`
 
 CDK context defaults for demo deploys (`infra/cdk.json`):
 
+- `bedrockModelId`: default model id for generation/chat (`us.anthropic.claude-sonnet-4-6`)
+- `embeddingModelId`: default embedding model for KB indexing (`amazon.titan-embed-text-v2:0`)
+- `knowledgeBaseId`: optional existing KB ID override; when empty, CDK creates one
+- `knowledgeBaseDataSourceId`: optional existing KB data source ID override (required for auto-ingestion trigger on `/canvas/sync`)
 - `calendarToken`: default seeded token used by `/calendar/{token}.ics`
 - `calendarTokenUserId`: optional seeded user lock for calendar feed requests
 - `calendarFixtureFallback`: when `1`, `/calendar/{token}.ics` falls back to fixture events if user schedule rows are empty (demo-only behavior)

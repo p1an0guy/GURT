@@ -1,4 +1,4 @@
-"""Canvas REST client for deterministic assignments-only sync."""
+"""Canvas REST client for assignments + course-material sync."""
 
 from __future__ import annotations
 
@@ -184,3 +184,98 @@ def fetch_course_assignments(
 
     items.sort(key=lambda i: str(i["dueAt"]))
     return items
+
+
+def _normalize_content_type(row: dict[str, Any]) -> str:
+    content_type = row.get("content-type")
+    if not isinstance(content_type, str) or not content_type.strip():
+        content_type = row.get("content_type")
+    if not isinstance(content_type, str) or not content_type.strip():
+        return "application/octet-stream"
+    return content_type.strip().lower()
+
+
+def fetch_course_files(
+    *,
+    base_url: str,
+    token: str,
+    course_id: str,
+    user_agent: str,
+) -> list[dict[str, Any]]:
+    """Fetch visible, published course files for a specific course."""
+    root = normalize_canvas_base_url(base_url)
+    query = urlencode({"per_page": 100, "sort": "updated_at", "order": "desc"})
+    rows = _get_paginated_json(
+        url=f"{root}/api/v1/courses/{course_id}/files?{query}",
+        token=token,
+        user_agent=user_agent,
+    )
+
+    items: list[dict[str, Any]] = []
+    for row in rows:
+        if row.get("published") is False:
+            continue
+        if row.get("hidden") is True:
+            continue
+        if row.get("locked_for_user") is True:
+            continue
+
+        file_id = row.get("id")
+        if file_id is None:
+            continue
+
+        display_name = row.get("display_name")
+        if not isinstance(display_name, str) or not display_name.strip():
+            display_name = row.get("filename")
+        if not isinstance(display_name, str) or not display_name.strip():
+            continue
+
+        updated_at = row.get("updated_at")
+        if not isinstance(updated_at, str) or not updated_at.strip():
+            continue
+
+        download_url = row.get("url")
+        if not isinstance(download_url, str) or not download_url.strip():
+            continue
+
+        size = row.get("size")
+        if not isinstance(size, int) or size < 0:
+            size = 0
+
+        items.append(
+            {
+                "canvasFileId": str(file_id),
+                "courseId": str(course_id),
+                "displayName": display_name.strip(),
+                "contentType": _normalize_content_type(row),
+                "sizeBytes": size,
+                "updatedAt": _to_rfc3339_utc(updated_at),
+                "downloadUrl": download_url.strip(),
+            }
+        )
+
+    items.sort(key=lambda i: str(i["updatedAt"]), reverse=True)
+    return items
+
+
+def fetch_file_bytes(*, url: str, token: str, user_agent: str) -> tuple[bytes, str]:
+    """Fetch file bytes and return `(payload, content_type)`."""
+    req = Request(
+        url=url,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "*/*",
+            "User-Agent": user_agent,
+        },
+        method="GET",
+    )
+    try:
+        with urlopen(req, timeout=_DEFAULT_TIMEOUT_SECONDS) as resp:
+            content_type = str(resp.headers.get("Content-Type", "")).strip().lower()
+            payload = resp.read()
+            return payload, content_type
+    except HTTPError as exc:  # pragma: no cover - network path
+        detail = exc.read().decode("utf-8", errors="ignore")
+        raise CanvasApiError(f"canvas file request failed ({exc.code}) for {url}: {detail}") from exc
+    except URLError as exc:  # pragma: no cover - network path
+        raise CanvasApiError(f"canvas file request failed for {url}: {exc.reason}") from exc

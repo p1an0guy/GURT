@@ -24,11 +24,19 @@ EXAMPLE_SCHEMA_MAP = {
     "PracticeExam.example.json": "PracticeExam.json",
     "CalendarFeedMetadata.example.json": "CalendarFeedMetadata.json",
     "CalendarTokenResponse.example.json": "CalendarTokenResponse.json",
+    "CanvasConnectRequest.example.json": "CanvasConnectRequest.json",
+    "CanvasConnectResponse.example.json": "CanvasConnectResponse.json",
+    "CanvasSyncResponse.example.json": "CanvasSyncResponse.json",
     "UploadRequest.example.json": "UploadRequest.json",
     "UploadResponse.example.json": "UploadResponse.json",
     "IngestStartRequest.example.json": "IngestStartRequest.json",
     "IngestStartResponse.example.json": "IngestStartResponse.json",
     "IngestStatusResponse.example.json": "IngestStatusResponse.json",
+    "GenerateFlashcardsRequest.example.json": "GenerateFlashcardsRequest.json",
+    "GenerateFlashcardsResponse.example.json": "GenerateFlashcardsResponse.json",
+    "GeneratePracticeExamRequest.example.json": "GeneratePracticeExamRequest.json",
+    "ChatRequest.example.json": "ChatRequest.json",
+    "ChatResponse.example.json": "ChatResponse.json",
 }
 
 

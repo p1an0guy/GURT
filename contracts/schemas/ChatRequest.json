@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ChatRequest.json",
+  "title": "ChatRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["courseId", "question"],
+  "properties": {
+    "courseId": {"type": "string", "minLength": 1},
+    "question": {"type": "string", "minLength": 1}
+  }
+}

@@ -86,7 +86,7 @@
     "/canvas/sync": {
       "post": {
         "operationId": "postCanvasSync",
-        "description": "Syncs Canvas course/items into DynamoDB for the authenticated caller.",
+        "description": "Syncs Canvas courses, due-date assignments, and published course files into AWS storage for the authenticated caller.",
         "responses": {
           "200": {
             "description": "Canvas sync completed",
@@ -175,6 +175,87 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/IngestStatusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/generate/flashcards": {
+      "post": {
+        "operationId": "postGenerateFlashcards",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateFlashcardsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Generated flashcards grounded in course materials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerateFlashcardsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/generate/practice-exam": {
+      "post": {
+        "operationId": "postGeneratePracticeExam",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeneratePracticeExamRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Generated practice exam grounded in course materials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PracticeExam"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat": {
+      "post": {
+        "operationId": "postChat",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Grounded answer response with citations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatResponse"
                 }
               }
             }
@@ -404,6 +485,21 @@
       },
       "IngestStatusResponse": {
         "$ref": "./schemas/IngestStatusResponse.json"
+      },
+      "GenerateFlashcardsRequest": {
+        "$ref": "./schemas/GenerateFlashcardsRequest.json"
+      },
+      "GenerateFlashcardsResponse": {
+        "$ref": "./schemas/GenerateFlashcardsResponse.json"
+      },
+      "GeneratePracticeExamRequest": {
+        "$ref": "./schemas/GeneratePracticeExamRequest.json"
+      },
+      "ChatRequest": {
+        "$ref": "./schemas/ChatRequest.json"
+      },
+      "ChatResponse": {
+        "$ref": "./schemas/ChatResponse.json"
       }
     }
   }
