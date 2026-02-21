@@ -629,17 +629,19 @@ def _handle_docs_ingest_status(job_id: str) -> Dict[str, Any]:
     if record is None:
         return _json_response(404, {"error": "ingest job not found"})
 
-    return _json_response(
-        200,
-        {
-            "jobId": str(record.get("jobId", job_id)),
-            "status": str(record.get("status", "UNKNOWN")),
-            "textLength": int(record.get("textLength", 0)),
-            "usedTextract": bool(record.get("usedTextract", False)),
-            "updatedAt": str(record.get("updatedAt", "")),
-            "error": str(record.get("error", "")),
-        },
-    )
+    payload: dict[str, Any] = {
+        "jobId": str(record.get("jobId", job_id)),
+        "status": str(record.get("status", "UNKNOWN")),
+        "textLength": int(record.get("textLength", 0)),
+        "usedTextract": bool(record.get("usedTextract", False)),
+        "updatedAt": str(record.get("updatedAt", "")),
+        "error": str(record.get("error", "")),
+    }
+    if record.get("kbIngestionJobId"):
+        payload["kbIngestionJobId"] = str(record["kbIngestionJobId"])
+    if record.get("kbIngestionError"):
+        payload["kbIngestionError"] = str(record["kbIngestionError"])
+    return _json_response(200, payload)
 
 
 def _handle_scheduled_canvas_sync() -> Dict[str, Any]:
