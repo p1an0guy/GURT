@@ -309,18 +309,36 @@ def generate_practice_exam(*, course_id: str, num_questions: int) -> dict[str, A
     }
 
 
-def chat_answer(*, course_id: str, question: str) -> dict[str, Any]:
+def format_canvas_items(items: list[dict[str, Any]]) -> str | None:
+    if not items:
+        return None
+    lines = []
+    for item in items:
+        title = item.get("title", "Untitled")
+        item_type = item.get("itemType", "unknown")
+        due_at = item.get("dueAt", "no due date")
+        points = item.get("pointsPossible")
+        pts_str = f"{points} pts" if points is not None else "ungraded"
+        lines.append(f"{item_type} | {title} | due {due_at} | {pts_str}")
+    return "\n".join(lines)
+
+
+def chat_answer(*, course_id: str, question: str, canvas_context: str | None = None) -> dict[str, Any]:
     context = _retrieve_context(course_id=course_id, query=question, k=6)
     if not context:
         raise GenerationError("no knowledge base context available for chat")
 
     context_block = "\n\n".join(row["text"] for row in context[:6])
+    canvas_section = ""
+    if canvas_context:
+        canvas_section = f"\n\nCanvas assignment data:\n{canvas_context}"
     prompt = (
         "Return ONLY JSON object. No markdown.\n"
         'Schema: {"answer":"...","citations":["source1","source2"]}\n'
-        "Answer using only the provided context. If unknown, say you cannot find it.\n"
+        "Answer using only the provided context and canvas data. If unknown, say you cannot find it.\n"
         f"Question: {question}\n"
         f"Context:\n{context_block}"
+        f"{canvas_section}"
     )
     payload = _invoke_model_json(prompt)
     if not isinstance(payload, dict):

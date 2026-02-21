@@ -21,7 +21,7 @@ from backend.canvas_client import (
     fetch_course_files,
     fetch_file_bytes,
 )
-from backend.generation import GenerationError, chat_answer, generate_flashcards, generate_practice_exam
+from backend.generation import GenerationError, chat_answer, format_canvas_items, generate_flashcards, generate_practice_exam
 from backend import uploads
 from gurt.calendar_tokens.minting import (
     CalendarTokenMintingError,
@@ -1030,7 +1030,19 @@ def _handle_chat(event: Mapping[str, Any]) -> Dict[str, Any]:
     try:
         course_id = _require_non_empty_string(payload, "courseId")
         question = _require_non_empty_string(payload, "question")
-        answer = chat_answer(course_id=course_id, question=question)
+
+        canvas_context: str | None = None
+        try:
+            user_id = _extract_authenticated_user_id(event)
+            if user_id is None and _is_demo_mode():
+                user_id = _demo_user_id()
+            if user_id is not None:
+                items = _query_canvas_course_items_for_user(user_id=user_id, course_id=course_id)
+                canvas_context = format_canvas_items(items)
+        except Exception:
+            pass
+
+        answer = chat_answer(course_id=course_id, question=question, canvas_context=canvas_context)
     except ValueError as exc:
         return _json_response(400, {"error": str(exc)})
     except GenerationError as exc:

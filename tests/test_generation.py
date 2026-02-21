@@ -190,6 +190,82 @@ class GenerationCitationTests(unittest.TestCase):
         )
 
 
+class FormatCanvasItemsTests(unittest.TestCase):
+    def test_format_canvas_items_returns_none_for_empty_list(self) -> None:
+        self.assertIsNone(generation.format_canvas_items([]))
+
+    def test_format_canvas_items_produces_compact_lines(self) -> None:
+        items = [
+            {
+                "title": "Midterm Exam",
+                "itemType": "exam",
+                "dueAt": "2026-10-15T17:00:00Z",
+                "pointsPossible": 100,
+            },
+            {
+                "title": "Reading 1",
+                "itemType": "assignment",
+                "dueAt": "2026-09-05T23:59:00Z",
+                "pointsPossible": None,
+            },
+        ]
+        result = generation.format_canvas_items(items)
+        self.assertIsNotNone(result)
+        lines = result.split("\n")
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(lines[0], "exam | Midterm Exam | due 2026-10-15T17:00:00Z | 100 pts")
+        self.assertEqual(lines[1], "assignment | Reading 1 | due 2026-09-05T23:59:00Z | ungraded")
+
+    def test_format_canvas_items_handles_missing_fields(self) -> None:
+        items = [{}]
+        result = generation.format_canvas_items(items)
+        self.assertIsNotNone(result)
+        self.assertEqual(result, "unknown | Untitled | due no due date | ungraded")
+
+
+class ChatCanvasContextTests(unittest.TestCase):
+    def test_chat_answer_includes_canvas_context_in_prompt(self) -> None:
+        canvas_ctx = "exam | Midterm | due 2026-10-15T17:00:00Z | 100 pts"
+        with (
+            patch(
+                "backend.generation._retrieve_context",
+                return_value=[
+                    {"text": "Context row 1", "source": "s3://bucket/uploads/170880/doc-a/ch1.pdf#chunk-1"},
+                ],
+            ),
+            patch(
+                "backend.generation._invoke_model_json",
+                return_value={"answer": "The midterm is on October 15.", "citations": []},
+            ) as invoke_mock,
+        ):
+            response = generation.chat_answer(course_id="170880", question="When is the midterm?", canvas_context=canvas_ctx)
+
+        self.assertEqual(response["answer"], "The midterm is on October 15.")
+        prompt_text = invoke_mock.call_args.args[0]
+        self.assertIn("Canvas assignment data:", prompt_text)
+        self.assertIn("Midterm", prompt_text)
+        self.assertIn("canvas data", prompt_text)
+
+    def test_chat_answer_works_without_canvas_context(self) -> None:
+        with (
+            patch(
+                "backend.generation._retrieve_context",
+                return_value=[
+                    {"text": "Context row 1", "source": "s3://bucket/uploads/170880/doc-a/ch1.pdf#chunk-1"},
+                ],
+            ),
+            patch(
+                "backend.generation._invoke_model_json",
+                return_value={"answer": "Some answer.", "citations": []},
+            ) as invoke_mock,
+        ):
+            response = generation.chat_answer(course_id="170880", question="What is this?")
+
+        self.assertEqual(response["answer"], "Some answer.")
+        prompt_text = invoke_mock.call_args.args[0]
+        self.assertNotIn("Canvas assignment data:", prompt_text)
+
+
 class ChatCitationTests(unittest.TestCase):
     def test_chat_falls_back_to_context_citations_when_model_omits_citations(self) -> None:
         with (

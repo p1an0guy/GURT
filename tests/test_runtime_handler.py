@@ -954,7 +954,83 @@ class RuntimeHandlerTests(unittest.TestCase):
         chat_answer.assert_called_once_with(
             course_id="course-psych-101",
             question="What is working memory?",
+            canvas_context=None,
         )
+
+    def test_chat_passes_canvas_context_in_demo_mode(self) -> None:
+        event = {
+            "httpMethod": "POST",
+            "path": "/chat",
+            "body": json.dumps(
+                {
+                    "courseId": "170880",
+                    "question": "When is the midterm?",
+                }
+            ),
+        }
+
+        canvas_items = [
+            {
+                "id": "assign-1",
+                "courseId": "170880",
+                "title": "Midterm Exam",
+                "itemType": "exam",
+                "dueAt": "2026-10-15T17:00:00Z",
+                "pointsPossible": 100,
+            }
+        ]
+
+        with (
+            patch(
+                "backend.runtime._query_canvas_course_items_for_user",
+                return_value=canvas_items,
+            ) as query_items,
+            patch(
+                "backend.runtime.chat_answer",
+                return_value={
+                    "answer": "The midterm is on October 15.",
+                    "citations": [],
+                },
+            ) as chat_mock,
+        ):
+            response = self._invoke(event, env={"DEMO_MODE": "true"})
+
+        self.assertEqual(response["statusCode"], 200)
+        query_items.assert_called_once_with(user_id="demo-user", course_id="170880")
+        call_kwargs = chat_mock.call_args.kwargs
+        self.assertIsNotNone(call_kwargs["canvas_context"])
+        self.assertIn("Midterm Exam", call_kwargs["canvas_context"])
+
+    def test_chat_proceeds_when_canvas_query_fails(self) -> None:
+        event = {
+            "httpMethod": "POST",
+            "path": "/chat",
+            "body": json.dumps(
+                {
+                    "courseId": "170880",
+                    "question": "What is federalism?",
+                }
+            ),
+        }
+
+        with (
+            patch(
+                "backend.runtime._query_canvas_course_items_for_user",
+                side_effect=RuntimeError("CANVAS_DATA_TABLE missing"),
+            ),
+            patch(
+                "backend.runtime.chat_answer",
+                return_value={
+                    "answer": "Federalism divides powers.",
+                    "citations": [],
+                },
+            ) as chat_mock,
+        ):
+            response = self._invoke(event, env={"DEMO_MODE": "true"})
+
+        self.assertEqual(response["statusCode"], 200)
+        call_kwargs = chat_mock.call_args.kwargs
+        self.assertIsNone(call_kwargs["canvas_context"])
 
     def test_chat_returns_502_when_generation_fails(self) -> None:
         event = {
