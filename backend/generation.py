@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import unquote, urlparse
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 class GenerationError(RuntimeError):
@@ -102,24 +106,31 @@ def _retrieve_response_with_fallback(*, client: Any, kb_id: str, query: str, num
             "filter": {"equals": {"key": "courseId", "value": course_id}},
         }
     }
+    unfiltered_config = {
+        "vectorSearchConfiguration": {
+            "numberOfResults": num_results,
+        }
+    }
     try:
-        return client.retrieve(
+        result = client.retrieve(
             knowledgeBaseId=kb_id,
             retrievalQuery={"text": f"course:{course_id}\n{query}"},
             retrievalConfiguration=filtered_config,
         )
-    except Exception:
-        # Fallback keeps older data layouts working while we still enforce scope
-        # locally via source-path checks below.
-        return client.retrieve(
-            knowledgeBaseId=kb_id,
-            retrievalQuery={"text": f"course:{course_id}\n{query}"},
-            retrievalConfiguration={
-                "vectorSearchConfiguration": {
-                    "numberOfResults": num_results,
-                }
-            },
-        )
+        if result.get("retrievalResults"):
+            print(f"[KB-DEBUG] filtered query returned {len(result['retrievalResults'])} results for course_id={course_id}")
+            return result
+        print(f"[KB-DEBUG] filtered query returned 0 results for course_id={course_id}, falling back to unfiltered")
+    except Exception as exc:
+        print(f"[KB-DEBUG] filtered query FAILED for course_id={course_id}, falling back: {exc}")
+
+    result = client.retrieve(
+        knowledgeBaseId=kb_id,
+        retrievalQuery={"text": f"course:{course_id}\n{query}"},
+        retrievalConfiguration=unfiltered_config,
+    )
+    print(f"[KB-DEBUG] unfiltered query returned {len(result.get('retrievalResults', []))} results")
+    return result
 
 
 def _retrieve_context(*, course_id: str, query: str, k: int = 8) -> list[dict[str, str]]:
@@ -138,16 +149,20 @@ def _retrieve_context(*, course_id: str, query: str, k: int = 8) -> list[dict[st
         raise GenerationError(f"knowledge base retrieval failed: {exc}") from exc
 
     results = response.get("retrievalResults", [])
+    print(f"[KB-DEBUG] course_id={course_id} raw_results={len(results)}")
     context: list[dict[str, str]] = []
     for row in results:
         content = row.get("content")
         text = content.get("text") if isinstance(content, dict) else None
         if not isinstance(text, str) or not text.strip():
+            print(f"[KB-DEBUG] skipped result: empty text")
             continue
         source = _extract_source(row.get("location"))
         if not _source_in_course_scope(source=source, course_id=course_id):
+            print(f"[KB-DEBUG] filtered out: source={source} course_id={course_id}")
             continue
         context.append({"text": text.strip(), "source": source})
+    print(f"[KB-DEBUG] course_id={course_id} after_filter={len(context)} from_raw={len(results)}")
     return context[:k]
 
 
@@ -181,10 +196,19 @@ def _invoke_model_json(prompt: str) -> Any:
     text = chunks[0].get("text")
     if not isinstance(text, str) or not text.strip():
         raise GenerationError("model returned non-text response")
+    # Try direct parse first, then strip markdown fences if needed
     try:
         return json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise GenerationError("model returned invalid JSON payload") from exc
+    except json.JSONDecodeError:
+        pass
+    import re
+    md_match = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
+    if md_match:
+        try:
+            return json.loads(md_match.group(1).strip())
+        except json.JSONDecodeError:
+            pass
+    raise GenerationError("model returned invalid JSON payload")
 
 
 def _normalize_citations(raw: Any, fallback: list[str]) -> list[str]:
