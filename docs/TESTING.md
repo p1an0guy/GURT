@@ -73,7 +73,11 @@ To include ingest start/status contract checks in mock smoke mode:
 
 ```bash
 source .venv/bin/activate
-SMOKE_MOCK_MODE=1 MINT_CALENDAR_TOKEN=1 SMOKE_INCLUDE_INGEST=1 python scripts/run_smoke_tests.py
+SMOKE_MOCK_MODE=1 \
+MINT_CALENDAR_TOKEN=1 \
+SMOKE_INCLUDE_CANVAS_SYNC=1 \
+SMOKE_INCLUDE_INGEST=1 \
+python scripts/run_smoke_tests.py
 ```
 
 ## Smoke tests (local, deployed API)
