@@ -12,7 +12,8 @@ CDK_CLI_PACKAGE="${CDK_CLI_PACKAGE:-aws-cdk@latest}"
 
 STAGE_NAME="${STAGE_NAME:-dev}"
 DEMO_MODE="${DEMO_MODE:-1}"
-BEDROCK_MODEL_ID="${BEDROCK_MODEL_ID:-amazon.nova-lite-v1:0}"
+BEDROCK_MODEL_ID="${BEDROCK_MODEL_ID:-us.anthropic.claude-sonnet-4-6}"
+KNOWLEDGE_BASE_ID="${KNOWLEDGE_BASE_ID:-}"
 CALENDAR_TOKEN_MINTING_PATH="${CALENDAR_TOKEN_MINTING_PATH:-endpoint}"
 CALENDAR_TOKEN="${CALENDAR_TOKEN:-demo-calendar-token}"
 CALENDAR_TOKEN_USER_ID="${CALENDAR_TOKEN_USER_ID:-demo-user}"
@@ -55,6 +56,7 @@ npx --yes "$CDK_CLI_PACKAGE" bootstrap \
   --context "stageName=$STAGE_NAME" \
   --context "demoMode=$DEMO_MODE" \
   --context "bedrockModelId=$BEDROCK_MODEL_ID" \
+  --context "knowledgeBaseId=$KNOWLEDGE_BASE_ID" \
   --context "calendarTokenMintingPath=$CALENDAR_TOKEN_MINTING_PATH" \
   --context "calendarToken=$CALENDAR_TOKEN" \
   --context "calendarTokenUserId=$CALENDAR_TOKEN_USER_ID"
@@ -66,6 +68,7 @@ npx --yes "$CDK_CLI_PACKAGE" deploy GurtDataStack GurtApiStack \
   --context "stageName=$STAGE_NAME" \
   --context "demoMode=$DEMO_MODE" \
   --context "bedrockModelId=$BEDROCK_MODEL_ID" \
+  --context "knowledgeBaseId=$KNOWLEDGE_BASE_ID" \
   --context "calendarTokenMintingPath=$CALENDAR_TOKEN_MINTING_PATH" \
   --context "calendarToken=$CALENDAR_TOKEN" \
   --context "calendarTokenUserId=$CALENDAR_TOKEN_USER_ID"

@@ -121,6 +121,12 @@ Recommended usage with AWS SSO profile:
 AWS_PROFILE=<your-sso-profile> ./scripts/deploy.sh
 ```
 
+If generation/chat endpoints should hit a real Bedrock KB, also pass:
+
+```bash
+AWS_PROFILE=<your-sso-profile> KNOWLEDGE_BASE_ID=<kb-id> ./scripts/deploy.sh
+```
+
 Optional override for CDK CLI package/version:
 
 ```bash
@@ -135,6 +141,8 @@ Key stack outputs to use for smoke/dev secrets:
 
 CDK context defaults for demo deploys (`infra/cdk.json`):
 
+- `bedrockModelId`: default model id for generation/chat (`us.anthropic.claude-sonnet-4-6`)
+- `knowledgeBaseId`: Bedrock Knowledge Base ID used by `/generate/*` and `/chat` retrieval
 - `calendarToken`: default seeded token used by `/calendar/{token}.ics`
 - `calendarTokenUserId`: optional seeded user lock for calendar feed requests
 - `calendarFixtureFallback`: when `1`, `/calendar/{token}.ics` falls back to fixture events if user schedule rows are empty (demo-only behavior)

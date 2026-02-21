@@ -29,6 +29,11 @@ EXAMPLE_SCHEMA_MAP = {
     "IngestStartRequest.example.json": "IngestStartRequest.json",
     "IngestStartResponse.example.json": "IngestStartResponse.json",
     "IngestStatusResponse.example.json": "IngestStatusResponse.json",
+    "GenerateFlashcardsRequest.example.json": "GenerateFlashcardsRequest.json",
+    "GenerateFlashcardsResponse.example.json": "GenerateFlashcardsResponse.json",
+    "GeneratePracticeExamRequest.example.json": "GeneratePracticeExamRequest.json",
+    "ChatRequest.example.json": "ChatRequest.json",
+    "ChatResponse.example.json": "ChatResponse.json",
 }
 
 

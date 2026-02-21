@@ -22,6 +22,7 @@
 3. Build Bedrock-backed ingestion + RAG scaffold
    - `POST /uploads`: S3 upload flow (presign/direct).
    - `POST /docs/ingest`: extract text, chunk, embed, persist metadata.
+   - Integrate Bedrock Knowledge Base (pre-provisioned KB) and point retrieval at extracted course documents stored from S3 ingest outputs.
    - Add citation structure for downstream flashcard/practice generation.
 
 4. Wire study/generation endpoints from scaffold to runtime

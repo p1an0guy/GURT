@@ -358,6 +358,122 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertEqual(body["status"], "FINISHED")
         self.assertEqual(body["textLength"], 321)
 
+    def test_generate_flashcards_returns_generated_cards(self) -> None:
+        event = {
+            "httpMethod": "POST",
+            "path": "/generate/flashcards",
+            "body": json.dumps({"courseId": "course-psych-101", "numCards": 5}),
+        }
+
+        with patch(
+            "backend.runtime.generate_flashcards",
+            return_value=[
+                {
+                    "id": "card-1",
+                    "courseId": "course-psych-101",
+                    "topicId": "topic-memory",
+                    "prompt": "What is retrieval practice?",
+                    "answer": "Actively recalling information from memory.",
+                }
+            ],
+        ) as generate_cards:
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 200)
+        body = json.loads(response["body"])
+        self.assertEqual(len(body), 1)
+        self.assertEqual(body[0]["id"], "card-1")
+        generate_cards.assert_called_once_with(course_id="course-psych-101", num_cards=5)
+
+    def test_generate_flashcards_rejects_non_positive_num_cards(self) -> None:
+        event = {
+            "httpMethod": "POST",
+            "path": "/generate/flashcards",
+            "body": json.dumps({"courseId": "course-psych-101", "numCards": 0}),
+        }
+
+        response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 400)
+        self.assertIn("numCards must be >= 1", json.loads(response["body"])["error"])
+
+    def test_generate_practice_exam_returns_generated_exam(self) -> None:
+        event = {
+            "httpMethod": "POST",
+            "path": "/generate/practice-exam",
+            "body": json.dumps({"courseId": "course-psych-101", "numQuestions": 10}),
+        }
+
+        with patch(
+            "backend.runtime.generate_practice_exam",
+            return_value={
+                "courseId": "course-psych-101",
+                "generatedAt": "2026-09-02T08:30:00Z",
+                "questions": [
+                    {
+                        "id": "q-1",
+                        "prompt": "Which process transfers information to long-term memory?",
+                        "choices": ["Encoding", "Recognition"],
+                        "answerIndex": 0,
+                    }
+                ],
+            },
+        ) as generate_exam:
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 200)
+        body = json.loads(response["body"])
+        self.assertEqual(body["courseId"], "course-psych-101")
+        self.assertEqual(len(body["questions"]), 1)
+        generate_exam.assert_called_once_with(course_id="course-psych-101", num_questions=10)
+
+    def test_chat_returns_answer_with_citations(self) -> None:
+        event = {
+            "httpMethod": "POST",
+            "path": "/chat",
+            "body": json.dumps(
+                {
+                    "courseId": "course-psych-101",
+                    "question": "What is working memory?",
+                }
+            ),
+        }
+
+        with patch(
+            "backend.runtime.chat_answer",
+            return_value={
+                "answer": "Working memory temporarily stores and manipulates information.",
+                "citations": ["s3://bucket/doc.pdf#chunk-3"],
+            },
+        ) as chat_answer:
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 200)
+        body = json.loads(response["body"])
+        self.assertIn("answer", body)
+        self.assertEqual(len(body["citations"]), 1)
+        chat_answer.assert_called_once_with(
+            course_id="course-psych-101",
+            question="What is working memory?",
+        )
+
+    def test_chat_returns_502_when_generation_fails(self) -> None:
+        event = {
+            "httpMethod": "POST",
+            "path": "/chat",
+            "body": json.dumps(
+                {
+                    "courseId": "course-psych-101",
+                    "question": "What is working memory?",
+                }
+            ),
+        }
+
+        with patch("backend.runtime.chat_answer", side_effect=RuntimeError("downstream failed")):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 502)
+
     def test_scheduled_canvas_sync_processes_all_connections_and_continues_on_user_failures(self) -> None:
         event = {"source": "aws.events", "detail-type": "Scheduled Event"}
 

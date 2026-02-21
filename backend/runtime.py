@@ -13,6 +13,7 @@ from uuid import uuid4
 from typing import Any, Dict, Mapping
 
 from backend.canvas_client import CanvasApiError, fetch_active_courses, fetch_course_assignments
+from backend.generation import GenerationError, chat_answer, generate_flashcards, generate_practice_exam
 from backend import uploads
 from gurt.calendar_tokens.minting import (
     CalendarTokenMintingError,
@@ -642,6 +643,66 @@ def _handle_docs_ingest_status(job_id: str) -> Dict[str, Any]:
     )
 
 
+def _handle_generate_flashcards(event: Mapping[str, Any]) -> Dict[str, Any]:
+    payload, parse_error = _parse_json_body(event)
+    if parse_error is not None or payload is None:
+        return _json_response(400, {"error": parse_error or "request body must be valid JSON"})
+    try:
+        course_id = _require_non_empty_string(payload, "courseId")
+        num_cards_raw = payload.get("numCards", 20)
+        num_cards = int(num_cards_raw)
+        if num_cards < 1:
+            return _json_response(400, {"error": "numCards must be >= 1"})
+        cards = generate_flashcards(course_id=course_id, num_cards=min(num_cards, 100))
+    except ValueError as exc:
+        return _json_response(400, {"error": str(exc)})
+    except GenerationError as exc:
+        return _json_response(502, {"error": str(exc)})
+    except RuntimeError as exc:
+        return _json_response(502, {"error": str(exc)})
+
+    return _text_response(200, json.dumps(cards), content_type="application/json")
+
+
+def _handle_generate_practice_exam(event: Mapping[str, Any]) -> Dict[str, Any]:
+    payload, parse_error = _parse_json_body(event)
+    if parse_error is not None or payload is None:
+        return _json_response(400, {"error": parse_error or "request body must be valid JSON"})
+    try:
+        course_id = _require_non_empty_string(payload, "courseId")
+        num_questions_raw = payload.get("numQuestions", 10)
+        num_questions = int(num_questions_raw)
+        if num_questions < 1:
+            return _json_response(400, {"error": "numQuestions must be >= 1"})
+        exam = generate_practice_exam(course_id=course_id, num_questions=min(num_questions, 20))
+    except ValueError as exc:
+        return _json_response(400, {"error": str(exc)})
+    except GenerationError as exc:
+        return _json_response(502, {"error": str(exc)})
+    except RuntimeError as exc:
+        return _json_response(502, {"error": str(exc)})
+
+    return _text_response(200, json.dumps(exam), content_type="application/json")
+
+
+def _handle_chat(event: Mapping[str, Any]) -> Dict[str, Any]:
+    payload, parse_error = _parse_json_body(event)
+    if parse_error is not None or payload is None:
+        return _json_response(400, {"error": parse_error or "request body must be valid JSON"})
+    try:
+        course_id = _require_non_empty_string(payload, "courseId")
+        question = _require_non_empty_string(payload, "question")
+        answer = chat_answer(course_id=course_id, question=question)
+    except ValueError as exc:
+        return _json_response(400, {"error": str(exc)})
+    except GenerationError as exc:
+        return _json_response(502, {"error": str(exc)})
+    except RuntimeError as exc:
+        return _json_response(502, {"error": str(exc)})
+
+    return _text_response(200, json.dumps(answer), content_type="application/json")
+
+
 def _handle_scheduled_canvas_sync() -> Dict[str, Any]:
     updated_at = _utc_now_rfc3339()
     try:
@@ -851,6 +912,15 @@ def lambda_handler(event: Mapping[str, Any], context: Any) -> Dict[str, Any]:
 
     if method == "POST" and path == "/canvas/sync":
         return _handle_canvas_sync(event)
+
+    if method == "POST" and path == "/generate/flashcards":
+        return _handle_generate_flashcards(event)
+
+    if method == "POST" and path == "/generate/practice-exam":
+        return _handle_generate_practice_exam(event)
+
+    if method == "POST" and path == "/chat":
+        return _handle_chat(event)
 
     if method == "GET":
         token = _extract_calendar_token(path, path_params)

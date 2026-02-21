@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ChatResponse.json",
+  "title": "ChatResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["answer", "citations"],
+  "properties": {
+    "answer": {"type": "string", "minLength": 1},
+    "citations": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    }
+  }
+}

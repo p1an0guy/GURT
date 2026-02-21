@@ -3,7 +3,8 @@
   "context": {
     "stageName": "dev",
     "demoMode": "1",
-    "bedrockModelId": "amazon.nova-lite-v1:0",
+    "bedrockModelId": "us.anthropic.claude-sonnet-4-6",
+    "knowledgeBaseId": "",
     "calendarTokenMintingPath": "endpoint",
     "calendarToken": "demo-calendar-token",
     "calendarTokenUserId": "demo-user",

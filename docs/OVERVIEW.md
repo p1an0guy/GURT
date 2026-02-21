@@ -20,6 +20,8 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
   - Fallback: AWS Textract async OCR when extracted text is insufficient (< 200 chars)
 - **AI features:**
   - Model provider: **Amazon Bedrock**.
+  - Default model id: `us.anthropic.claude-sonnet-4-6`.
+  - Retrieval source: Bedrock Knowledge Base (`KNOWLEDGE_BASE_ID`).
   - RAG index over uploaded sources (chunk + embeddings + retrieval).
   - Generate:
     - Flashcards (<=100 for demo)
@@ -117,8 +119,8 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 
 - Upload + Docs:
   - POST `/uploads` (presigned URL or direct upload)
-  - POST `/docs/ingest` (extract, chunk, embed)
-  - GET `/docs` (list)
+  - POST `/docs/ingest` (extract, chunk, embed start)
+  - GET `/docs/ingest/{jobId}` (workflow status)
 
 - Generation:
   - POST `/generate/flashcards`
