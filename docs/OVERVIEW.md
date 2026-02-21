@@ -53,7 +53,7 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 2. Backend fetches courses + upcoming assignments/events.
 3. Backend stores Canvas items and exposes them to UI.
 4. UI shows timeline + flags an exam date (user can mark an item as an exam if needed).
-5. Current scaffold supports `POST /canvas/connect` + `POST /canvas/sync` with fixture-backed sync writes; live Canvas API pull is next.
+5. Current scaffold supports `POST /canvas/connect` + `POST /canvas/sync` with assignments-only Canvas sync (`published=true` and non-null `dueAt`), including per-course partial failure reporting.
 
 ### Flow B — Upload materials and build knowledge base
 
@@ -89,8 +89,9 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 
 ### Flow E — Calendar subscription (ICS)
 
-1. Authenticated caller requests a feed token via `POST /calendar/token`.
+1. Caller requests a feed token via `POST /calendar/token`.
 2. Backend mints token, stores token metadata in DynamoDB, and returns feed URL.
+   In demo mode, if no authenticated principal is present, it uses `DEMO_USER_ID`.
 3. User clicks “Subscribe calendar”.
 4. UI shows URL: `/calendar/<token>.ics`.
 5. User adds calendar by URL in Google Calendar.

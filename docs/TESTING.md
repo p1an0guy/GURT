@@ -71,18 +71,21 @@ Run the **Smoke Dev** workflow manually (`workflow_dispatch`) with these reposit
 
 How to get `DEV_CALENDAR_TOKEN`:
 
-1. Call `POST <DEV_BASE_URL>/calendar/token` as an authenticated caller.
+1. Call `POST <DEV_BASE_URL>/calendar/token`.
 2. Copy the `token` from the JSON response.
 3. Save that token in GitHub Actions secret `DEV_CALENDAR_TOKEN`.
 
-In the current CDK scaffold, `POST /calendar/token` uses IAM auth (`AuthorizationType.IAM`),
-so call it with AWS credentials that can sign SigV4 requests.
+In the current demo scaffold, `POST /calendar/token` is intentionally `AuthorizationType.NONE`
+because org SCP policies may deny `execute-api:Invoke`. Runtime falls back to `DEMO_USER_ID` when
+no authenticated principal is present and `DEMO_MODE=true`.
 
-Canvas bootstrap for demo schedule rows (also IAM-authenticated):
+Canvas bootstrap for demo schedule rows:
 
 1. `POST <DEV_BASE_URL>/canvas/connect` with JSON body:
    `{"canvasBaseUrl":"https://canvas.example.edu","accessToken":"demo-token"}`
 2. `POST <DEV_BASE_URL>/canvas/sync`
+   - Response includes `failedCourseIds` for per-course retry visibility.
+   - Current live scope syncs published assignments with non-null due dates.
 3. Mint calendar token and fetch `/calendar/{token}.ics`.
 
 ## CDK infra synth and deploy (demo scaffold)

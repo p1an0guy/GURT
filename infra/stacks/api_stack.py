@@ -123,9 +123,9 @@ class ApiStack(Stack):
 
         canvas = self.rest_api.root.add_resource("canvas")
         canvas_connect = canvas.add_resource("connect")
-        canvas_connect.add_method("POST", app_integration, authorization_type=apigateway.AuthorizationType.IAM)
+        canvas_connect.add_method("POST", app_integration, authorization_type=apigateway.AuthorizationType.NONE)
         canvas_sync = canvas.add_resource("sync")
-        canvas_sync.add_method("POST", app_integration, authorization_type=apigateway.AuthorizationType.IAM)
+        canvas_sync.add_method("POST", app_integration, authorization_type=apigateway.AuthorizationType.NONE)
 
         uploads = self.rest_api.root.add_resource("uploads")
         uploads.add_method("POST", uploads_integration)
@@ -143,7 +143,7 @@ class ApiStack(Stack):
         calendar_token.add_method(
             "POST",
             app_integration,
-            authorization_type=apigateway.AuthorizationType.IAM,
+            authorization_type=apigateway.AuthorizationType.NONE,
         )
         calendar_feed = calendar.add_resource("{token_ics}")
         calendar_feed.add_method("GET", app_integration)
