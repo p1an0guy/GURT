@@ -6,7 +6,7 @@ import os
 import unittest
 from unittest import mock
 
-from backend.ingest_workflow import finalize_handler
+from backend.ingest_workflow import extract_handler, finalize_handler, start_textract_handler
 
 
 def _finish_event(
@@ -379,3 +379,67 @@ class FinalizeHandlerTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "FINISHED")
         mock_bedrock.start_ingestion_job.assert_called_once()
+
+
+class ExtractAndTextractRoutingTests(unittest.TestCase):
+    def test_extract_handler_converts_pptx_and_sets_textract_key(self) -> None:
+        event = {
+            "bucket": "uploads-bucket",
+            "key": "uploads/course-1/doc-1/week-1-slides.pptx",
+            "threshold": 200,
+        }
+        with mock.patch(
+            "backend.ingest_workflow._read_s3_bytes",
+            return_value=b"pptx-bytes",
+        ):
+            with mock.patch(
+                "backend.ingest_workflow._convert_pptx_to_pdf",
+                return_value=b"%PDF-1.7 fake",
+            ) as convert_mock:
+                with mock.patch("backend.ingest_workflow._write_s3_bytes") as write_mock:
+                    with mock.patch(
+                        "backend.ingest_workflow._extract_text_with_pymupdf",
+                        return_value="slide text",
+                    ) as extract_mock:
+                        result = extract_handler(event, None)
+
+        convert_mock.assert_called_once_with(b"pptx-bytes")
+        write_mock.assert_called_once()
+        self.assertEqual(result["text"], "slide text")
+        self.assertEqual(
+            result["textractKey"],
+            "uploads/course-1/doc-1/week-1-slides.converted.pdf",
+        )
+        extract_mock.assert_called_once_with(
+            b"%PDF-1.7 fake",
+            "uploads/course-1/doc-1/week-1-slides.converted.pdf",
+        )
+
+    def test_extract_handler_rejects_oversized_pptx(self) -> None:
+        event = {
+            "bucket": "uploads-bucket",
+            "key": "uploads/course-1/doc-1/week-1-slides.pptx",
+            "threshold": 200,
+        }
+        oversized = b"a" * (50 * 1024 * 1024 + 1)
+        with mock.patch("backend.ingest_workflow._read_s3_bytes", return_value=oversized):
+            with self.assertRaisesRegex(ValueError, "50MB"):
+                extract_handler(event, None)
+
+    def test_start_textract_uses_textract_key_when_present(self) -> None:
+        event = {
+            "bucket": "uploads-bucket",
+            "key": "uploads/course-1/doc-1/week-1-slides.pptx",
+            "textractKey": "uploads/course-1/doc-1/week-1-slides.converted.pdf",
+        }
+        fake_client = mock.MagicMock()
+        fake_client.start_document_text_detection.return_value = {"JobId": "textract-job-1"}
+        with mock.patch("backend.ingest_workflow._textract_client", return_value=fake_client):
+            result = start_textract_handler(event, None)
+
+        kwargs = fake_client.start_document_text_detection.call_args.kwargs
+        self.assertEqual(
+            kwargs["DocumentLocation"]["S3Object"]["Name"],
+            "uploads/course-1/doc-1/week-1-slides.converted.pdf",
+        )
+        self.assertEqual(result["textractJobId"], "textract-job-1")

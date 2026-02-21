@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from aws_cdk import CfnOutput, Duration, Stack
+from aws_cdk import CfnOutput, Duration, Size, Stack
 from aws_cdk import aws_apigateway as apigateway
+from aws_cdk import aws_ecr_assets as ecr_assets
 from aws_cdk import aws_events as events
 from aws_cdk import aws_events_targets as targets
 from aws_cdk import aws_iam as iam
@@ -95,14 +96,29 @@ class ApiStack(Stack):
             environment=env,
         )
 
-        ingest_extract_handler = lambda_.Function(
+        ingest_extract_handler = lambda_.DockerImageFunction(
             self,
             "IngestExtractHandler",
-            runtime=lambda_.Runtime.PYTHON_3_12,
-            code=lambda_code,
-            handler="backend.ingest_workflow.extract_handler",
-            timeout=Duration.seconds(60),
-            memory_size=512,
+            code=lambda_.DockerImageCode.from_image_asset(
+                str(project_root),
+                file="infra/lambda/ingest_extract/Dockerfile",
+                exclude=[
+                    ".git",
+                    ".cursor",
+                    ".next",
+                    "node_modules",
+                    ".venv",
+                    "infra/.venv",
+                    "infra/cdk.out",
+                    "**/cdk.out",
+                    "**/cdk.out/**",
+                ],
+                platform=ecr_assets.Platform.LINUX_AMD64,
+            ),
+            timeout=Duration.seconds(120),
+            memory_size=1536,
+            ephemeral_storage_size=Size.mebibytes(2048),
+            architecture=lambda_.Architecture.X86_64,
             environment={"DOCS_TABLE": data_stack.docs_table.table_name},
         )
         ingest_start_textract_handler = lambda_.Function(
@@ -142,7 +158,7 @@ class ApiStack(Stack):
 
         data_stack.uploads_bucket.grant_read_write(app_api_handler)
         data_stack.uploads_bucket.grant_put(uploads_handler)
-        data_stack.uploads_bucket.grant_read(ingest_extract_handler)
+        data_stack.uploads_bucket.grant_read_write(ingest_extract_handler)
         data_stack.uploads_bucket.grant_read(ingest_start_textract_handler)
         data_stack.uploads_bucket.grant_read(ingest_poll_textract_handler)
 
@@ -181,10 +197,21 @@ class ApiStack(Stack):
             lambda_function=ingest_start_textract_handler,
             payload_response_only=True,
         )
-        ingest_wait_step = sfn.Wait(
+        ingest_initial_wait_step = sfn.Wait(
             self,
-            "IngestWaitForTextract",
+            "IngestInitialWaitForTextract",
             time=sfn.WaitTime.duration(Duration.seconds(20)),
+        )
+        ingest_poll_wait_step = sfn.Wait(
+            self,
+            "IngestPollWaitForTextract",
+            time=sfn.WaitTime.duration(Duration.seconds(20)),
+        )
+        ingest_poll_textract_entry_step = sfn_tasks.LambdaInvoke(
+            self,
+            "IngestPollTextractEntryStep",
+            lambda_function=ingest_poll_textract_handler,
+            payload_response_only=True,
         )
         ingest_poll_textract_step = sfn_tasks.LambdaInvoke(
             self,
@@ -200,16 +227,18 @@ class ApiStack(Stack):
         )
 
         ingest_poll_choice = sfn.Choice(self, "IngestPollDone")
-        ingest_wait_poll_loop = ingest_wait_step.next(ingest_poll_textract_step).next(ingest_poll_choice)
         ingest_poll_choice.when(
             sfn.Condition.boolean_equals("$.done", True),
             ingest_finalize_step,
-        ).otherwise(ingest_wait_step)
+        ).otherwise(ingest_poll_wait_step.next(ingest_poll_textract_step).next(ingest_poll_choice))
 
         ingest_choice = sfn.Choice(self, "IngestNeedsTextract")
         ingest_choice.when(
             sfn.Condition.boolean_equals("$.needsTextract", True),
-            ingest_start_textract_step.next(ingest_wait_poll_loop),
+            ingest_start_textract_step
+            .next(ingest_initial_wait_step)
+            .next(ingest_poll_textract_entry_step)
+            .next(ingest_poll_choice),
         ).otherwise(ingest_finalize_step)
 
         ingest_definition = ingest_extract_step.next(ingest_choice)

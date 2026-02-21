@@ -18,6 +18,7 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
   - S3 for uploaded source files.
 - **Text extraction:**
   - Fast path: PyMuPDF text extraction
+  - `.pptx` path: convert PowerPoint to PDF during ingest extraction, then run PyMuPDF extraction on converted PDF
   - Fallback: AWS Textract async OCR when extracted text is insufficient (< 200 chars)
 - **AI features:**
   - Model provider: **Amazon Bedrock**.
@@ -64,7 +65,7 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 
 ### Flow B — Upload materials and build knowledge base
 
-1. User uploads syllabus + slides/notes (PDF, plaintext).
+1. User uploads syllabus + slides/notes (PDF, plaintext, `.pptx`).
 2. Backend stores to S3, extracts text.
 3. Chunk, embed, and store chunk metadata + vectors.
 4. Ingestion uses `POST /docs/ingest` (start) + `GET /docs/ingest/{jobId}` (poll) backed by Step Functions.

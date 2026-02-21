@@ -66,6 +66,45 @@ class UploadFlowTests(unittest.TestCase):
         with self.assertRaisesRegex(UploadValidationError, "\\.pdf"):
             parse_upload_request(payload)
 
+    def test_parse_upload_request_accepts_pptx_with_valid_extension_and_size(self) -> None:
+        payload = {
+            "courseId": "course-psych-101",
+            "filename": "week-1-slides.pptx",
+            "contentType": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "contentLengthBytes": 1024,
+        }
+        parsed = parse_upload_request(payload)
+        self.assertEqual(parsed.filename, "week-1-slides.pptx")
+
+    def test_parse_upload_request_rejects_pptx_without_size(self) -> None:
+        payload = {
+            "courseId": "course-psych-101",
+            "filename": "week-1-slides.pptx",
+            "contentType": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        }
+        with self.assertRaisesRegex(UploadValidationError, "contentLengthBytes"):
+            parse_upload_request(payload)
+
+    def test_parse_upload_request_rejects_pptx_over_size_limit(self) -> None:
+        payload = {
+            "courseId": "course-psych-101",
+            "filename": "week-1-slides.pptx",
+            "contentType": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "contentLengthBytes": 50 * 1024 * 1024 + 1,
+        }
+        with self.assertRaisesRegex(UploadValidationError, "50MB"):
+            parse_upload_request(payload)
+
+    def test_parse_upload_request_rejects_pptx_content_type_with_non_pptx_filename(self) -> None:
+        payload = {
+            "courseId": "course-psych-101",
+            "filename": "week-1-slides.pdf",
+            "contentType": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "contentLengthBytes": 1024,
+        }
+        with self.assertRaisesRegex(UploadValidationError, "\\.pptx"):
+            parse_upload_request(payload)
+
     def test_create_upload_happy_path_wires_presign_and_returns_doc_id_and_key(self) -> None:
         s3_client = FakeS3Client()
         payload = {
@@ -138,6 +177,18 @@ class UploadFlowTests(unittest.TestCase):
 
         self.assertEqual(response["statusCode"], 400)
         self.assertIn("error", body)
+
+    def test_parse_upload_request_error_lists_supported_content_types(self) -> None:
+        payload = {
+            "courseId": "course-psych-101",
+            "filename": "notes.md",
+            "contentType": "text/markdown",
+        }
+        with self.assertRaisesRegex(
+            UploadValidationError,
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ):
+            parse_upload_request(payload)
 
     @staticmethod
     def _restore_bucket_env(previous_bucket: str | None) -> None:

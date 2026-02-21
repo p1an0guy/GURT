@@ -10,7 +10,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, Protocol
 
-ALLOWED_CONTENT_TYPES = frozenset({"application/pdf", "text/plain"})
+ALLOWED_CONTENT_TYPES = frozenset({"application/pdf", "text/plain", "application/vnd.openxmlformats-officedocument.presentationml.presentation"})
+PPTX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+MAX_PPTX_BYTES = 50 * 1024 * 1024
 UPLOAD_URL_EXPIRY_SECONDS = 900
 _COURSE_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 
@@ -38,6 +40,7 @@ class UploadRequest:
     course_id: str
     filename: str
     content_type: str
+    content_length_bytes: int | None = None
 
 
 def _require_non_empty_string(payload: Mapping[str, Any], field: str) -> str:
@@ -52,6 +55,7 @@ def parse_upload_request(payload: Mapping[str, Any]) -> UploadRequest:
     course_id = _require_non_empty_string(payload, "courseId")
     filename = _require_non_empty_string(payload, "filename")
     content_type = _require_non_empty_string(payload, "contentType")
+    content_length = payload.get("contentLengthBytes")
 
     if not _COURSE_ID_PATTERN.match(course_id):
         raise UploadValidationError(
@@ -60,7 +64,8 @@ def parse_upload_request(payload: Mapping[str, Any]) -> UploadRequest:
 
     if content_type not in ALLOWED_CONTENT_TYPES:
         raise UploadValidationError(
-            "'contentType' must be one of: application/pdf, text/plain"
+            "'contentType' must be one of: application/pdf, text/plain, "
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation"
         )
 
     basename = Path(filename).name
@@ -69,8 +74,20 @@ def parse_upload_request(payload: Mapping[str, Any]) -> UploadRequest:
 
     if content_type == "application/pdf" and not basename.lower().endswith(".pdf"):
         raise UploadValidationError("'filename' must end with '.pdf' for PDF uploads")
+    if content_type == PPTX_CONTENT_TYPE and not basename.lower().endswith(".pptx"):
+        raise UploadValidationError("'filename' must end with '.pptx' for PowerPoint uploads")
+    if content_type == PPTX_CONTENT_TYPE:
+        if not isinstance(content_length, int) or content_length <= 0:
+            raise UploadValidationError("'contentLengthBytes' must be a positive integer for .pptx uploads")
+        if content_length > MAX_PPTX_BYTES:
+            raise UploadValidationError("'.pptx' exceeds 50MB limit")
 
-    return UploadRequest(course_id=course_id, filename=basename, content_type=content_type)
+    return UploadRequest(
+        course_id=course_id,
+        filename=basename,
+        content_type=content_type,
+        content_length_bytes=content_length if isinstance(content_length, int) else None,
+    )
 
 
 def build_s3_key(upload: UploadRequest, doc_id: str) -> str:

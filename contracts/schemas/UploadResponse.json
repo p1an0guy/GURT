@@ -23,7 +23,11 @@
     },
     "contentType": {
       "type": "string",
-      "enum": ["application/pdf", "text/plain"]
+      "enum": [
+        "application/pdf",
+        "text/plain",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+      ]
     }
   }
 }

@@ -15,7 +15,15 @@
     },
     "contentType": {
       "type": "string",
-      "enum": ["application/pdf", "text/plain"]
+      "enum": [
+        "application/pdf",
+        "text/plain",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+      ]
+    },
+    "contentLengthBytes": {
+      "type": "integer",
+      "minimum": 1
     }
   },
   "allOf": [
@@ -32,6 +40,27 @@
         "properties": {
           "filename": {
             "pattern": "^[^/\\\\]+\\.[Pp][Dd][Ff]$"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": ["contentType"],
+        "properties": {
+          "contentType": {
+            "const": "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+          }
+        }
+      },
+      "then": {
+        "required": ["contentLengthBytes"],
+        "properties": {
+          "filename": {
+            "pattern": "^[^/\\\\]+\\.[Pp][Pp][Tt][Xx]$"
+          },
+          "contentLengthBytes": {
+            "maximum": 52428800
           }
         }
       }
