@@ -1,3 +1,10 @@
+(() => {
+  const bootKey = "__GURT_CONTENT_SCRIPT_BOOTSTRAPPED__";
+  if (globalThis[bootKey]) {
+    return;
+  }
+  globalThis[bootKey] = true;
+
 // Extract contextual information from the current Canvas page
 function extractPageContext() {
   const context = {
@@ -62,12 +69,104 @@ function extractPageContext() {
   return context;
 }
 
-// Respond to context requests from the service worker
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+let canvasScraperPromise = null;
+
+async function getCanvasScraper() {
+  if (!canvasScraperPromise) {
+    const moduleUrl = chrome.runtime.getURL("canvas_scraper.js");
+    canvasScraperPromise = import(moduleUrl)
+      .then((loadedModule) => {
+        if (loadedModule && typeof loadedModule.scrapeCanvasModules === "function") {
+          return loadedModule.scrapeCanvasModules;
+        }
+
+        if (
+          typeof globalThis !== "undefined" &&
+          globalThis.GurtCanvasScraper &&
+          typeof globalThis.GurtCanvasScraper.scrapeCanvasModules === "function"
+        ) {
+          return globalThis.GurtCanvasScraper.scrapeCanvasModules;
+        }
+
+        throw new Error("Unable to load Canvas scraper module.");
+      })
+      .catch((error) => {
+        canvasScraperPromise = null;
+        throw error;
+      });
+  }
+
+  return canvasScraperPromise;
+}
+
+function emitScrapeProgress(requestId, progress) {
+  const payload = {
+    type: "SCRAPE_MODULES_PROGRESS",
+    requestId: requestId || null,
+    progress
+  };
+
+  try {
+    chrome.runtime.sendMessage(payload, () => {
+      // Swallow best-effort callback errors.
+      void chrome.runtime.lastError;
+    });
+  } catch {
+    // Best-effort progress signaling only.
+  }
+}
+
+async function handleScrapeModulesStart(message, sendResponse) {
+  const requestId = message && message.requestId ? String(message.requestId) : null;
+
+  emitScrapeProgress(requestId, {
+    stage: "request_received",
+    message: "SCRAPE_MODULES_START received by content script."
+  });
+
+  try {
+    const scrapeCanvasModules = await getCanvasScraper();
+    const discovered = await scrapeCanvasModules({
+      sourceUrl: window.location.href,
+      onProgress: (progress) => emitScrapeProgress(requestId, progress)
+    });
+
+    sendResponse({
+      success: true,
+      requestId,
+      discovered,
+      count: discovered.length
+    });
+  } catch (error) {
+    const messageText = error instanceof Error ? error.message : String(error);
+    emitScrapeProgress(requestId, {
+      stage: "error",
+      message: messageText
+    });
+
+    sendResponse({
+      success: false,
+      requestId,
+      error: messageText,
+      discovered: [],
+      count: 0
+    });
+  }
+}
+
+// Respond to runtime requests
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === "GET_CONTEXT") {
     sendResponse(extractPageContext());
+    return;
+  }
+
+  if (message.type === "SCRAPE_MODULES_START") {
+    handleScrapeModulesStart(message, sendResponse);
+    return true;
   }
 });
 
 // Log context on load for debugging
 console.log("[Gurt] Content script loaded. Page context:", extractPageContext());
+})();

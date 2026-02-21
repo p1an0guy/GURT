@@ -133,9 +133,9 @@ Docs ingest workflow (Step Functions + PyMuPDF/Textract fallback + Bedrock KB):
 1. Upload source file via `POST /uploads` and complete S3 `PUT`.
 2. Start ingest: `POST /docs/ingest` with `{docId, courseId, key}`.
 3. Poll ingest status: `GET /docs/ingest/{jobId}` until `status` is `FINISHED` or `FAILED`.
-4. For `.pptx` uploads, extract step converts to PDF first (stored back to S3), then runs extraction against converted PDF.
+4. For `.pptx`, `.docx`, and `.doc` uploads, extract step converts to PDF first (stored back to S3), then runs extraction against converted PDF.
 5. If PyMuPDF extraction yields fewer than 200 chars, workflow falls back to async Textract OCR.
-6. `.pptx` uploads require `contentLengthBytes` and must be <= 50MB.
+6. `.pptx`, `.docx`, and `.doc` uploads require `contentLengthBytes` and must be <= 50MB.
 7. On successful finalize, Bedrock Knowledge Base `StartIngestionJob` is triggered automatically (no manual CLI) when `KNOWLEDGE_BASE_ID` and `KNOWLEDGE_BASE_DATA_SOURCE_ID` are configured.
 8. Status response may include `kbIngestionJobId` (when trigger succeeded) or `kbIngestionError` (when trigger failed) for traceability.
 
@@ -229,12 +229,24 @@ npm run build
 Run the Next.js demo shell that calls the typed API client:
 
 ```bash
-export NEXT_PUBLIC_API_BASE_URL="https://<api-id>.execute-api.<region>.amazonaws.com/dev"
-export NEXT_PUBLIC_USE_FIXTURES="true"   # switch to false for live API calls
 npm run dev
 ```
 
 Then open `http://localhost:3000`.
+
+Notes:
+
+- Node.js must be `>=18.18.0` (recommended: Node 20 LTS).
+- No frontend env vars are required for fixture mode.
+- Product dashboard at `/` intentionally hides runtime controls.
+- Runtime/API controls are available at `/dev-tools` for internal debugging.
+- Use these only for live API calls:
+
+```bash
+export NEXT_PUBLIC_API_BASE_URL="https://<api-id>.execute-api.<region>.amazonaws.com/dev"
+export NEXT_PUBLIC_USE_FIXTURES="false"
+npm run dev
+```
 
 If browser calls fail with `Failed to fetch`, verify deployed API has CORS enabled (OPTIONS preflight + response headers) and that `NEXT_PUBLIC_API_BASE_URL` matches the deployed stage URL exactly.
 
@@ -264,3 +276,34 @@ curl -sS -X POST "$BASE_URL/chat" \
   -H 'content-type: application/json' \
   -d '{"courseId":"course-psych-101","question":"Summarize upcoming deadlines."}' | jq
 ```
+
+## Chrome extension module scrape fallback validation
+
+Use this runbook when Canvas file API sync is unreliable and extension fallback ingestion from module pages is required.
+
+1. Load the extension in Chrome:
+   - Open `chrome://extensions`.
+   - Enable **Developer mode**.
+   - Click **Load unpacked** and select `browserextention/`.
+2. Open the target Canvas modules page:
+   - Navigate to `https://<canvas-host>/courses/<courseId>/modules`.
+   - Confirm the page has module file entries to scrape.
+3. Run scrape from the extension:
+   - Open the side panel for the page.
+   - Trigger the module scrape/fallback action.
+4. Verify extension summary counters:
+   - `discovered`: file candidates found on `/courses/{id}/modules`.
+   - `uploaded`: candidates that successfully completed `POST /uploads` + S3 `PUT`.
+   - `ingest-started`: uploaded files that successfully started `POST /docs/ingest` (`202`).
+   - `skipped`: candidates intentionally not processed (unsupported type, duplicate, or missing required metadata/link).
+   - `failed`: candidates that attempted processing but failed during download, upload, or ingest start.
+5. Validate counter consistency:
+   - `uploaded <= discovered`
+   - `ingest-started <= uploaded`
+   - At completion, each discovered candidate should be classified into upload/skip/fail buckets by extension policy.
+6. Validate ingest jobs for started items:
+   - For each started job, poll `GET /docs/ingest/{jobId}` until `FINISHED` or `FAILED`.
+   - Record failed jobs with `jobId` + file name for retry triage.
+7. Validate backend route usage:
+   - Expected per-file sequence: `POST /uploads` -> signed S3 `PUT` -> `POST /docs/ingest`.
+   - No extension-only ingest endpoint should appear in network logs.

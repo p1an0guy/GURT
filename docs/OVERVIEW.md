@@ -16,9 +16,12 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 - **Storage:**
   - DynamoDB for app state (courses/assignments, cards, reviews, topics, tokens).
   - S3 for uploaded source files.
+- **Canvas materials sync reliability model:**
+  - Primary path: `POST /canvas/sync` mirrors published/visible Canvas files through Canvas APIs.
+  - Fallback path: when Canvas file API sync is partial or unreliable, the Chrome extension can scrape `/courses/{id}/modules` file links and push files through `POST /uploads` + `POST /docs/ingest` (same ingest pipeline, no extension-only ingest route).
 - **Text extraction:**
   - Fast path: PyMuPDF text extraction
-  - `.pptx` path: convert PowerPoint to PDF during ingest extraction, then run PyMuPDF extraction on converted PDF
+  - Office path (`.pptx`, `.docx`, `.doc`): convert to PDF during ingest extraction, then run PyMuPDF extraction on converted PDF
   - Fallback: AWS Textract async OCR when extracted text is insufficient (< 200 chars)
 - **AI features:**
   - Model provider: **Amazon Bedrock**.
@@ -63,18 +66,20 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
    - demo-user scoping in demo mode:
      - `POST /canvas/connect` may return `demoUserId`
      - clients pass `X-Gurt-Demo-User-Id` on subsequent user-scoped requests to keep per-user data isolated
+   - extension fallback for Canvas files: scrape `/courses/{id}/modules` and ingest via `POST /uploads` + `POST /docs/ingest` when Canvas file API sync is unreliable
    - per-course partial failure reporting (`failedCourseIds`)
 6. EventBridge runs periodic Canvas sync every 24 hours for all users with stored Canvas connections.
 
 ### Flow B — Upload materials and build knowledge base
 
-1. User uploads syllabus + slides/notes (PDF, plaintext, `.pptx`).
+1. User uploads syllabus + slides/notes (PDF, plaintext including code files, `.pptx`, `.docx`, `.doc`).
 2. Backend stores to S3, extracts text.
 3. Chunk, embed, and store chunk metadata + vectors.
 4. Ingestion uses `POST /docs/ingest` (start) + `GET /docs/ingest/{jobId}` (poll) backed by Step Functions.
 5. When non-Canvas uploads finish Step Functions finalize and KB IDs are configured, backend starts a Bedrock KB ingestion job automatically.
 6. When materials are mirrored during Canvas sync and KB IDs are configured, backend starts a Bedrock KB ingestion job automatically.
-7. Parse syllabus to produce:
+7. Extension module-scrape fallback uploads use the same upload/ingest endpoints (`POST /uploads`, `POST /docs/ingest`, `GET /docs/ingest/{jobId}`) and trigger the same finalize + optional KB ingestion behavior.
+8. Parse syllabus to produce:
    - Topics (topicId, name)
    - Mapping: examId -> [topicId...]
 

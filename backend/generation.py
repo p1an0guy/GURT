@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import unquote, urlparse
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 class GenerationError(RuntimeError):
@@ -78,15 +82,21 @@ def _source_in_course_scope(*, source: str, course_id: str) -> bool:
         return False
 
     parts = [part for part in key.split("/") if part]
-    if len(parts) < 2 or parts[0] != "uploads":
+    if not parts:
         return False
 
-    # User uploads are stored at uploads/{courseId}/{docId}/{filename}
-    if parts[1] != "canvas-materials":
-        return parts[1] == course_id
+    # Strip optional "uploads" prefix – the KB data source root may omit it.
+    if parts[0] == "uploads":
+        parts = parts[1:]
+    if not parts:
+        return False
 
-    # Canvas materials are stored at uploads/canvas-materials/{userId}/{courseId}/...
-    return len(parts) >= 4 and parts[3] == course_id
+    # Canvas materials: [uploads/]canvas-materials/{userId}/{courseId}/...
+    if parts[0] == "canvas-materials":
+        return len(parts) >= 3 and parts[2] == course_id
+
+    # User uploads: [uploads/]{courseId}/{docId}/{filename}
+    return parts[0] == course_id
 
 
 def _retrieve_response_with_fallback(*, client: Any, kb_id: str, query: str, num_results: int, course_id: str) -> dict[str, Any]:
@@ -96,30 +106,37 @@ def _retrieve_response_with_fallback(*, client: Any, kb_id: str, query: str, num
             "filter": {"equals": {"key": "courseId", "value": course_id}},
         }
     }
+    unfiltered_config = {
+        "vectorSearchConfiguration": {
+            "numberOfResults": num_results,
+        }
+    }
     try:
-        return client.retrieve(
+        result = client.retrieve(
             knowledgeBaseId=kb_id,
             retrievalQuery={"text": f"course:{course_id}\n{query}"},
             retrievalConfiguration=filtered_config,
         )
-    except Exception:
-        # Fallback keeps older data layouts working while we still enforce scope
-        # locally via source-path checks below.
-        return client.retrieve(
-            knowledgeBaseId=kb_id,
-            retrievalQuery={"text": f"course:{course_id}\n{query}"},
-            retrievalConfiguration={
-                "vectorSearchConfiguration": {
-                    "numberOfResults": num_results,
-                }
-            },
-        )
+        if result.get("retrievalResults"):
+            print(f"[KB-DEBUG] filtered query returned {len(result['retrievalResults'])} results for course_id={course_id}")
+            return result
+        print(f"[KB-DEBUG] filtered query returned 0 results for course_id={course_id}, falling back to unfiltered")
+    except Exception as exc:
+        print(f"[KB-DEBUG] filtered query FAILED for course_id={course_id}, falling back: {exc}")
+
+    result = client.retrieve(
+        knowledgeBaseId=kb_id,
+        retrievalQuery={"text": f"course:{course_id}\n{query}"},
+        retrievalConfiguration=unfiltered_config,
+    )
+    print(f"[KB-DEBUG] unfiltered query returned {len(result.get('retrievalResults', []))} results")
+    return result
 
 
 def _retrieve_context(*, course_id: str, query: str, k: int = 8) -> list[dict[str, str]]:
     kb_id = _require_env("KNOWLEDGE_BASE_ID")
     client = _bedrock_agent_runtime()
-    num_results = max(k * 4, k)
+    num_results = min(max(k * 5, 50), 100)
     try:
         response = _retrieve_response_with_fallback(
             client=client,
@@ -132,28 +149,52 @@ def _retrieve_context(*, course_id: str, query: str, k: int = 8) -> list[dict[st
         raise GenerationError(f"knowledge base retrieval failed: {exc}") from exc
 
     results = response.get("retrievalResults", [])
-    context: list[dict[str, str]] = []
+    print(f"[KB-DEBUG] course_id={course_id} raw_results={len(results)}")
+    scoped: list[dict[str, str]] = []
+    all_valid: list[dict[str, str]] = []
     for row in results:
         content = row.get("content")
         text = content.get("text") if isinstance(content, dict) else None
         if not isinstance(text, str) or not text.strip():
+            print(f"[KB-DEBUG] skipped result: empty text")
             continue
         source = _extract_source(row.get("location"))
-        if not _source_in_course_scope(source=source, course_id=course_id):
-            continue
-        context.append({"text": text.strip(), "source": source})
+        entry = {"text": text.strip(), "source": source}
+        all_valid.append(entry)
+        if _source_in_course_scope(source=source, course_id=course_id):
+            scoped.append(entry)
+        else:
+            print(f"[KB-DEBUG] filtered out: source={source} course_id={course_id}")
+    # If course scope filter eliminated everything, fall back to all results
+    # (handles course ID mismatches between extension and uploaded data)
+    if scoped:
+        context = scoped
+    elif all_valid:
+        print(f"[KB-DEBUG] course scope filter removed all results, falling back to all {len(all_valid)} results")
+        context = all_valid
+    else:
+        context = []
+    print(f"[KB-DEBUG] course_id={course_id} scoped={len(scoped)} all_valid={len(all_valid)} returning={len(context[:k])}")
     return context[:k]
 
 
-def _invoke_model_json(prompt: str) -> Any:
+def _invoke_model_json(
+    prompt: str,
+    *,
+    max_tokens: int = 1800,
+    system: str | None = None,
+    temperature: float = 0.2,
+) -> Any:
     model_id = _require_env("BEDROCK_MODEL_ID")
     client = _bedrock_runtime()
-    body = {
+    body: dict[str, Any] = {
         "anthropic_version": "bedrock-2023-05-31",
-        "max_tokens": 1800,
-        "temperature": 0.2,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
         "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}],
     }
+    if system:
+        body["system"] = [{"type": "text", "text": system}]
     try:
         response = client.invoke_model(
             modelId=model_id,
@@ -172,13 +213,39 @@ def _invoke_model_json(prompt: str) -> Any:
     chunks = payload.get("content", [])
     if not isinstance(chunks, list) or not chunks:
         raise GenerationError("model returned empty response")
-    text = chunks[0].get("text")
+    # Find the first text block (skip thinking blocks from newer models)
+    text = None
+    for chunk in chunks:
+        if isinstance(chunk, dict) and chunk.get("type") == "text":
+            text = chunk.get("text")
+            break
+    if text is None:
+        # Fallback: try first chunk regardless of type
+        text = chunks[0].get("text") if isinstance(chunks[0], dict) else None
     if not isinstance(text, str) or not text.strip():
         raise GenerationError("model returned non-text response")
+    # Try direct parse first
     try:
         return json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise GenerationError("model returned invalid JSON payload") from exc
+    except json.JSONDecodeError:
+        pass
+    import re
+    # Try markdown fenced JSON
+    md_match = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
+    if md_match:
+        try:
+            return json.loads(md_match.group(1).strip())
+        except json.JSONDecodeError:
+            pass
+    # Try to find a JSON object anywhere in the text (model may think before responding)
+    brace_match = re.search(r"\{.*\}", text, re.DOTALL)
+    if brace_match:
+        try:
+            return json.loads(brace_match.group(0))
+        except json.JSONDecodeError:
+            pass
+    logger.error("model returned invalid JSON: %s", text[:500])
+    raise GenerationError("model returned invalid JSON payload")
 
 
 def _normalize_citations(raw: Any, fallback: list[str]) -> list[str]:
@@ -303,30 +370,127 @@ def generate_practice_exam(*, course_id: str, num_questions: int) -> dict[str, A
     }
 
 
-def chat_answer(*, course_id: str, question: str) -> dict[str, Any]:
-    context = _retrieve_context(course_id=course_id, query=question, k=6)
-    if not context:
-        raise GenerationError("no knowledge base context available for chat")
+def format_canvas_items(items: list[dict[str, Any]]) -> str | None:
+    if not items:
+        return None
+    lines = []
+    for item in items:
+        title = item.get("title", "Untitled")
+        item_type = item.get("itemType", "unknown")
+        due_at = item.get("dueAt", "no due date")
+        points = item.get("pointsPossible")
+        pts_str = f"{points} pts" if points is not None else "ungraded"
+        lines.append(f"{item_type} | {title} | due {due_at} | {pts_str}")
+    return "\n".join(lines)
 
-    context_block = "\n\n".join(row["text"] for row in context[:6])
-    prompt = (
-        "Return ONLY JSON object. No markdown.\n"
-        'Schema: {"answer":"...","citations":["source1","source2"]}\n'
-        "Answer using only the provided context. If unknown, say you cannot find it.\n"
-        f"Question: {question}\n"
-        f"Context:\n{context_block}"
+
+def _retrieve_and_generate(*, kb_id: str, model_arn: str, query: str, system_prompt: str) -> dict[str, Any]:
+    """Use Bedrock RetrieveAndGenerate for end-to-end RAG with maximum context."""
+    client = _bedrock_agent_runtime()
+    try:
+        response = client.retrieve_and_generate(
+            input={"text": query},
+            retrieveAndGenerateConfiguration={
+                "type": "KNOWLEDGE_BASE",
+                "knowledgeBaseConfiguration": {
+                    "knowledgeBaseId": kb_id,
+                    "modelArn": model_arn,
+                    "retrievalConfiguration": {
+                        "vectorSearchConfiguration": {
+                            "numberOfResults": 100,
+                        }
+                    },
+                    "generationConfiguration": {
+                        "inferenceConfig": {
+                            "textInferenceConfig": {
+                                "maxTokens": 8192,
+                                "temperature": 0.1,
+                            }
+                        },
+                        "promptTemplate": {
+                            "textPromptTemplate": (
+                                f"{system_prompt}\n\n"
+                                "Here are the search results from the course knowledge base:\n"
+                                "$search_results$\n\n"
+                                "$output_format_instructions$"
+                            ),
+                        },
+                    },
+                    "orchestrationConfiguration": {
+                        "queryTransformationConfiguration": {
+                            "type": "QUERY_DECOMPOSITION",
+                        }
+                    },
+                },
+            },
+        )
+    except Exception as exc:
+        raise GenerationError(f"retrieve_and_generate failed: {exc}") from exc
+    return response
+
+
+def chat_answer(*, course_id: str, question: str, canvas_context: str | None = None) -> dict[str, Any]:
+    kb_id = _require_env("KNOWLEDGE_BASE_ID")
+    model_arn = _require_env("BEDROCK_MODEL_ARN")
+
+    canvas_section = ""
+    if canvas_context:
+        canvas_section = f"\nCanvas assignment data:\n{canvas_context}\n"
+
+    system_prompt = (
+        "You are GURT — the Generative Uni Revision Tool! Think of yourself as a creamy, "
+        "cool study buddy who's always ready to serve up the freshest knowledge. "
+        "You're a friendly frozen-yogurt-themed AI assistant helping a Cal Poly "
+        "(California Polytechnic State University, San Luis Obispo) student ace their classes.\n\n"
+        "Your vibe: warm, encouraging, a little playful. Sprinkle in yogurt puns and frozen treat "
+        "references naturally (\"let's churn through this!\", \"that's the cherry on top\", "
+        "\"smooth as froyo\", \"let me scoop up the details\"). Use the 🍦 emoji occasionally. "
+        "Celebrate wins (\"You're crushing it! 🍦\"). Be the study buddy everyone wishes they had.\n\n"
+        "CRITICAL RULES FOR DATES, SCHEDULES, AND SYLLABUS INFO:\n"
+        "- When asked about dates, deadlines, quizzes, exams, or schedules, you MUST give the "
+        "EXACT DATE from the syllabus or course materials (e.g. \"Quiz 6 is on **Tuesday, February 25th**\").\n"
+        "- NEVER say \"the schedule only shows through quiz 3\" or similar — READ ALL the search results "
+        "thoroughly, the information is there across multiple chunks.\n"
+        "- If the syllabus has a weekly schedule table, scan EVERY row for the relevant item.\n"
+        "- Include the day of the week when giving dates (e.g. \"Monday, March 3rd\" not just \"March 3\").\n"
+        "- For assignment/lab due dates, give the specific date AND time if available.\n\n"
+        "OTHER RULES:\n"
+        "- Be CONCISE but complete. Answer directly, then add brief context if helpful.\n"
+        "- Do math and calculations when asked (grades, averages, projections). Show the key numbers.\n"
+        "- Use Cal Poly grading scale: A >= 93%, A- >= 90%, B+ >= 87%, B >= 83%, B- >= 80%, "
+        "C+ >= 77%, C >= 73%, C- >= 70%, D+ >= 67%, D >= 63%, D- >= 60%, F < 60% "
+        "unless the syllabus specifies a different scale.\n"
+        "- Use the provided course context AND your general knowledge together.\n"
+        "- Use markdown: **bold** for key info, bullet lists for multiple items.\n"
+        "- Use emojis where they add clarity (✅ ❌ 📅 📊 🍦) but keep it natural.\n"
+        "- Only say you don't know if the info truly isn't in the context or your knowledge.\n"
     )
-    payload = _invoke_model_json(prompt)
-    if not isinstance(payload, dict):
-        raise GenerationError("chat model response must be an object")
 
-    answer = str(payload.get("answer", "")).strip()
+    query = f"{question}{canvas_section}"
+
+    try:
+        response = _retrieve_and_generate(
+            kb_id=kb_id,
+            model_arn=model_arn,
+            query=query,
+            system_prompt=system_prompt,
+        )
+    except GenerationError:
+        raise
+    except Exception as exc:
+        raise GenerationError(f"chat retrieval failed: {exc}") from exc
+
+    output = response.get("output", {})
+    answer = output.get("text", "").strip()
     if not answer:
-        raise GenerationError("chat model response missing answer")
+        raise GenerationError("retrieve_and_generate returned empty response")
 
-    default_citations = [
-        str(row.get("source", "")).strip() for row in context[:4] if str(row.get("source", "")).strip()
-    ]
-    citations = _normalize_citations(payload.get("citations"), default_citations)
+    citations_list: list[str] = []
+    for citation_group in response.get("citations", []):
+        for ref in citation_group.get("retrievedReferences", []):
+            source = _extract_source(ref.get("location"))
+            if source and source not in citations_list:
+                citations_list.append(source)
 
-    return {"answer": answer, "citations": citations}
+    print(f"[RAG-DEBUG] answer_length={len(answer)} citations={len(citations_list)}")
+    return {"answer": answer, "citations": citations_list}

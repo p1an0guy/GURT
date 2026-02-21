@@ -314,6 +314,7 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
   const reviewCall = calls.find((call) => call.url === "https://api.example.dev/study/review");
   assert.ok(reviewCall);
   assert.equal(reviewCall.init?.method, "POST");
+  assert.equal(reviewCall.init?.headers && (reviewCall.init.headers as Record<string, string>)["content-type"], "text/plain");
   assert.equal(
     reviewCall.init?.body,
     JSON.stringify({

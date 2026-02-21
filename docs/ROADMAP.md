@@ -1,49 +1,46 @@
-# GURT Roadmap (Post-Smoke Baseline)
+# GURT Roadmap (Current State)
 
-## Current baseline
+Last updated: **February 21, 2026**
 
-- `main` deploys with `./scripts/deploy.sh` using AWS profile credentials.
-- Dev smoke workflow passes against deployed API.
-- Calendar token mint + ICS feed endpoints are live.
-- Temporary fallback is enabled for calendar ICS only for `DEMO_USER_ID` when no user schedule rows exist.
-- Canvas sync now includes published/visible course materials metadata + S3 mirroring, and can auto-start KB ingestion when KB IDs are configured.
+## Completed baseline
 
-## Next steps (execution order)
+- Canvas integration and storage are live:
+  - `POST /canvas/connect`
+  - `POST /canvas/sync`
+  - `GET /courses`
+  - `GET /courses/{courseId}/items`
+- Calendar token mint and ICS feed are live with token-user isolation and stable UID behavior.
+- Upload + ingest + KB trigger flows are live:
+  - `POST /uploads`
+  - `POST /docs/ingest`
+  - `GET /docs/ingest/{jobId}`
+  - KB ingestion trigger from both docs finalize and Canvas materials sync when configured.
+- Generation + study runtime flows are live:
+  - `POST /generate/flashcards`
+  - `POST /generate/practice-exam`
+  - `POST /chat`
+  - `GET /study/today`, `POST /study/review`, `GET /study/mastery`
+- Study queue includes near-exam booster behavior with deterministic ordering tests.
+- CI currently runs contracts, tests, and mock smoke checks; CDK checks run conditionally on `infra/**` changes.
 
-1. Replace temporary ICS fallback with real user schedule rows
-   - Add Canvas sync write path to persist assignment/event rows in DynamoDB.
-   - Ensure `/calendar/{token}.ics` uses token userId -> schedule rows only.
-   - Keep fallback behind an explicit demo flag and remove before production hardening.
+## Remaining roadmap (mapped to open issues)
 
-2. Implement Canvas integration endpoints
-   - `POST /canvas/connect`: accept and store Canvas base URL + token metadata for demo user.
-   - `POST /canvas/sync`: fetch assignments/events and upsert normalized rows.
-   - Baseline complete: `GET /courses` and `GET /courses/{courseId}/items` now read synced Canvas DynamoDB rows first (fixture fallback in demo when no runtime rows exist).
-   - Add deterministic tests with fixture-backed Canvas API responses.
+1. `#50` Chat citations UX and structure hardening
+   - Keep responses grounded while exposing citation structure suitable for clickable source links in clients.
+2. `#52` Ingest observability metrics
+   - Add explicit metrics and thresholds for finalize and KB trigger outcomes.
+3. `#55` Frontend ingest UX finalization
+   - Resolve mixed dashboard behavior between manual ingest controls and Canvas-first ingest status model.
+4. `#54` Merge-gate governance
+   - Verify branch protection requires CI and smoke checks in GitHub settings.
+5. `#53` Blocked smoke expansion
+   - Add materials metadata smoke assertions after the materials metadata contract is finalized.
 
-3. Build Bedrock-backed ingestion + RAG scaffold
-   - `POST /uploads`: S3 upload flow (presign/direct).
-   - `POST /docs/ingest`: extract text, chunk, embed, persist metadata.
-   - KB ingestion auto-triggers after Canvas materials sync when `KNOWLEDGE_BASE_ID` + `KNOWLEDGE_BASE_DATA_SOURCE_ID` are configured.
-   - KB ingestion auto-triggers after Step Functions finalize for non-Canvas uploads (`POST /docs/ingest`) when KB IDs are configured.
-   - Baseline complete: generation endpoints now include citation structure in flashcard rows and practice exam questions for downstream UX traceability.
+## Execution order
 
-4. Wire study/generation endpoints from scaffold to runtime
-   - `POST /generate/flashcards`
-   - `POST /generate/practice-exam`
-   - `GET /study/today`, `POST /study/review`, `GET /study/mastery`
-   - Baseline complete: generated cards persist to `CardsTable`; review updates FSRS state; mastery can derive from runtime card state with fixture fallback when runtime rows are absent.
-   - Preserve contract-first updates for any response shape changes.
-
-5. Frontend integration to deployed dev API
-   - Wire Next.js app to `NEXT_PUBLIC_API_BASE_URL`.
-   - Add token mint + calendar subscribe flow in UI.
-   - Baseline complete: browser shell now supports live Canvas connect/sync, ingest, generate, and chat calls with per-action loading/error/retry states and last-success status panels.
-
-6. CI hardening
-   - Keep smoke-dev required for merge.
-   - Keep contract validation required for merge.
-   - Keep CDK checks (`./scripts/check-cdk.sh`) required when `infra/**` changes.
+1. `#50`, `#52`, `#55` (active implementation priorities)
+2. `#54` (repository governance enforcement)
+3. `#53` (unblock after contract finalization)
 
 ## Operator checklist before each merge
 

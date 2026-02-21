@@ -1021,7 +1021,83 @@ class RuntimeHandlerTests(unittest.TestCase):
         chat_answer.assert_called_once_with(
             course_id="course-psych-101",
             question="What is working memory?",
+            canvas_context=None,
         )
+
+    def test_chat_passes_canvas_context_in_demo_mode(self) -> None:
+        event = {
+            "httpMethod": "POST",
+            "path": "/chat",
+            "body": json.dumps(
+                {
+                    "courseId": "170880",
+                    "question": "When is the midterm?",
+                }
+            ),
+        }
+
+        canvas_items = [
+            {
+                "id": "assign-1",
+                "courseId": "170880",
+                "title": "Midterm Exam",
+                "itemType": "exam",
+                "dueAt": "2026-10-15T17:00:00Z",
+                "pointsPossible": 100,
+            }
+        ]
+
+        with (
+            patch(
+                "backend.runtime._query_canvas_course_items_for_user",
+                return_value=canvas_items,
+            ) as query_items,
+            patch(
+                "backend.runtime.chat_answer",
+                return_value={
+                    "answer": "The midterm is on October 15.",
+                    "citations": [],
+                },
+            ) as chat_mock,
+        ):
+            response = self._invoke(event, env={"DEMO_MODE": "true"})
+
+        self.assertEqual(response["statusCode"], 200)
+        query_items.assert_called_once_with(user_id="demo-user", course_id="170880")
+        call_kwargs = chat_mock.call_args.kwargs
+        self.assertIsNotNone(call_kwargs["canvas_context"])
+        self.assertIn("Midterm Exam", call_kwargs["canvas_context"])
+
+    def test_chat_proceeds_when_canvas_query_fails(self) -> None:
+        event = {
+            "httpMethod": "POST",
+            "path": "/chat",
+            "body": json.dumps(
+                {
+                    "courseId": "170880",
+                    "question": "What is federalism?",
+                }
+            ),
+        }
+
+        with (
+            patch(
+                "backend.runtime._query_canvas_course_items_for_user",
+                side_effect=RuntimeError("CANVAS_DATA_TABLE missing"),
+            ),
+            patch(
+                "backend.runtime.chat_answer",
+                return_value={
+                    "answer": "Federalism divides powers.",
+                    "citations": [],
+                },
+            ) as chat_mock,
+        ):
+            response = self._invoke(event, env={"DEMO_MODE": "true"})
+
+        self.assertEqual(response["statusCode"], 200)
+        call_kwargs = chat_mock.call_args.kwargs
+        self.assertIsNone(call_kwargs["canvas_context"])
 
     def test_chat_returns_502_when_generation_fails(self) -> None:
         event = {
@@ -1269,7 +1345,6 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertEqual(response["statusCode"], 200)
         self.assertIn("DTSTART:20261015T170000Z", response["body"])
         self.assertIn("DTEND:20261015T180000Z", response["body"])
-
     def test_calendar_route_skips_invalid_due_at_and_keeps_valid_events(self) -> None:
         store = _MemoryCalendarTokenStore()
         store.save(
@@ -1279,7 +1354,6 @@ class RuntimeHandlerTests(unittest.TestCase):
                 created_at="2026-09-01T10:15:00Z",
             )
         )
-
         event = {
             "httpMethod": "GET",
             "path": "/calendar/calendar-token-invalid-due-at.ics",
@@ -1309,6 +1383,7 @@ class RuntimeHandlerTests(unittest.TestCase):
             response = self._invoke(event, env={"DEMO_MODE": "false"})
 
         self.assertEqual(response["statusCode"], 200)
+        self.assertEqual(response["headers"]["Content-Type"], "text/calendar")
         self.assertIn("BEGIN:VCALENDAR", response["body"])
         self.assertIn("SUMMARY:Valid dueAt", response["body"])
         self.assertNotIn("SUMMARY:Invalid dueAt", response["body"])

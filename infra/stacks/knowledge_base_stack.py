@@ -297,6 +297,8 @@ class KnowledgeBaseStack(Stack):
             )
         )
 
+        parsed_content_uri = f"s3://{data_stack.uploads_bucket.bucket_name}/kb-parsed/"
+
         knowledge_base = bedrock.CfnKnowledgeBase(
             self,
             "KnowledgeBase",
@@ -307,6 +309,18 @@ class KnowledgeBaseStack(Stack):
                 type="VECTOR",
                 vector_knowledge_base_configuration=bedrock.CfnKnowledgeBase.VectorKnowledgeBaseConfigurationProperty(
                     embedding_model_arn=embedding_model_arn,
+                    supplemental_data_storage_configuration=(
+                        bedrock.CfnKnowledgeBase.SupplementalDataStorageConfigurationProperty(
+                            supplemental_data_storage_locations=[
+                                bedrock.CfnKnowledgeBase.SupplementalDataStorageLocationProperty(
+                                    supplemental_data_storage_location_type="S3",
+                                    s3_location=bedrock.CfnKnowledgeBase.S3LocationProperty(
+                                        uri=parsed_content_uri,
+                                    ),
+                                )
+                            ],
+                        )
+                    ),
                 ),
             ),
             storage_configuration=bedrock.CfnKnowledgeBase.StorageConfigurationProperty(
@@ -332,6 +346,17 @@ class KnowledgeBaseStack(Stack):
         if default_policy is not None:
             knowledge_base.add_dependency(default_policy.node.default_child)  # type: ignore[arg-type]
 
+        parsing_model_arn = (
+            f"arn:aws:bedrock:{self.region}::foundation-model/"
+            "anthropic.claude-3-5-haiku-20241022-v1:0"
+        )
+        kb_service_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["bedrock:InvokeModel"],
+                resources=[parsing_model_arn],
+            )
+        )
+
         data_source = bedrock.CfnDataSource(
             self,
             "KnowledgeBaseUploadsDataSource",
@@ -347,14 +372,24 @@ class KnowledgeBaseStack(Stack):
             ),
             vector_ingestion_configuration=bedrock.CfnDataSource.VectorIngestionConfigurationProperty(
                 chunking_configuration=bedrock.CfnDataSource.ChunkingConfigurationProperty(
-                    chunking_strategy="FIXED_SIZE",
-                    fixed_size_chunking_configuration=(
-                        bedrock.CfnDataSource.FixedSizeChunkingConfigurationProperty(
-                            max_tokens=300,
-                            overlap_percentage=20,
+                    chunking_strategy="SEMANTIC",
+                    semantic_chunking_configuration=(
+                        bedrock.CfnDataSource.SemanticChunkingConfigurationProperty(
+                            max_tokens=1000,
+                            buffer_size=1,
+                            breakpoint_percentile_threshold=90,
                         )
                     ),
-                )
+                ),
+                parsing_configuration=bedrock.CfnDataSource.ParsingConfigurationProperty(
+                    parsing_strategy="BEDROCK_FOUNDATION_MODEL",
+                    bedrock_foundation_model_configuration=(
+                        bedrock.CfnDataSource.BedrockFoundationModelConfigurationProperty(
+                            model_arn=parsing_model_arn,
+                            parsing_modality="MULTIMODAL",
+                        )
+                    ),
+                ),
             ),
         )
         data_source.add_dependency(knowledge_base)

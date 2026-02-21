@@ -70,6 +70,11 @@ python -m pytest -q
   - `.github/workflows/ci.yml`
   - `.github/workflows/smoke-dev.yml`
 
+## Bedrock Model ID Rules
+- **For `InvokeModel` (direct model calls):** Use the `us.` prefixed inference profile ID, e.g. `us.anthropic.claude-sonnet-4-6`. This is what `BEDROCK_MODEL_ID` should be set to.
+- **For `RetrieveAndGenerate` (RAG API):** The `modelArn` parameter also requires the `us.` prefixed inference profile ID, e.g. `us.anthropic.claude-sonnet-4-5-20250929-v1:0`. Do NOT use foundation model ARNs like `arn:aws:bedrock:...:foundation-model/anthropic.claude-*` — they will fail with "on-demand throughput isn't supported". Do NOT use full inference profile ARNs with account IDs — they will fail with AccessDeniedException.
+- **TL;DR:** Always use the short `us.anthropic.claude-*` format for model IDs in both APIs.
+
 ## AWS/CDK + CORS Runbook (Recent Lessons)
 - Always use AWS SSO profile credentials for deploys:
   - `aws sso login --profile <profile>`

@@ -105,6 +105,84 @@ class UploadFlowTests(unittest.TestCase):
         with self.assertRaisesRegex(UploadValidationError, "\\.pptx"):
             parse_upload_request(payload)
 
+    def test_parse_upload_request_accepts_docx_with_valid_extension_and_size(self) -> None:
+        payload = {
+            "courseId": "course-psych-101",
+            "filename": "week-1-notes.docx",
+            "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "contentLengthBytes": 1024,
+        }
+        parsed = parse_upload_request(payload)
+        self.assertEqual(parsed.filename, "week-1-notes.docx")
+
+    def test_parse_upload_request_rejects_docx_without_size(self) -> None:
+        payload = {
+            "courseId": "course-psych-101",
+            "filename": "week-1-notes.docx",
+            "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        }
+        with self.assertRaisesRegex(UploadValidationError, "contentLengthBytes"):
+            parse_upload_request(payload)
+
+    def test_parse_upload_request_rejects_docx_over_size_limit(self) -> None:
+        payload = {
+            "courseId": "course-psych-101",
+            "filename": "week-1-notes.docx",
+            "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "contentLengthBytes": 50 * 1024 * 1024 + 1,
+        }
+        with self.assertRaisesRegex(UploadValidationError, "50MB"):
+            parse_upload_request(payload)
+
+    def test_parse_upload_request_rejects_docx_content_type_with_non_docx_filename(self) -> None:
+        payload = {
+            "courseId": "course-psych-101",
+            "filename": "week-1-notes.pdf",
+            "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "contentLengthBytes": 1024,
+        }
+        with self.assertRaisesRegex(UploadValidationError, "\\.docx"):
+            parse_upload_request(payload)
+
+    def test_parse_upload_request_accepts_doc_with_valid_extension_and_size(self) -> None:
+        payload = {
+            "courseId": "course-psych-101",
+            "filename": "week-1-notes.doc",
+            "contentType": "application/msword",
+            "contentLengthBytes": 1024,
+        }
+        parsed = parse_upload_request(payload)
+        self.assertEqual(parsed.filename, "week-1-notes.doc")
+
+    def test_parse_upload_request_rejects_doc_without_size(self) -> None:
+        payload = {
+            "courseId": "course-psych-101",
+            "filename": "week-1-notes.doc",
+            "contentType": "application/msword",
+        }
+        with self.assertRaisesRegex(UploadValidationError, "contentLengthBytes"):
+            parse_upload_request(payload)
+
+    def test_parse_upload_request_rejects_doc_over_size_limit(self) -> None:
+        payload = {
+            "courseId": "course-psych-101",
+            "filename": "week-1-notes.doc",
+            "contentType": "application/msword",
+            "contentLengthBytes": 50 * 1024 * 1024 + 1,
+        }
+        with self.assertRaisesRegex(UploadValidationError, "50MB"):
+            parse_upload_request(payload)
+
+    def test_parse_upload_request_rejects_doc_content_type_with_non_doc_filename(self) -> None:
+        payload = {
+            "courseId": "course-psych-101",
+            "filename": "week-1-notes.pdf",
+            "contentType": "application/msword",
+            "contentLengthBytes": 1024,
+        }
+        with self.assertRaisesRegex(UploadValidationError, "\\.doc"):
+            parse_upload_request(payload)
+
     def test_create_upload_happy_path_wires_presign_and_returns_doc_id_and_key(self) -> None:
         s3_client = FakeS3Client()
         payload = {
@@ -187,6 +265,16 @@ class UploadFlowTests(unittest.TestCase):
         with self.assertRaisesRegex(
             UploadValidationError,
             "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ):
+            parse_upload_request(payload)
+        with self.assertRaisesRegex(
+            UploadValidationError,
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ):
+            parse_upload_request(payload)
+        with self.assertRaisesRegex(
+            UploadValidationError,
+            "application/msword",
         ):
             parse_upload_request(payload)
 

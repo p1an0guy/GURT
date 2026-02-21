@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import DashboardPage from "./dashboard.tsx";
 
 import { createApiClient } from "../src/api/client.ts";
 import type {
@@ -41,7 +42,7 @@ function kbIngestionStatusMessage(sync: CanvasSyncResponse): string {
   return "KB ingestion not started.";
 }
 
-export default function HomePage() {
+export function DevConsolePage() {
   const [baseUrl, setBaseUrl] = useState(
     process.env.NEXT_PUBLIC_API_BASE_URL ?? "",
   );
@@ -618,4 +619,8 @@ export default function HomePage() {
       </main>
     </>
   );
+}
+
+export default function HomePage() {
+  return <DashboardPage />;
 }

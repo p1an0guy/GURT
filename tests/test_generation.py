@@ -10,6 +10,7 @@ from backend import generation
 
 class RetrieveContextTests(unittest.TestCase):
     def test_source_scope_matches_supported_upload_layouts(self) -> None:
+        # With uploads/ prefix
         self.assertTrue(
             generation._source_in_course_scope(
                 source="s3://bucket/uploads/170880/doc-1/syllabus.pdf",
@@ -25,6 +26,27 @@ class RetrieveContextTests(unittest.TestCase):
         self.assertFalse(
             generation._source_in_course_scope(
                 source="s3://bucket/uploads/999999/doc-1/syllabus.pdf",
+                course_id="170880",
+            )
+        )
+
+    def test_source_scope_matches_without_uploads_prefix(self) -> None:
+        # KB data source may strip the uploads/ prefix from S3 URIs
+        self.assertTrue(
+            generation._source_in_course_scope(
+                source="s3://bucket/canvas-materials/user-123/170880/file-1/ch1.pdf",
+                course_id="170880",
+            )
+        )
+        self.assertTrue(
+            generation._source_in_course_scope(
+                source="s3://bucket/170880/doc-1/syllabus.pdf",
+                course_id="170880",
+            )
+        )
+        self.assertFalse(
+            generation._source_in_course_scope(
+                source="s3://bucket/canvas-materials/user-123/999999/file-1/ch1.pdf",
                 course_id="170880",
             )
         )
@@ -63,7 +85,7 @@ class RetrieveContextTests(unittest.TestCase):
 
         retrieve_call = client.retrieve.call_args.kwargs
         vector_config = retrieve_call["retrievalConfiguration"]["vectorSearchConfiguration"]
-        self.assertEqual(vector_config["numberOfResults"], 8)
+        self.assertEqual(vector_config["numberOfResults"], 50)
         self.assertEqual(
             vector_config["filter"],
             {"equals": {"key": "courseId", "value": "170880"}},
@@ -168,47 +190,108 @@ class GenerationCitationTests(unittest.TestCase):
         )
 
 
+class FormatCanvasItemsTests(unittest.TestCase):
+    def test_format_canvas_items_returns_none_for_empty_list(self) -> None:
+        self.assertIsNone(generation.format_canvas_items([]))
+
+    def test_format_canvas_items_produces_compact_lines(self) -> None:
+        items = [
+            {
+                "title": "Midterm Exam",
+                "itemType": "exam",
+                "dueAt": "2026-10-15T17:00:00Z",
+                "pointsPossible": 100,
+            },
+            {
+                "title": "Reading 1",
+                "itemType": "assignment",
+                "dueAt": "2026-09-05T23:59:00Z",
+                "pointsPossible": None,
+            },
+        ]
+        result = generation.format_canvas_items(items)
+        self.assertIsNotNone(result)
+        lines = result.split("\n")
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(lines[0], "exam | Midterm Exam | due 2026-10-15T17:00:00Z | 100 pts")
+        self.assertEqual(lines[1], "assignment | Reading 1 | due 2026-09-05T23:59:00Z | ungraded")
+
+    def test_format_canvas_items_handles_missing_fields(self) -> None:
+        items = [{}]
+        result = generation.format_canvas_items(items)
+        self.assertIsNotNone(result)
+        self.assertEqual(result, "unknown | Untitled | due no due date | ungraded")
+
+
+class ChatCanvasContextTests(unittest.TestCase):
+    @patch.dict("os.environ", {"KNOWLEDGE_BASE_ID": "kb-test", "BEDROCK_MODEL_ARN": "us.anthropic.claude-sonnet-4-5-20250929-v1:0"}, clear=False)
+    def test_chat_answer_includes_canvas_context_in_prompt(self) -> None:
+        canvas_ctx = "exam | Midterm | due 2026-10-15T17:00:00Z | 100 pts"
+        with patch(
+            "backend.generation._retrieve_and_generate",
+            return_value={
+                "output": {"text": "The midterm is on October 15."},
+                "citations": [],
+            },
+        ) as rag_mock:
+            response = generation.chat_answer(course_id="170880", question="When is the midterm?", canvas_context=canvas_ctx)
+
+        self.assertEqual(response["answer"], "The midterm is on October 15.")
+        call_kwargs = rag_mock.call_args.kwargs
+        self.assertIn("Canvas assignment data:", call_kwargs["query"])
+        self.assertIn("Midterm", call_kwargs["query"])
+
+    @patch.dict("os.environ", {"KNOWLEDGE_BASE_ID": "kb-test", "BEDROCK_MODEL_ARN": "us.anthropic.claude-sonnet-4-5-20250929-v1:0"}, clear=False)
+    def test_chat_answer_works_without_canvas_context(self) -> None:
+        with patch(
+            "backend.generation._retrieve_and_generate",
+            return_value={
+                "output": {"text": "Some answer."},
+                "citations": [],
+            },
+        ) as rag_mock:
+            response = generation.chat_answer(course_id="170880", question="What is this?")
+
+        self.assertEqual(response["answer"], "Some answer.")
+        call_kwargs = rag_mock.call_args.kwargs
+        self.assertNotIn("Canvas assignment data:", call_kwargs["query"])
+
+
 class ChatCitationTests(unittest.TestCase):
-    def test_chat_falls_back_to_context_citations_when_model_omits_citations(self) -> None:
-        with (
-            patch(
-                "backend.generation._retrieve_context",
-                return_value=[
-                    {"text": "Context row 1", "source": "s3://bucket/uploads/170880/doc-a/ch1.pdf#chunk-1"},
-                    {"text": "Context row 2", "source": "s3://bucket/uploads/170880/doc-a/ch1.pdf#chunk-2"},
-                ],
-            ),
-            patch(
-                "backend.generation._invoke_model_json",
-                return_value={"answer": "The judicial branch interprets laws."},
-            ),
+    @patch.dict("os.environ", {"KNOWLEDGE_BASE_ID": "kb-test", "BEDROCK_MODEL_ARN": "us.anthropic.claude-sonnet-4-5-20250929-v1:0"}, clear=False)
+    def test_chat_returns_empty_citations_when_rag_has_none(self) -> None:
+        with patch(
+            "backend.generation._retrieve_and_generate",
+            return_value={
+                "output": {"text": "The judicial branch interprets laws."},
+                "citations": [],
+            },
         ):
             response = generation.chat_answer(course_id="170880", question="Who interprets laws?")
 
         self.assertEqual(response["answer"], "The judicial branch interprets laws.")
-        self.assertEqual(
-            response["citations"],
-            [
-                "s3://bucket/uploads/170880/doc-a/ch1.pdf#chunk-1",
-                "s3://bucket/uploads/170880/doc-a/ch1.pdf#chunk-2",
-            ],
-        )
+        self.assertEqual(response["citations"], [])
 
-    def test_chat_prefers_model_citations_when_present(self) -> None:
-        with (
-            patch(
-                "backend.generation._retrieve_context",
-                return_value=[
-                    {"text": "Context row 1", "source": "s3://bucket/uploads/170880/doc-a/ch1.pdf#chunk-1"},
+    @patch.dict("os.environ", {"KNOWLEDGE_BASE_ID": "kb-test", "BEDROCK_MODEL_ARN": "us.anthropic.claude-sonnet-4-5-20250929-v1:0"}, clear=False)
+    def test_chat_extracts_citations_from_rag_response(self) -> None:
+        with patch(
+            "backend.generation._retrieve_and_generate",
+            return_value={
+                "output": {"text": "Federalism divides powers."},
+                "citations": [
+                    {
+                        "retrievedReferences": [
+                            {
+                                "location": {
+                                    "s3Location": {
+                                        "uri": "s3://bucket/uploads/170880/doc-a/ch1.pdf#chunk-9"
+                                    }
+                                }
+                            }
+                        ]
+                    }
                 ],
-            ),
-            patch(
-                "backend.generation._invoke_model_json",
-                return_value={
-                    "answer": "Federalism divides powers.",
-                    "citations": ["s3://bucket/uploads/170880/doc-a/ch1.pdf#chunk-9"],
-                },
-            ),
+            },
         ):
             response = generation.chat_answer(course_id="170880", question="What is federalism?")
 

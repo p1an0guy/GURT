@@ -15,8 +15,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 logger = logging.getLogger(__name__)
-PPTX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-MAX_PPTX_BYTES = 50 * 1024 * 1024
+MAX_OFFICE_DOC_BYTES = 50 * 1024 * 1024
 
 
 def _utc_now_rfc3339() -> str:
@@ -78,6 +77,14 @@ def _is_pptx_key(key: str) -> bool:
     return key.lower().endswith(".pptx")
 
 
+def _is_docx_key(key: str) -> bool:
+    return key.lower().endswith(".docx")
+
+
+def _is_doc_key(key: str) -> bool:
+    return key.lower().endswith(".doc")
+
+
 def _converted_pdf_key(key: str) -> str:
     stem, _sep, _ext = key.rpartition(".")
     if stem:
@@ -93,13 +100,15 @@ def _find_office_binary() -> str | None:
     return None
 
 
-def _convert_pptx_to_pdf(data: bytes) -> bytes:
+def _convert_office_to_pdf(data: bytes, *, source_extension: str, source_label: str) -> bytes:
     binary = _find_office_binary()
     if not binary:
-        raise RuntimeError("pptx conversion unavailable: LibreOffice binary not found")
+        raise RuntimeError(
+            f"{source_label} conversion unavailable: LibreOffice binary not found"
+        )
 
     with tempfile.TemporaryDirectory(dir="/tmp") as tmp_dir:
-        input_path = Path(tmp_dir) / "source.pptx"
+        input_path = Path(tmp_dir) / f"source.{source_extension}"
         output_path = Path(tmp_dir) / "source.pdf"
         input_path.write_bytes(data)
         started = time.monotonic()
@@ -124,24 +133,41 @@ def _convert_pptx_to_pdf(data: bytes) -> bytes:
                 timeout=90,
             )
         except subprocess.TimeoutExpired as exc:
-            raise RuntimeError("pptx conversion timed out after 90 seconds") from exc
+            raise RuntimeError(
+                f"{source_label} conversion timed out after 90 seconds"
+            ) from exc
 
         if completed.returncode != 0:
             raise RuntimeError(
-                "pptx conversion failed: "
+                f"{source_label} conversion failed: "
                 f"exit={completed.returncode} stderr={completed.stderr.strip()}"
             )
         if not output_path.exists():
-            raise RuntimeError("pptx conversion failed: output PDF was not produced")
+            raise RuntimeError(
+                f"{source_label} conversion failed: output PDF was not produced"
+            )
 
         result = output_path.read_bytes()
         logger.info(
-            "pptx conversion succeeded: inputBytes=%s outputBytes=%s durationMs=%s",
+            "%s conversion succeeded: inputBytes=%s outputBytes=%s durationMs=%s",
+            source_label,
             len(data),
             len(result),
             int((time.monotonic() - started) * 1000),
         )
         return result
+
+
+def _convert_pptx_to_pdf(data: bytes) -> bytes:
+    return _convert_office_to_pdf(data, source_extension="pptx", source_label="pptx")
+
+
+def _convert_docx_to_pdf(data: bytes) -> bytes:
+    return _convert_office_to_pdf(data, source_extension="docx", source_label="docx")
+
+
+def _convert_doc_to_pdf(data: bytes) -> bytes:
+    return _convert_office_to_pdf(data, source_extension="doc", source_label="doc")
 
 
 def _extract_text_with_pymupdf(data: bytes, key: str) -> str:
@@ -227,10 +253,15 @@ def extract_handler(event: Mapping[str, Any], _context: Any) -> dict[str, Any]:
     data = _read_s3_bytes(bucket, key)
     extraction_key = key
     textract_key = key
-    if _is_pptx_key(key):
-        if len(data) > MAX_PPTX_BYTES:
-            raise ValueError("'.pptx' exceeds 50MB limit")
-        converted_pdf = _convert_pptx_to_pdf(data)
+    if _is_pptx_key(key) or _is_docx_key(key) or _is_doc_key(key):
+        if len(data) > MAX_OFFICE_DOC_BYTES:
+            extension = ".pptx" if _is_pptx_key(key) else ".docx" if _is_docx_key(key) else ".doc"
+            raise ValueError(f"'{extension}' exceeds 50MB limit")
+        converted_pdf = (
+            _convert_pptx_to_pdf(data)
+            if _is_pptx_key(key)
+            else _convert_docx_to_pdf(data) if _is_docx_key(key) else _convert_doc_to_pdf(data)
+        )
         converted_key = _converted_pdf_key(key)
         _write_s3_bytes(bucket, converted_key, converted_pdf, content_type="application/pdf")
         extraction_key = converted_key
