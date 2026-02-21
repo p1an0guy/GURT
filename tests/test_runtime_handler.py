@@ -909,6 +909,44 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertIn("DTSTART:20261015T170000Z", response["body"])
         self.assertIn("DTEND:20261015T190000Z", response["body"])
 
+    def test_calendar_route_falls_back_to_due_at_when_optional_window_fields_are_invalid(self) -> None:
+        store = _MemoryCalendarTokenStore()
+        store.save(
+            CalendarTokenRecord.mint(
+                token="calendar-token-invalid-window",
+                user_id="demo-user",
+                created_at="2026-09-01T10:15:00Z",
+            )
+        )
+
+        event = {
+            "httpMethod": "GET",
+            "path": "/calendar/calendar-token-invalid-window.ics",
+            "pathParameters": {"token": "calendar-token-invalid-window"},
+        }
+
+        with (
+            patch("backend.runtime._calendar_token_store", return_value=store),
+            patch(
+                "backend.runtime._load_schedule_items_for_user",
+                return_value=[
+                    {
+                        "id": "item-invalid-window",
+                        "courseId": "course-psych-101",
+                        "title": "Exam With Bad Optional Times",
+                        "dueAt": "2026-10-15T17:00:00Z",
+                        "startAt": "not-a-time",
+                        "endAt": "also-not-a-time",
+                    }
+                ],
+            ),
+        ):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 200)
+        self.assertIn("DTSTART:20261015T170000Z", response["body"])
+        self.assertIn("DTEND:20261015T180000Z", response["body"])
+
     def test_calendar_route_returns_404_for_unknown_token(self) -> None:
         store = _MemoryCalendarTokenStore()
         with patch("backend.runtime._calendar_token_store", return_value=store):
