@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "IngestStartRequest.json",
+  "title": "IngestStartRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["docId", "courseId", "key"],
+  "properties": {
+    "docId": {"type": "string", "minLength": 1},
+    "courseId": {"type": "string", "minLength": 1},
+    "key": {"type": "string", "minLength": 1}
+  }
+}

@@ -88,6 +88,13 @@ Canvas bootstrap for demo schedule rows:
    - Current live scope syncs published assignments with non-null due dates.
 3. Mint calendar token and fetch `/calendar/{token}.ics`.
 
+Docs ingest workflow (Step Functions + PyMuPDF/Textract fallback):
+
+1. Upload source file via `POST /uploads` and complete S3 `PUT`.
+2. Start ingest: `POST /docs/ingest` with `{docId, courseId, key}`.
+3. Poll ingest status: `GET /docs/ingest/{jobId}` until `status` is `FINISHED` or `FAILED`.
+4. If PyMuPDF extraction yields fewer than 200 chars, workflow falls back to async Textract OCR.
+
 ## CDK infra synth and deploy (demo scaffold)
 
 Infrastructure is scaffolded in `infra/` with `GurtDataStack` and `GurtApiStack`.

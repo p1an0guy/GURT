@@ -9,6 +9,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
+from uuid import uuid4
 from typing import Any, Dict, Mapping
 
 from backend.canvas_client import CanvasApiError, fetch_active_courses, fetch_course_assignments
@@ -26,6 +27,7 @@ _FIXTURES_DIR = _ROOT_DIR / "fixtures"
 _DEMO_MODE_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 _ENTITY_CANVAS_ITEM = "CanvasItem"
 _ENTITY_CANVAS_CONNECTION = "CanvasConnection"
+_ENTITY_INGEST_JOB = "IngestJob"
 
 
 @lru_cache(maxsize=1)
@@ -175,6 +177,13 @@ def _parse_json_body(event: Mapping[str, Any]) -> tuple[dict[str, Any] | None, s
         return None, "request body must be a JSON object"
 
     return decoded, None
+
+
+def _require_non_empty_string(payload: Mapping[str, Any], field: str) -> str:
+    value = payload.get(field)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field} is required")
+    return value.strip()
 
 
 def _utc_now_rfc3339() -> str:
@@ -328,6 +337,12 @@ def _dynamodb_table(table_name: str) -> Any:
     return boto3.resource("dynamodb").Table(table_name)
 
 
+def _stepfunctions_client() -> Any:
+    import boto3
+
+    return boto3.client("stepfunctions")
+
+
 def _calendar_token_store() -> DynamoDbCalendarTokenStore:
     table_name = os.getenv("CALENDAR_TOKENS_TABLE", "").strip()
     if not table_name:
@@ -339,6 +354,13 @@ def _canvas_data_table() -> Any:
     table_name = os.getenv("CANVAS_DATA_TABLE", "").strip()
     if not table_name:
         raise RuntimeError("server misconfiguration: CANVAS_DATA_TABLE missing")
+    return _dynamodb_table(table_name)
+
+
+def _docs_table() -> Any:
+    table_name = os.getenv("DOCS_TABLE", "").strip()
+    if not table_name:
+        raise RuntimeError("server misconfiguration: DOCS_TABLE missing")
     return _dynamodb_table(table_name)
 
 
@@ -408,6 +430,66 @@ def _upsert_canvas_connection(*, user_id: str, canvas_base_url: str, access_toke
             "updatedAt": updated_at,
         }
     )
+
+
+def _ingest_state_machine_arn() -> str:
+    arn = os.getenv("INGEST_STATE_MACHINE_ARN", "").strip()
+    if not arn:
+        raise RuntimeError("server misconfiguration: INGEST_STATE_MACHINE_ARN missing")
+    return arn
+
+
+def _start_ingest_job(*, doc_id: str, course_id: str, key: str) -> dict[str, Any]:
+    job_id = f"ingest-{uuid4().hex}"
+    bucket = os.getenv("UPLOADS_BUCKET", "").strip()
+    if not bucket:
+        raise RuntimeError("server misconfiguration: UPLOADS_BUCKET missing")
+
+    now = _utc_now_rfc3339()
+    _docs_table().put_item(
+        Item={
+            "docId": job_id,
+            "entityType": _ENTITY_INGEST_JOB,
+            "jobId": job_id,
+            "sourceDocId": doc_id,
+            "courseId": course_id,
+            "sourceKey": key,
+            "status": "RUNNING",
+            "textLength": 0,
+            "usedTextract": False,
+            "updatedAt": now,
+            "error": "",
+        }
+    )
+
+    execution_input = {
+        "jobId": job_id,
+        "docId": doc_id,
+        "courseId": course_id,
+        "bucket": bucket,
+        "key": key,
+        "threshold": 200,
+    }
+    _stepfunctions_client().start_execution(
+        stateMachineArn=_ingest_state_machine_arn(),
+        name=job_id,
+        input=json.dumps(execution_input),
+    )
+    return {
+        "jobId": job_id,
+        "status": "RUNNING",
+        "updatedAt": now,
+    }
+
+
+def _get_ingest_job(job_id: str) -> dict[str, Any] | None:
+    response = _docs_table().get_item(Key={"docId": job_id})
+    item = response.get("Item")
+    if not isinstance(item, dict):
+        return None
+    if item.get("entityType") != _ENTITY_INGEST_JOB:
+        return None
+    return item
 
 
 def _sync_canvas_assignments_for_user(
@@ -515,6 +597,47 @@ def _handle_canvas_sync(event: Mapping[str, Any]) -> Dict[str, Any]:
             "itemsUpserted": items_upserted,
             "failedCourseIds": failed_course_ids,
             "updatedAt": updated_at,
+        },
+    )
+
+
+def _handle_docs_ingest_start(event: Mapping[str, Any]) -> Dict[str, Any]:
+    payload, parse_error = _parse_json_body(event)
+    if parse_error is not None or payload is None:
+        return _json_response(400, {"error": parse_error or "request body must be valid JSON"})
+
+    try:
+        doc_id = _require_non_empty_string(payload, "docId")
+        course_id = _require_non_empty_string(payload, "courseId")
+        key = _require_non_empty_string(payload, "key")
+        job = _start_ingest_job(doc_id=doc_id, course_id=course_id, key=key)
+    except ValueError as exc:
+        return _json_response(400, {"error": str(exc)})
+    except RuntimeError as exc:
+        return _json_response(500, {"error": str(exc)})
+    except Exception as exc:  # pragma: no cover - defensive runtime guard
+        return _json_response(500, {"error": f"unable to start ingest job: {exc}"})
+
+    return _json_response(202, job)
+
+
+def _handle_docs_ingest_status(job_id: str) -> Dict[str, Any]:
+    try:
+        record = _get_ingest_job(job_id)
+    except RuntimeError as exc:
+        return _json_response(500, {"error": str(exc)})
+    if record is None:
+        return _json_response(404, {"error": "ingest job not found"})
+
+    return _json_response(
+        200,
+        {
+            "jobId": str(record.get("jobId", job_id)),
+            "status": str(record.get("status", "UNKNOWN")),
+            "textLength": int(record.get("textLength", 0)),
+            "usedTextract": bool(record.get("usedTextract", False)),
+            "updatedAt": str(record.get("updatedAt", "")),
+            "error": str(record.get("error", "")),
         },
     )
 
@@ -714,6 +837,14 @@ def lambda_handler(event: Mapping[str, Any], context: Any) -> Dict[str, Any]:
 
     if method == "POST" and path == "/calendar/token":
         return _handle_calendar_token_create(event)
+
+    if method == "POST" and path == "/docs/ingest":
+        return _handle_docs_ingest_start(event)
+
+    if method == "GET":
+        match = re.fullmatch(r"/docs/ingest/([^/]+)", path)
+        if match:
+            return _handle_docs_ingest_status(match.group(1))
 
     if method == "POST" and path == "/canvas/connect":
         return _handle_canvas_connect(event)

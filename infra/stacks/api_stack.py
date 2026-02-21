@@ -10,6 +10,8 @@ from aws_cdk import aws_events as events
 from aws_cdk import aws_events_targets as targets
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_lambda as lambda_
+from aws_cdk import aws_stepfunctions as sfn
+from aws_cdk import aws_stepfunctions_tasks as sfn_tasks
 from constructs import Construct
 
 from stacks.data_stack import DataStack
@@ -88,13 +90,122 @@ class ApiStack(Stack):
             environment=env,
         )
 
+        ingest_extract_handler = lambda_.Function(
+            self,
+            "IngestExtractHandler",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            code=lambda_code,
+            handler="backend.ingest_workflow.extract_handler",
+            timeout=Duration.seconds(60),
+            memory_size=512,
+            environment={"DOCS_TABLE": data_stack.docs_table.table_name},
+        )
+        ingest_start_textract_handler = lambda_.Function(
+            self,
+            "IngestStartTextractHandler",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            code=lambda_code,
+            handler="backend.ingest_workflow.start_textract_handler",
+            timeout=Duration.seconds(30),
+            memory_size=256,
+            environment={"DOCS_TABLE": data_stack.docs_table.table_name},
+        )
+        ingest_poll_textract_handler = lambda_.Function(
+            self,
+            "IngestPollTextractHandler",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            code=lambda_code,
+            handler="backend.ingest_workflow.poll_textract_handler",
+            timeout=Duration.seconds(60),
+            memory_size=512,
+            environment={"DOCS_TABLE": data_stack.docs_table.table_name},
+        )
+        ingest_finalize_handler = lambda_.Function(
+            self,
+            "IngestFinalizeHandler",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            code=lambda_code,
+            handler="backend.ingest_workflow.finalize_handler",
+            timeout=Duration.seconds(30),
+            memory_size=256,
+            environment={"DOCS_TABLE": data_stack.docs_table.table_name},
+        )
+
         data_stack.uploads_bucket.grant_read_write(app_api_handler)
         data_stack.uploads_bucket.grant_put(uploads_handler)
+        data_stack.uploads_bucket.grant_read(ingest_extract_handler)
+        data_stack.uploads_bucket.grant_read(ingest_start_textract_handler)
+        data_stack.uploads_bucket.grant_read(ingest_poll_textract_handler)
 
         data_stack.canvas_data_table.grant_read_write_data(app_api_handler)
         data_stack.calendar_tokens_table.grant_read_write_data(app_api_handler)
         data_stack.docs_table.grant_read_write_data(app_api_handler)
+        data_stack.docs_table.grant_read_write_data(ingest_finalize_handler)
         data_stack.cards_table.grant_read_write_data(app_api_handler)
+
+        for fn in (ingest_start_textract_handler, ingest_poll_textract_handler):
+            fn.add_to_role_policy(
+                iam.PolicyStatement(
+                    actions=[
+                        "textract:StartDocumentTextDetection",
+                        "textract:GetDocumentTextDetection",
+                    ],
+                    resources=["*"],
+                )
+            )
+
+        ingest_extract_step = sfn_tasks.LambdaInvoke(
+            self,
+            "IngestExtractStep",
+            lambda_function=ingest_extract_handler,
+            payload_response_only=True,
+        )
+        ingest_start_textract_step = sfn_tasks.LambdaInvoke(
+            self,
+            "IngestStartTextractStep",
+            lambda_function=ingest_start_textract_handler,
+            payload_response_only=True,
+        )
+        ingest_wait_step = sfn.Wait(
+            self,
+            "IngestWaitForTextract",
+            time=sfn.WaitTime.duration(Duration.seconds(20)),
+        )
+        ingest_poll_textract_step = sfn_tasks.LambdaInvoke(
+            self,
+            "IngestPollTextractStep",
+            lambda_function=ingest_poll_textract_handler,
+            payload_response_only=True,
+        )
+        ingest_finalize_step = sfn_tasks.LambdaInvoke(
+            self,
+            "IngestFinalizeStep",
+            lambda_function=ingest_finalize_handler,
+            payload_response_only=True,
+        )
+
+        ingest_poll_choice = sfn.Choice(self, "IngestPollDone")
+        ingest_poll_choice.when(
+            sfn.Condition.boolean_equals("$.done", True),
+            ingest_finalize_step,
+        ).otherwise(ingest_wait_step.next(ingest_poll_textract_step).next(ingest_poll_choice))
+
+        ingest_choice = sfn.Choice(self, "IngestNeedsTextract")
+        ingest_choice.when(
+            sfn.Condition.boolean_equals("$.needsTextract", True),
+            ingest_start_textract_step.next(ingest_wait_step).next(ingest_poll_textract_step).next(ingest_poll_choice),
+        ).otherwise(ingest_finalize_step)
+
+        ingest_definition = ingest_extract_step.next(ingest_choice)
+
+        ingest_state_machine = sfn.StateMachine(
+            self,
+            "DocsIngestStateMachine",
+            definition_body=sfn.DefinitionBody.from_chainable(ingest_definition),
+            timeout=Duration.minutes(20),
+        )
+        ingest_state_machine.grant_start_execution(app_api_handler)
+        app_api_handler.add_environment("INGEST_STATE_MACHINE_ARN", ingest_state_machine.state_machine_arn)
 
         # Bedrock integration is implemented in later handlers, but grant now so
         # those code paths can be added without reshaping IAM in a follow-up.
@@ -132,6 +243,12 @@ class ApiStack(Stack):
 
         uploads = self.rest_api.root.add_resource("uploads")
         uploads.add_method("POST", uploads_integration)
+
+        docs = self.rest_api.root.add_resource("docs")
+        docs_ingest = docs.add_resource("ingest")
+        docs_ingest.add_method("POST", app_integration, authorization_type=apigateway.AuthorizationType.NONE)
+        docs_ingest_job = docs_ingest.add_resource("{jobId}")
+        docs_ingest_job.add_method("GET", app_integration, authorization_type=apigateway.AuthorizationType.NONE)
 
         study = self.rest_api.root.add_resource("study")
         study_today = study.add_resource("today")

@@ -101,6 +101,8 @@ When modifying API behavior or shapes, update all relevant files in one PR:
 - `GET /health`
 - `POST /canvas/connect`
 - `POST /canvas/sync`
+- `POST /docs/ingest`
+- `GET /docs/ingest/{jobId}`
 - `GET /courses`
 - `GET /courses/{courseId}/items`
 - `GET /study/today?courseId=...`

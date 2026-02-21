@@ -29,11 +29,19 @@ test("uses fixture mode when explicitly enabled", async () => {
   const cards = await client.getStudyToday("course-psych-101");
   const mastery = await client.getStudyMastery("course-psych-101");
   const calendarToken = await client.createCalendarToken();
+  const ingestStart = await client.startDocsIngest({
+    docId: "doc-fixture",
+    courseId: "course-psych-101",
+    key: "uploads/course-psych-101/doc-fixture/syllabus.pdf",
+  });
+  const ingestStatus = await client.getDocsIngestStatus(ingestStart.jobId);
 
   assert.equal(fetchCalled, false);
   assert.equal(courses.length, 2);
   assert.ok(cards.length > 0);
   assert.equal(calendarToken.token, "demo-calendar-token");
+  assert.equal(ingestStart.status, "RUNNING");
+  assert.equal(ingestStatus.status, "RUNNING");
   assert.deepEqual(
     mastery,
     [
@@ -166,6 +174,25 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
       });
     }
 
+    if (url.endsWith("/docs/ingest")) {
+      return jsonResponse({
+        jobId: "ingest-123",
+        status: "RUNNING",
+        updatedAt: "2026-09-02T09:00:00Z",
+      });
+    }
+
+    if (url.endsWith("/docs/ingest/ingest-123")) {
+      return jsonResponse({
+        jobId: "ingest-123",
+        status: "FINISHED",
+        textLength: 1234,
+        usedTextract: true,
+        updatedAt: "2026-09-02T09:01:00Z",
+        error: "",
+      });
+    }
+
     return new Response("not found", { status: 404 });
   };
 
@@ -190,10 +217,17 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
   await client.postStudyReview(reviewEvent);
   const ics = await client.getCalendarIcs("demo/token");
   const tokenResponse = await client.createCalendarToken();
+  const ingestStarted = await client.startDocsIngest({
+    docId: "doc-1",
+    courseId: "course/1",
+    key: "uploads/course-1/doc-1/syllabus.pdf",
+  });
+  const ingestStatus = await client.getDocsIngestStatus(ingestStarted.jobId);
 
   assert.match(ics, /BEGIN:VCALENDAR/);
   assert.equal(tokenResponse.token, "minted-token");
-  assert.equal(calls.length, 8);
+  assert.equal(ingestStatus.status, "FINISHED");
+  assert.equal(calls.length, 10);
   assert.ok(calls.some((call) => call.url === "https://api.example.dev/courses/course%2F1/items"));
   assert.ok(calls.some((call) => call.url === "https://api.example.dev/study/today?courseId=course%2F1"));
   assert.ok(calls.some((call) => call.url === "https://api.example.dev/study/mastery?courseId=course%2F1"));
@@ -214,4 +248,8 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
   const calendarTokenCall = calls.find((call) => call.url === "https://api.example.dev/calendar/token");
   assert.ok(calendarTokenCall);
   assert.equal(calendarTokenCall.init?.method, "POST");
+
+  const ingestStartCall = calls.find((call) => call.url === "https://api.example.dev/docs/ingest");
+  assert.ok(ingestStartCall);
+  assert.equal(ingestStartCall.init?.method, "POST");
 });

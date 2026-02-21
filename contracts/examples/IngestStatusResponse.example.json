@@ -1,0 +1,8 @@
+{
+  "jobId": "ingest-1234567890abcdef",
+  "status": "FINISHED",
+  "textLength": 2450,
+  "usedTextract": true,
+  "updatedAt": "2026-02-21T03:02:10Z",
+  "error": ""
+}

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { createApiClient } from "../src/api/client.ts";
-import type { CanvasItem, Course, TopicMastery } from "../src/api/types.ts";
+import type { CanvasItem, Course, IngestStatusResponse, TopicMastery } from "../src/api/types.ts";
 
 const DEFAULT_COURSE_ID = "course-psych-101";
 const DEFAULT_CALENDAR_TOKEN =
@@ -22,6 +22,10 @@ export default function HomePage() {
   );
   const [courseId, setCourseId] = useState(DEFAULT_COURSE_ID);
   const [calendarToken, setCalendarToken] = useState(DEFAULT_CALENDAR_TOKEN);
+  const [ingestDocId, setIngestDocId] = useState("");
+  const [ingestKey, setIngestKey] = useState("");
+  const [ingestStatus, setIngestStatus] = useState<IngestStatusResponse | null>(null);
+  const [ingestLoading, setIngestLoading] = useState(false);
   const [health, setHealth] = useState<string>("unknown");
   const [courses, setCourses] = useState<Course[]>([]);
   const [items, setItems] = useState<CanvasItem[]>([]);
@@ -90,18 +94,56 @@ export default function HomePage() {
     }
   }
 
-  return (
-    <main className="page">
-      <section className="hero">
-        <h1>StudyBuddy Demo Console</h1>
-        <p>
-          Browser shell for validating API routes, fixture mode, and calendar feed wiring.
-          Use this while CDK-backed infrastructure is being deployed.
-        </p>
-      </section>
+  async function handleStartIngest(): Promise<void> {
+    setMessage("");
+    setIngestLoading(true);
+    setIngestStatus(null);
+    try {
+      const started = await client.startDocsIngest({
+        docId: ingestDocId,
+        courseId,
+        key: ingestKey,
+      });
 
-      <section className="panel-grid">
-        <article className="panel">
+      let status = await client.getDocsIngestStatus(started.jobId);
+      while (status.status === "RUNNING") {
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+        status = await client.getDocsIngestStatus(started.jobId);
+      }
+      setIngestStatus(status);
+      if (status.status === "FINISHED") {
+        setMessage(`Ingest finished. Extracted ${status.textLength} chars.`);
+      } else {
+        setMessage(`Ingest failed: ${status.error || "unknown error"}`);
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unknown error");
+    } finally {
+      setIngestLoading(false);
+    }
+  }
+
+  return (
+    <>
+      {ingestLoading && (
+        <div className="loading-screen" role="status" aria-live="polite">
+          <div className="loading-card">
+            <h2>Processing Document</h2>
+            <p>Waiting for ingest workflow to finish...</p>
+          </div>
+        </div>
+      )}
+      <main className="page">
+        <section className="hero">
+          <h1>StudyBuddy Demo Console</h1>
+          <p>
+            Browser shell for validating API routes, fixture mode, and calendar feed wiring.
+            Use this while CDK-backed infrastructure is being deployed.
+          </p>
+        </section>
+
+        <section className="panel-grid">
+          <article className="panel">
           <h2>Connection</h2>
           <div className="controls">
             <label htmlFor="baseUrl">API Base URL</label>
@@ -145,22 +187,48 @@ export default function HomePage() {
             <button type="button" onClick={handleMintCalendarToken}>
               Mint Calendar Token
             </button>
-          </div>
-        </article>
 
-        <article className="panel">
+            <label htmlFor="ingestDocId">Ingest Doc ID</label>
+            <input
+              id="ingestDocId"
+              value={ingestDocId}
+              onChange={(event) => setIngestDocId(event.target.value)}
+              placeholder="doc-123"
+            />
+
+            <label htmlFor="ingestKey">Ingest S3 Key</label>
+            <input
+              id="ingestKey"
+              value={ingestKey}
+              onChange={(event) => setIngestKey(event.target.value)}
+              placeholder="uploads/course-id/doc-id/file.pdf"
+            />
+
+            <button type="button" onClick={handleStartIngest} disabled={ingestLoading}>
+              {ingestLoading ? "Ingesting..." : "Start Ingest"}
+            </button>
+          </div>
+          </article>
+
+          <article className="panel">
           <h2>Status</h2>
           <div className="stack">
             <p className={`status ${health === "ok" ? "ok" : "warn"}`}>
               Health: {health}
             </p>
             <p className="small">{message || "No requests yet."}</p>
+            {ingestStatus && (
+              <p className="small">
+                Ingest job {ingestStatus.jobId}: {ingestStatus.status} (text {ingestStatus.textLength}, Textract{" "}
+                {ingestStatus.usedTextract ? "yes" : "no"})
+              </p>
+            )}
             <p className="small">Calendar feed URL:</p>
             <p className="mono">{calendarUrl || "(load data to generate URL)"}</p>
           </div>
-        </article>
+          </article>
 
-        <article className="panel">
+          <article className="panel">
           <h2>Courses</h2>
           <ul className="list">
             {courses.map((course) => (
@@ -171,9 +239,9 @@ export default function HomePage() {
               </li>
             ))}
           </ul>
-        </article>
+          </article>
 
-        <article className="panel">
+          <article className="panel">
           <h2>Upcoming Items</h2>
           <ul className="list">
             {items.map((item) => (
@@ -184,9 +252,9 @@ export default function HomePage() {
               </li>
             ))}
           </ul>
-        </article>
+          </article>
 
-        <article className="panel">
+          <article className="panel">
           <h2>Topic Mastery</h2>
           <ul className="list">
             {mastery.map((topic) => (
@@ -198,8 +266,9 @@ export default function HomePage() {
               </li>
             ))}
           </ul>
-        </article>
-      </section>
-    </main>
+          </article>
+        </section>
+      </main>
+    </>
   );
 }

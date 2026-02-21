@@ -4,6 +4,8 @@ import {
   getFixtureCourseItems,
   getFixtureCourses,
   getFixtureHealth,
+  getFixtureIngestStartResponse,
+  getFixtureIngestStatusResponse,
   getFixtureStudyMastery,
   getFixtureStudyReviewAck,
   getFixtureStudyToday,
@@ -14,6 +16,9 @@ import type {
   Card,
   Course,
   HealthStatus,
+  IngestStartRequest,
+  IngestStartResponse,
+  IngestStatusResponse,
   ReviewEvent,
   StudyReviewAck,
   TopicMastery,
@@ -37,6 +42,8 @@ export interface ApiClient {
   getStudyMastery(courseId: string): Promise<TopicMastery[]>;
   getCalendarIcs(token: string): Promise<string>;
   createCalendarToken(): Promise<CalendarTokenResponse>;
+  startDocsIngest(request: IngestStartRequest): Promise<IngestStartResponse>;
+  getDocsIngestStatus(jobId: string): Promise<IngestStatusResponse>;
 }
 
 export interface CreateApiClientOptions {
@@ -220,6 +227,26 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
       return requestJson<CalendarTokenResponse>("/calendar/token", {
         method: "POST",
       });
+    },
+
+    async startDocsIngest(request: IngestStartRequest): Promise<IngestStartResponse> {
+      if (useFixtures) {
+        return getFixtureIngestStartResponse(request);
+      }
+      return requestJson<IngestStartResponse>("/docs/ingest", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(request),
+      });
+    },
+
+    async getDocsIngestStatus(jobId: string): Promise<IngestStatusResponse> {
+      if (useFixtures) {
+        return getFixtureIngestStatusResponse(jobId);
+      }
+      return requestJson<IngestStatusResponse>(`/docs/ingest/${encodeURIComponent(jobId)}`);
     },
   };
 }
