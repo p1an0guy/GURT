@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from decimal import Decimal
 from datetime import datetime
 from typing import Any, Mapping
 
@@ -59,12 +60,19 @@ def _validate_date_time(value: Any, field_name: str) -> str:
     return text
 
 
-def _validate_non_negative_number(value: Any, field_name: str) -> float | int:
+def _validate_non_negative_number(value: Any, field_name: str) -> float | int | Decimal:
     """Require numeric values that are >= 0."""
-    if not isinstance(value, (int, float)) or isinstance(value, bool):
+    if not isinstance(value, (int, float, Decimal)) or isinstance(value, bool):
         raise ModelValidationError(f"{field_name}: expected number")
     if value < 0:
         raise ModelValidationError(f"{field_name}: must be >= 0")
+    return value
+
+
+def _to_dynamodb_number(value: float | int | Decimal) -> float | int | Decimal:
+    """Convert floats to Decimal because boto3 DynamoDB does not accept float."""
+    if isinstance(value, float):
+        return Decimal(str(value))
     return value
 
 
@@ -190,7 +198,7 @@ class CanvasItem:
     title: str
     item_type: str
     due_at: str
-    points_possible: float | int
+    points_possible: float | int | Decimal
 
     def __post_init__(self) -> None:
         _validate_non_empty_string(self.id, "id")
@@ -241,7 +249,7 @@ class CanvasItem:
             "title": self.title,
             "itemType": self.item_type,
             "dueAt": self.due_at,
-            "pointsPossible": self.points_possible,
+            "pointsPossible": _to_dynamodb_number(self.points_possible),
             ATTR_GSI1_PK: item_partition_key(uid, self.course_id),
             ATTR_GSI1_SK: item_due_sort_key(self.due_at, self.id),
             ATTR_GSI2_PK: course_partition_key(uid),
@@ -271,4 +279,3 @@ class CanvasItem:
                 "pointsPossible": item.get("pointsPossible"),
             }
         )
-

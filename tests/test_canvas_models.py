@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 import unittest
 
 from studybuddy.models.canvas import (
@@ -160,6 +161,21 @@ class CanvasItemModelTests(unittest.TestCase):
             ).to_api_dict(),
             model.to_api_dict(),
         )
+
+    def test_canvas_item_dynamodb_mapping_converts_float_points_to_decimal(self) -> None:
+        model = CanvasItem(
+            id="item-assignment-2",
+            course_id="course-psych-101",
+            title="Essay Draft",
+            item_type="assignment",
+            due_at="2026-10-20T17:00:00Z",
+            points_possible=12.5,
+        )
+        record = model.to_dynamodb_item(
+            user_id="demo-user",
+            updated_at="2026-09-01T10:15:00Z",
+        )
+        self.assertEqual(record["pointsPossible"], Decimal("12.5"))
 
     def test_canvas_item_from_dynamodb_item_rejects_user_key_mismatch(self) -> None:
         model = CanvasItem(
