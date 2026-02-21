@@ -9,7 +9,6 @@ import type {
   Card,
   ChatResponse,
   Course,
-  IngestStatusResponse,
   PracticeExam,
   TopicMastery,
 } from "../src/api/types.ts";
@@ -20,6 +19,22 @@ const DEFAULT_CALENDAR_TOKEN =
 
 function toNowRfc3339(): string {
   return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
+function kbIngestionStatusMessage(sync: CanvasSyncResponse): string {
+  if (sync.materialsMirrored === 0) {
+    return "No new mirrored materials.";
+  }
+  if (sync.knowledgeBaseIngestionStarted) {
+    if (sync.knowledgeBaseIngestionJobId) {
+      return `KB ingestion started (jobId: ${sync.knowledgeBaseIngestionJobId}).`;
+    }
+    return "KB ingestion started.";
+  }
+  if (sync.knowledgeBaseIngestionError) {
+    return `KB ingestion not started: ${sync.knowledgeBaseIngestionError}.`;
+  }
+  return "KB ingestion not started.";
 }
 
 export default function HomePage() {
@@ -52,13 +67,6 @@ export default function HomePage() {
   const [chatLoading, setChatLoading] = useState(false);
   const [chatError, setChatError] = useState("");
   const [lastChatAt, setLastChatAt] = useState("");
-  const [ingestDocId, setIngestDocId] = useState("");
-  const [ingestKey, setIngestKey] = useState("");
-  const [ingestStatus, setIngestStatus] = useState<IngestStatusResponse | null>(null);
-  const [ingestLoading, setIngestLoading] = useState(false);
-  const [ingestError, setIngestError] = useState("");
-  const [ingestPollCount, setIngestPollCount] = useState(0);
-  const [lastIngestSuccessAt, setLastIngestSuccessAt] = useState("");
   const [health, setHealth] = useState<string>("unknown");
   const [courses, setCourses] = useState<Course[]>([]);
   const [items, setItems] = useState<CanvasItem[]>([]);
@@ -152,8 +160,9 @@ export default function HomePage() {
         setCanvasSyncWarning(`Partial sync. Failed course IDs: ${sync.failedCourseIds.join(", ")}`);
       }
       const failed = sync.failedCourseIds.length > 0 ? ` (failed: ${sync.failedCourseIds.join(", ")})` : "";
+      const kbStatus = kbIngestionStatusMessage(sync);
       setMessage(
-        `Canvas sync: ${sync.coursesUpserted} course(s), ${sync.itemsUpserted} item(s), ${sync.materialsMirrored} material(s) mirrored${failed}.`,
+        `Canvas sync: ${sync.coursesUpserted} course(s), ${sync.itemsUpserted} item(s), ${sync.materialsMirrored} material(s) mirrored${failed}. ${kbStatus}`,
       );
       const [coursesResp, itemsResp, masteryResp] = await Promise.all([
         client.listCourses(),
@@ -169,54 +178,6 @@ export default function HomePage() {
       setMessage(errorMessage);
     } finally {
       setCanvasSyncLoading(false);
-    }
-  }
-
-  async function handleStartIngest(): Promise<void> {
-    setMessage("");
-    setIngestLoading(true);
-    setIngestError("");
-    setIngestPollCount(0);
-    setIngestStatus(null);
-    try {
-      const started = await client.startDocsIngest({
-        docId: ingestDocId,
-        courseId,
-        key: ingestKey,
-      });
-
-      setIngestStatus({
-        jobId: started.jobId,
-        status: "RUNNING",
-        textLength: 0,
-        usedTextract: false,
-        updatedAt: started.updatedAt,
-        error: "",
-      });
-      let status = await client.getDocsIngestStatus(started.jobId);
-      let polls = 1;
-      setIngestPollCount(polls);
-      while (status.status === "RUNNING") {
-        await new Promise((resolve) => setTimeout(resolve, 2500));
-        status = await client.getDocsIngestStatus(started.jobId);
-        polls += 1;
-        setIngestPollCount(polls);
-      }
-      setIngestStatus(status);
-      if (status.status === "FINISHED") {
-        setLastIngestSuccessAt(status.updatedAt);
-        setMessage(`Ingest finished. Extracted ${status.textLength} chars.`);
-      } else {
-        const errorMessage = status.error || "unknown error";
-        setIngestError(errorMessage);
-        setMessage(`Ingest failed: ${errorMessage}`);
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      setIngestError(errorMessage);
-      setMessage(errorMessage);
-    } finally {
-      setIngestLoading(false);
     }
   }
 
@@ -371,34 +332,6 @@ export default function HomePage() {
               Mint Calendar Token
             </button>
 
-            <label htmlFor="ingestDocId">Ingest Doc ID</label>
-            <input
-              id="ingestDocId"
-              value={ingestDocId}
-              onChange={(event) => setIngestDocId(event.target.value)}
-              placeholder="doc-123"
-            />
-
-            <label htmlFor="ingestKey">Ingest S3 Key</label>
-            <input
-              id="ingestKey"
-              value={ingestKey}
-              onChange={(event) => setIngestKey(event.target.value)}
-              placeholder="uploads/course-id/doc-id/file.pdf"
-            />
-
-            <button type="button" onClick={handleStartIngest} disabled={ingestLoading}>
-              {ingestLoading ? "Ingesting..." : "Start Ingest"}
-            </button>
-            {ingestError ? (
-              <>
-                <p className="error-text">Ingest failed: {ingestError}</p>
-                <button type="button" className="secondary-button" onClick={handleStartIngest} disabled={ingestLoading}>
-                  Retry Ingest
-                </button>
-              </>
-            ) : null}
-
             <label htmlFor="numCards">Generate Flashcards</label>
             <input
               id="numCards"
@@ -476,18 +409,12 @@ export default function HomePage() {
               {canvasSyncError ? <p className="error-text">{canvasSyncError}</p> : null}
             </div>
             <div className="status-block">
-              <p className="small"><strong>Docs Ingest</strong></p>
+              <p className="small"><strong>Knowledge Base Ingestion</strong></p>
               <p className="small">
-                {ingestStatus
-                  ? `Job ${ingestStatus.jobId}: ${ingestStatus.status} (polls: ${ingestPollCount}, text: ${ingestStatus.textLength})`
-                  : "No ingest job started yet."}
+                {lastCanvasSync
+                  ? `Last sync ${lastCanvasSync.updatedAt}: ${kbIngestionStatusMessage(lastCanvasSync)}`
+                  : "No successful canvas sync yet."}
               </p>
-              <p className="small">
-                {lastIngestSuccessAt
-                  ? `Last successful ingest: ${lastIngestSuccessAt}`
-                  : "No successful ingest run yet."}
-              </p>
-              {ingestError ? <p className="error-text">{ingestError}</p> : null}
             </div>
             <div className="status-block">
               <p className="small"><strong>Generation + Chat</strong></p>
