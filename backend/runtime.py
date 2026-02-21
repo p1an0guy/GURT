@@ -531,7 +531,7 @@ def _safe_material_filename(name: str) -> str:
 
 def _material_s3_key(*, user_id: str, course_id: str, canvas_file_id: str, display_name: str) -> str:
     safe_name = _safe_material_filename(display_name)
-    return f"canvas-materials/{user_id}/{course_id}/{canvas_file_id}/{safe_name}"
+    return f"uploads/canvas-materials/{user_id}/{course_id}/{canvas_file_id}/{safe_name}"
 
 
 def _start_knowledge_base_ingestion() -> tuple[bool, str]:

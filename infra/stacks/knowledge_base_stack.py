@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 import re
+import textwrap
 
-from aws_cdk import CfnOutput, Stack
+from aws_cdk import CfnOutput, CustomResource, Duration, Stack
 from aws_cdk import aws_bedrock as bedrock
 from aws_cdk import aws_iam as iam
+from aws_cdk import aws_lambda as lambda_
 from aws_cdk import aws_opensearchserverless as aoss
 from constructs import Construct
 
@@ -20,6 +22,107 @@ def _safe_name(raw: str, *, max_length: int = 32) -> str:
         sanitized = "gurt"
     trimmed = sanitized[:max_length].rstrip("-")
     return trimmed or "gurt"
+
+
+# Inline Lambda code that creates the OpenSearch Serverless vector index.
+# This runs as a CloudFormation custom resource after the collection is ready.
+_INDEX_CREATOR_CODE = textwrap.dedent("""\
+    import json
+    import os
+    import time
+    import urllib.request
+    import urllib.error
+
+    import boto3
+    from botocore.auth import SigV4Auth
+    from botocore.awsrequest import AWSRequest
+    from botocore.credentials import Credentials
+
+    import cfnresponse
+
+
+    def handler(event, context):
+        try:
+            request_type = event["RequestType"]
+            props = event["ResourceProperties"]
+            endpoint = props["CollectionEndpoint"]
+            index_name = props["IndexName"]
+            vector_dimension = int(props.get("VectorDimension", "1024"))
+
+            if request_type in ("Create", "Update"):
+                _create_index(endpoint, index_name, vector_dimension)
+
+            cfnresponse.send(event, context, cfnresponse.SUCCESS, {
+                "IndexName": index_name,
+            })
+        except Exception as exc:
+            print(f"Error: {exc}")
+            cfnresponse.send(event, context, cfnresponse.FAILED, {
+                "Error": str(exc),
+            })
+
+
+    def _create_index(endpoint, index_name, vector_dimension):
+        url = f"{endpoint}/{index_name}"
+        body = json.dumps({
+            "settings": {
+                "index": {
+                    "knn": True,
+                    "knn.algo_param.ef_search": 512,
+                }
+            },
+            "mappings": {
+                "properties": {
+                    "vector": {
+                        "type": "knn_vector",
+                        "dimension": vector_dimension,
+                        "method": {
+                            "engine": "faiss",
+                            "name": "hnsw",
+                            "parameters": {},
+                            "space_type": "l2",
+                        },
+                    },
+                    "text": {"type": "text"},
+                    "metadata": {"type": "text"},
+                }
+            },
+        }).encode()
+
+        session = boto3.Session()
+        credentials = session.get_credentials().get_frozen_credentials()
+        region = os.environ.get("AWS_REGION", "us-west-2")
+
+        # Retry a few times since the collection may take a moment to become active.
+        last_error = None
+        for attempt in range(5):
+            try:
+                req = AWSRequest(method="PUT", url=url, data=body,
+                                 headers={"Content-Type": "application/json"})
+                SigV4Auth(credentials, "aoss", region).add_auth(req)
+
+                http_req = urllib.request.Request(
+                    url, data=body, method="PUT",
+                    headers=dict(req.headers),
+                )
+                with urllib.request.urlopen(http_req, timeout=30) as resp:
+                    resp_body = resp.read().decode()
+                    print(f"Index created: {resp_body}")
+                    return
+            except urllib.error.HTTPError as exc:
+                resp_body = exc.read().decode()
+                if "resource_already_exists_exception" in resp_body:
+                    print(f"Index already exists: {index_name}")
+                    return
+                last_error = f"HTTP {exc.code}: {resp_body}"
+                print(f"Attempt {attempt+1} failed: {last_error}")
+            except Exception as exc:
+                last_error = str(exc)
+                print(f"Attempt {attempt+1} failed: {last_error}")
+            time.sleep(10)
+
+        raise RuntimeError(f"Failed to create index after retries: {last_error}")
+""")
 
 
 class KnowledgeBaseStack(Stack):
@@ -113,6 +216,26 @@ class KnowledgeBaseStack(Stack):
         collection.add_dependency(encryption_policy)
         collection.add_dependency(network_policy)
 
+        # --- Custom resource Lambda to create the vector index ---
+
+        index_creator_fn = lambda_.Function(
+            self,
+            "IndexCreatorFunction",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="index.handler",
+            code=lambda_.Code.from_inline(_INDEX_CREATOR_CODE),
+            timeout=Duration.minutes(5),
+            memory_size=256,
+        )
+        index_creator_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["aoss:APIAccessAll"],
+                resources=["*"],
+            )
+        )
+
+        # Data access policy must grant both the KB service role AND the
+        # index creator Lambda role permission to interact with the collection.
         data_access_policy = aoss.CfnAccessPolicy(
             self,
             "KbCollectionDataAccessPolicy",
@@ -121,7 +244,7 @@ class KnowledgeBaseStack(Stack):
             policy=json.dumps(
                 [
                     {
-                        "Description": "Allow Bedrock KB role to read/write vectors.",
+                        "Description": "Allow Bedrock KB role and index creator to read/write vectors.",
                         "Rules": [
                             {
                                 "ResourceType": "collection",
@@ -141,13 +264,31 @@ class KnowledgeBaseStack(Stack):
                                 ],
                             },
                         ],
-                        "Principal": [kb_service_role.role_arn],
+                        "Principal": [
+                            kb_service_role.role_arn,
+                            index_creator_fn.role.role_arn,
+                        ],
                     }
                 ]
             ),
-            description="Data access policy for Bedrock KB service role.",
+            description="Data access policy for Bedrock KB service role and index creator.",
         )
         data_access_policy.add_dependency(collection)
+
+        index_custom_resource = CustomResource(
+            self,
+            "VectorIndexCustomResource",
+            service_token=index_creator_fn.function_arn,
+            properties={
+                "CollectionEndpoint": collection.attr_collection_endpoint,
+                "IndexName": vector_index_name,
+                "VectorDimension": "1024",
+            },
+        )
+        index_custom_resource.node.add_dependency(data_access_policy)
+        index_custom_resource.node.add_dependency(collection)
+
+        # --- Knowledge Base ---
 
         kb_service_role.add_to_policy(
             iam.PolicyStatement(
@@ -184,6 +325,7 @@ class KnowledgeBaseStack(Stack):
             ),
         )
         knowledge_base.add_dependency(data_access_policy)
+        knowledge_base.node.add_dependency(index_custom_resource)
         # IAM role policies are synthesized as a separate resource from the role.
         # Force policy attachment before Bedrock attempts to use the service role.
         default_policy = kb_service_role.node.try_find_child("DefaultPolicy")
@@ -200,7 +342,7 @@ class KnowledgeBaseStack(Stack):
                 type="S3",
                 s3_configuration=bedrock.CfnDataSource.S3DataSourceConfigurationProperty(
                     bucket_arn=data_stack.uploads_bucket.bucket_arn,
-                    inclusion_prefixes=["uploads/", "canvas-materials/"],
+                    inclusion_prefixes=["uploads/"],
                 ),
             ),
             vector_ingestion_configuration=bedrock.CfnDataSource.VectorIngestionConfigurationProperty(
