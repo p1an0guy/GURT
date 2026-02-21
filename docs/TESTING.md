@@ -76,17 +76,15 @@ python scripts/run_smoke_tests.py
 
 ## Smoke tests against dev stage (GitHub Actions)
 
-Run the **Smoke Dev** workflow manually (`workflow_dispatch`) with these repository secrets:
+The **Smoke Dev** workflow runs:
+- automatically on every push to `main`
+- manually via `workflow_dispatch`
+
+Repository secrets:
 
 - `DEV_BASE_URL` (required)
-- `DEV_CALENDAR_TOKEN` (required)
 - `DEV_COURSE_ID` (optional; defaults to `course-psych-101` when empty)
-
-How to get `DEV_CALENDAR_TOKEN`:
-
-1. Call `POST <DEV_BASE_URL>/calendar/token`.
-2. Copy the `token` from the JSON response.
-3. Save that token in GitHub Actions secret `DEV_CALENDAR_TOKEN`.
+- `DEV_CALENDAR_TOKEN` (optional override; when omitted, smoke mints a fresh token via `POST /calendar/token`)
 
 In the current demo scaffold, `POST /calendar/token` is intentionally `AuthorizationType.NONE`
 because org SCP policies may deny `execute-api:Invoke`. Runtime falls back to `DEMO_USER_ID` when
