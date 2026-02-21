@@ -132,6 +132,7 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
   - POST `/generate/flashcards`
   - POST `/generate/practice-exam`
   - POST `/chat`
+  - Extension compatibility: use the same `/chat` route (no extension-only endpoint in demo). See `docs/EXTENSION_COMPATIBILITY.md`.
 
 - Study (FSRS):
   - GET `/study/today?courseId=...&examId=...`
