@@ -138,7 +138,7 @@ flowchart TD
 - **Needed to complete finalized hackathon demo**
   - Ensure Canvas sync write path fully drives real schedule rows used by ICS and timeline.
   - Close loop from docs ingest completion to reliable KB ingestion job trigger (currently manual in roadmap notes).
-  - Finish wiring study/generation endpoints from scaffold behavior to runtime-backed FSRS/mastery flows.
+  - Expand study queue prioritization (exam-aware weighting) and mastery signals beyond baseline FSRS state rollups.
   - Finalize frontend deployment path on AWS and wire live API base URL for end-to-end demo.
 
 - **Post-hackathon hardening (not demo blockers)**

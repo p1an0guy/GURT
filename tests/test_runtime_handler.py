@@ -34,6 +34,21 @@ class _MemoryDocsTable:
         return {"Item": row} if row is not None else {}
 
 
+class _MemoryCardsTable:
+    def __init__(self) -> None:
+        self.rows: dict[str, dict] = {}
+
+    def put_item(self, Item: dict) -> None:  # noqa: N803 - boto3 shape
+        self.rows[str(Item["cardId"])] = dict(Item)
+
+    def get_item(self, Key: dict) -> dict:  # noqa: N803 - boto3 shape
+        row = self.rows.get(str(Key["cardId"]))
+        return {"Item": dict(row)} if row is not None else {}
+
+    def scan(self, **kwargs: dict) -> dict:  # noqa: ARG002 - boto3 compatibility
+        return {"Items": [dict(value) for value in self.rows.values()]}
+
+
 class RuntimeHandlerTests(unittest.TestCase):
     def _invoke(self, event: dict, env: dict[str, str] | None = None) -> dict:
         env_vars = {"DEMO_MODE": "true"}
@@ -161,6 +176,114 @@ class RuntimeHandlerTests(unittest.TestCase):
         by_topic = {row["topicId"]: row for row in rows}
         self.assertEqual(by_topic["topic-memory"]["dueCards"], 3)
         self.assertEqual(by_topic["topic-conditioning"]["dueCards"], 3)
+
+    def test_study_today_uses_runtime_cards_when_present(self) -> None:
+        cards_table = _MemoryCardsTable()
+        cards_table.put_item(
+            Item={
+                "cardId": "card-runtime-1",
+                "entityType": "Card",
+                "courseId": "course-psych-101",
+                "topicId": "topic-memory",
+                "prompt": "Runtime prompt",
+                "answer": "Runtime answer",
+                "dueAt": "2026-09-01T09:00:00Z",
+                "updatedAt": "2026-09-01T09:00:00Z",
+            }
+        )
+
+        with patch("backend.runtime._cards_table", return_value=cards_table):
+            response = self._invoke(
+                {
+                    "httpMethod": "GET",
+                    "path": "/study/today",
+                    "queryStringParameters": {"courseId": "course-psych-101"},
+                },
+                env={"DEMO_MODE": "false"},
+            )
+
+        self.assertEqual(response["statusCode"], 200)
+        rows = json.loads(response["body"])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["id"], "card-runtime-1")
+        self.assertEqual(rows[0]["prompt"], "Runtime prompt")
+
+    def test_study_review_updates_runtime_fsrs_state(self) -> None:
+        cards_table = _MemoryCardsTable()
+        cards_table.put_item(
+            Item={
+                "cardId": "card-runtime-1",
+                "entityType": "Card",
+                "courseId": "course-psych-101",
+                "topicId": "topic-memory",
+                "prompt": "Runtime prompt",
+                "answer": "Runtime answer",
+                "dueAt": "2026-09-01T09:00:00Z",
+                "updatedAt": "2026-09-01T09:00:00Z",
+            }
+        )
+        payload = {
+            "cardId": "card-runtime-1",
+            "courseId": "course-psych-101",
+            "rating": 4,
+            "reviewedAt": "2026-09-01T10:15:00Z",
+        }
+
+        with patch("backend.runtime._cards_table", return_value=cards_table):
+            response = self._invoke(
+                {
+                    "httpMethod": "POST",
+                    "path": "/study/review",
+                    "body": json.dumps(payload),
+                },
+                env={"DEMO_MODE": "false"},
+            )
+
+        self.assertEqual(response["statusCode"], 200)
+        updated_row = cards_table.rows["card-runtime-1"]
+        self.assertIn("fsrsState", updated_row)
+        fsrs_state = updated_row["fsrsState"]
+        self.assertEqual(fsrs_state["lastReviewedAt"], "2026-09-01T10:15:00Z")
+        self.assertEqual(updated_row["reviewCount"], 1)
+
+    def test_study_mastery_uses_runtime_cards_when_present(self) -> None:
+        cards_table = _MemoryCardsTable()
+        cards_table.put_item(
+            Item={
+                "cardId": "card-runtime-1",
+                "entityType": "Card",
+                "courseId": "course-psych-101",
+                "topicId": "topic-memory",
+                "prompt": "Runtime prompt",
+                "answer": "Runtime answer",
+                "dueAt": "2000-01-01T09:00:00Z",
+                "fsrsState": {
+                    "dueAt": "2000-01-01T09:00:00Z",
+                    "stability": "6.5",
+                    "difficulty": "4.1",
+                    "reps": 3,
+                    "lapses": 0,
+                    "lastReviewedAt": "2026-08-31T09:00:00Z",
+                },
+            }
+        )
+
+        with patch("backend.runtime._cards_table", return_value=cards_table):
+            response = self._invoke(
+                {
+                    "httpMethod": "GET",
+                    "path": "/study/mastery",
+                    "queryStringParameters": {"courseId": "course-psych-101"},
+                },
+                env={"DEMO_MODE": "false"},
+            )
+
+        self.assertEqual(response["statusCode"], 200)
+        rows = json.loads(response["body"])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["topicId"], "topic-memory")
+        self.assertEqual(rows[0]["dueCards"], 1)
+        self.assertGreater(rows[0]["masteryLevel"], 0.0)
 
     def test_calendar_token_create_uses_demo_user_when_principal_is_missing_in_demo_mode(self) -> None:
         store = _MemoryCalendarTokenStore()
@@ -404,6 +527,44 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertEqual(len(body), 1)
         self.assertEqual(body[0]["id"], "card-1")
         generate_cards.assert_called_once_with(course_id="course-psych-101", num_cards=5)
+
+    def test_generate_flashcards_persists_runtime_cards_when_cards_table_exists(self) -> None:
+        cards_table = _MemoryCardsTable()
+        event = {
+            "httpMethod": "POST",
+            "path": "/generate/flashcards",
+            "body": json.dumps({"courseId": "course-psych-101", "numCards": 2}),
+        }
+
+        with (
+            patch(
+                "backend.runtime.generate_flashcards",
+                return_value=[
+                    {
+                        "id": "card-1",
+                        "courseId": "course-psych-101",
+                        "topicId": "topic-memory",
+                        "prompt": "What is retrieval practice?",
+                        "answer": "Actively recalling information from memory.",
+                    },
+                    {
+                        "id": "card-2",
+                        "courseId": "course-psych-101",
+                        "topicId": "topic-conditioning",
+                        "prompt": "What is extinction?",
+                        "answer": "Weakening of a conditioned response.",
+                    },
+                ],
+            ),
+            patch("backend.runtime._cards_table", return_value=cards_table),
+        ):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 200)
+        self.assertIn("card-1", cards_table.rows)
+        self.assertIn("card-2", cards_table.rows)
+        self.assertEqual(cards_table.rows["card-1"]["entityType"], "Card")
+        self.assertEqual(cards_table.rows["card-1"]["courseId"], "course-psych-101")
 
     def test_generate_flashcards_rejects_non_positive_num_cards(self) -> None:
         event = {

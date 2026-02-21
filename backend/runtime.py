@@ -27,6 +27,7 @@ from gurt.calendar_tokens.minting import (
     mint_calendar_token,
 )
 from gurt.calendar_tokens.repository import DynamoDbCalendarTokenStore
+from study.fsrs import schedule_review
 from studybuddy.models.canvas import CanvasItem, CanvasMaterial, Course, ModelValidationError
 
 _ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -381,6 +382,13 @@ def _docs_table() -> Any:
     table_name = os.getenv("DOCS_TABLE", "").strip()
     if not table_name:
         raise RuntimeError("server misconfiguration: DOCS_TABLE missing")
+    return _dynamodb_table(table_name)
+
+
+def _cards_table() -> Any | None:
+    table_name = os.getenv("CARDS_TABLE", "").strip()
+    if not table_name:
+        return None
     return _dynamodb_table(table_name)
 
 
@@ -899,6 +907,7 @@ def _handle_generate_flashcards(event: Mapping[str, Any]) -> Dict[str, Any]:
         if num_cards < 1:
             return _json_response(400, {"error": "numCards must be >= 1"})
         cards = generate_flashcards(course_id=course_id, num_cards=min(num_cards, 100))
+        _persist_generated_cards(cards)
     except ValueError as exc:
         return _json_response(400, {"error": str(exc)})
     except GenerationError as exc:
@@ -946,6 +955,246 @@ def _handle_chat(event: Mapping[str, Any]) -> Dict[str, Any]:
         return _json_response(502, {"error": str(exc)})
 
     return _text_response(200, json.dumps(answer), content_type="application/json")
+
+
+def _safe_timestamp_for_sort(value: str) -> str:
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc).isoformat()
+    except ValueError:
+        return "9999-12-31T23:59:59+00:00"
+
+
+def _is_due_timestamp(value: str, now: datetime) -> bool:
+    try:
+        due = datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
+    except ValueError:
+        return True
+    return due <= now
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _card_row_to_response(row: Mapping[str, Any]) -> dict[str, str] | None:
+    card_id = row.get("cardId")
+    course_id = row.get("courseId")
+    topic_id = row.get("topicId")
+    prompt = row.get("prompt")
+    answer = row.get("answer")
+    if not all(
+        isinstance(value, str) and value.strip()
+        for value in (card_id, course_id, topic_id, prompt, answer)
+    ):
+        return None
+    return {
+        "id": card_id.strip(),
+        "courseId": course_id.strip(),
+        "topicId": topic_id.strip(),
+        "prompt": prompt.strip(),
+        "answer": answer.strip(),
+    }
+
+
+def _scan_cards_table() -> list[dict[str, Any]]:
+    table = _cards_table()
+    if table is None:
+        return []
+
+    response = table.scan()
+    rows = list(response.get("Items", []))
+    while "LastEvaluatedKey" in response:
+        response = table.scan(ExclusiveStartKey=response["LastEvaluatedKey"])
+        rows.extend(response.get("Items", []))
+    return [row for row in rows if isinstance(row, dict)]
+
+
+def _list_runtime_cards_for_course(course_id: str) -> list[dict[str, Any]]:
+    cards: list[dict[str, Any]] = []
+    for row in _scan_cards_table():
+        if row.get("courseId") != course_id:
+            continue
+        if row.get("entityType") not in ("Card", None):
+            continue
+        normalized = _card_row_to_response(row)
+        if normalized is None:
+            continue
+        due_at_raw = row.get("dueAt")
+        due_at = due_at_raw.strip() if isinstance(due_at_raw, str) and due_at_raw.strip() else ""
+        fsrs_state_raw = row.get("fsrsState")
+        fsrs_state = fsrs_state_raw if isinstance(fsrs_state_raw, dict) else None
+        cards.append(
+            {
+                **normalized,
+                "dueAt": due_at,
+                "fsrsState": fsrs_state,
+            }
+        )
+    cards.sort(key=lambda row: (_safe_timestamp_for_sort(str(row.get("dueAt", ""))), str(row.get("id", ""))))
+    return cards
+
+
+def _persist_generated_cards(cards: list[dict[str, Any]]) -> None:
+    table = _cards_table()
+    if table is None:
+        return
+
+    now = _utc_now_rfc3339()
+    for card in cards:
+        normalized = _card_row_to_response(
+            {
+                "cardId": card.get("id"),
+                "courseId": card.get("courseId"),
+                "topicId": card.get("topicId"),
+                "prompt": card.get("prompt"),
+                "answer": card.get("answer"),
+            }
+        )
+        if normalized is None:
+            continue
+
+        table.put_item(
+            Item={
+                "cardId": normalized["id"],
+                "entityType": "Card",
+                "courseId": normalized["courseId"],
+                "topicId": normalized["topicId"],
+                "prompt": normalized["prompt"],
+                "answer": normalized["answer"],
+                "dueAt": now,
+                "createdAt": now,
+                "updatedAt": now,
+            }
+        )
+
+
+def _load_prior_fsrs_state(card_row: Mapping[str, Any]) -> dict[str, Any] | None:
+    fsrs_state = card_row.get("fsrsState")
+    if not isinstance(fsrs_state, dict):
+        return None
+    required = ("dueAt", "stability", "difficulty", "reps", "lapses", "lastReviewedAt")
+    if any(key not in fsrs_state for key in required):
+        return None
+
+    return {
+        "dueAt": str(fsrs_state["dueAt"]),
+        "stability": _safe_float(fsrs_state["stability"], 1.0),
+        "difficulty": _safe_float(fsrs_state["difficulty"], 5.0),
+        "reps": _safe_int(fsrs_state["reps"], 0),
+        "lapses": _safe_int(fsrs_state["lapses"], 0),
+        "lastReviewedAt": str(fsrs_state["lastReviewedAt"]),
+    }
+
+
+def _fsrs_rating_from_review_rating(rating: int) -> int:
+    if rating <= 1:
+        return 1
+    if rating == 2:
+        return 2
+    if rating == 3:
+        return 3
+    return 4
+
+
+def _update_card_review_state(*, payload: Mapping[str, Any], reviewed_at: str) -> None:
+    table = _cards_table()
+    if table is None:
+        return
+
+    card_id = str(payload["cardId"]).strip()
+    row = table.get_item(Key={"cardId": card_id}).get("Item")
+    if not isinstance(row, dict):
+        return
+    if row.get("courseId") != payload.get("courseId"):
+        return
+
+    prior_state = _load_prior_fsrs_state(row)
+    rating = _safe_int(payload.get("rating"), 0)
+    updated_state = schedule_review(
+        prior_state=prior_state,
+        rating=_fsrs_rating_from_review_rating(rating),
+        now=reviewed_at,
+    )
+    row["dueAt"] = str(updated_state["dueAt"])
+    row["updatedAt"] = _utc_now_rfc3339()
+    row["lastReviewedAt"] = str(updated_state["lastReviewedAt"])
+    row["fsrsState"] = {
+        "dueAt": str(updated_state["dueAt"]),
+        "stability": str(updated_state["stability"]),
+        "difficulty": str(updated_state["difficulty"]),
+        "reps": int(updated_state["reps"]),
+        "lapses": int(updated_state["lapses"]),
+        "lastReviewedAt": str(updated_state["lastReviewedAt"]),
+    }
+    row["reviewCount"] = _safe_int(row.get("reviewCount"), 0) + 1
+    table.put_item(Item=row)
+
+
+def _runtime_study_today(course_id: str) -> list[dict[str, Any]]:
+    cards = _list_runtime_cards_for_course(course_id)
+    if not cards:
+        return []
+
+    now = datetime.now(timezone.utc)
+    due_cards = [row for row in cards if _is_due_timestamp(str(row.get("dueAt", "")), now)]
+    chosen = due_cards if due_cards else cards[:5]
+    return [
+        {
+            "id": str(row["id"]),
+            "courseId": str(row["courseId"]),
+            "topicId": str(row["topicId"]),
+            "prompt": str(row["prompt"]),
+            "answer": str(row["answer"]),
+        }
+        for row in chosen[:50]
+    ]
+
+
+def _runtime_study_mastery(course_id: str) -> list[dict[str, Any]]:
+    cards = _list_runtime_cards_for_course(course_id)
+    if not cards:
+        return []
+
+    now = datetime.now(timezone.utc)
+    by_topic: dict[str, list[dict[str, Any]]] = {}
+    for row in cards:
+        topic_id = str(row["topicId"])
+        by_topic.setdefault(topic_id, []).append(row)
+
+    rows: list[dict[str, Any]] = []
+    for topic_id, topic_cards in by_topic.items():
+        due_cards = sum(1 for row in topic_cards if _is_due_timestamp(str(row.get("dueAt", "")), now))
+        mastery_scores: list[float] = []
+        for row in topic_cards:
+            fsrs_state = row.get("fsrsState")
+            if not isinstance(fsrs_state, dict):
+                mastery_scores.append(0.0)
+                continue
+            stability = _safe_float(fsrs_state.get("stability"), 0.0)
+            mastery_scores.append(min(1.0, max(0.0, stability / 10.0)))
+
+        mastery_level = round(sum(mastery_scores) / max(len(mastery_scores), 1), 4)
+        rows.append(
+            {
+                "topicId": topic_id,
+                "courseId": course_id,
+                "masteryLevel": mastery_level,
+                "dueCards": due_cards,
+            }
+        )
+
+    rows.sort(key=lambda row: str(row["topicId"]))
+    return rows
 
 
 def _handle_scheduled_canvas_sync() -> Dict[str, Any]:
@@ -1221,6 +1470,59 @@ def lambda_handler(event: Mapping[str, Any], context: Any) -> Dict[str, Any]:
         if token is not None:
             return _handle_calendar(token)
 
+    if method == "GET" and path == "/study/today":
+        course_id, error = _require_course_id(event)
+        if error is not None:
+            return error
+
+        runtime_cards = _runtime_study_today(course_id)
+        if runtime_cards:
+            return _text_response(200, json.dumps(runtime_cards), content_type="application/json")
+
+        cards = [row for row in _load_fixtures()["cards"] if row.get("courseId") == course_id]
+        return _text_response(200, json.dumps(cards[:5]), content_type="application/json")
+
+    if method == "POST" and path == "/study/review":
+        payload, error = _parse_json_body(event)
+        if error is not None:
+            return _json_response(400, {"error": error})
+
+        validation_error = _validate_review_payload(payload)
+        if validation_error is not None:
+            return _json_response(400, {"accepted": False, "error": validation_error})
+
+        reviewed_at = str(payload.get("reviewedAt", "")).strip()
+        if reviewed_at:
+            _update_card_review_state(payload=payload, reviewed_at=reviewed_at)
+
+        return _json_response(200, {"accepted": True})
+
+    if method == "GET" and path == "/study/mastery":
+        course_id, error = _require_course_id(event)
+        if error is not None:
+            return error
+
+        runtime_rows = _runtime_study_mastery(course_id)
+        if runtime_rows:
+            return _text_response(200, json.dumps(runtime_rows), content_type="application/json")
+
+        fixtures = _load_fixtures()
+        due_cards_by_topic = Counter(str(card["topicId"]) for card in fixtures["cards"] if card.get("courseId") == course_id)
+
+        rows = []
+        for topic in fixtures["topics"]:
+            if topic.get("courseId") != course_id:
+                continue
+            rows.append(
+                {
+                    "topicId": topic["id"],
+                    "courseId": course_id,
+                    "masteryLevel": topic["masteryLevel"],
+                    "dueCards": due_cards_by_topic.get(str(topic["id"]), 0),
+                }
+            )
+        return _text_response(200, json.dumps(rows), content_type="application/json")
+
     demo_guard = _require_demo_mode()
     if demo_guard is not None:
         return demo_guard
@@ -1234,50 +1536,5 @@ def lambda_handler(event: Mapping[str, Any], context: Any) -> Dict[str, Any]:
             fixtures = _load_fixtures()
             items = [row for row in fixtures["items"] if row.get("courseId") == course_id]
             return _text_response(200, json.dumps(items), content_type="application/json")
-
-    if method == "GET" and path == "/study/today":
-        course_id, error = _require_course_id(event)
-        if error is not None:
-            return error
-
-        cards = [
-            row
-            for row in _load_fixtures()["cards"]
-            if row.get("courseId") == course_id
-        ]
-        return _text_response(200, json.dumps(cards[:5]), content_type="application/json")
-
-    if method == "POST" and path == "/study/review":
-        payload, error = _parse_json_body(event)
-        if error is not None:
-            return _json_response(400, {"error": error})
-
-        validation_error = _validate_review_payload(payload)
-        if validation_error is not None:
-            return _json_response(400, {"accepted": False, "error": validation_error})
-
-        return _json_response(200, {"accepted": True})
-
-    if method == "GET" and path == "/study/mastery":
-        course_id, error = _require_course_id(event)
-        if error is not None:
-            return error
-
-        fixtures = _load_fixtures()
-        due_cards_by_topic = Counter(
-            str(card["topicId"]) for card in fixtures["cards"] if card.get("courseId") == course_id
-        )
-
-        rows = [
-            {
-                "topicId": topic["id"],
-                "courseId": course_id,
-                "masteryLevel": topic["masteryLevel"],
-                "dueCards": due_cards_by_topic.get(str(topic["id"]), 0),
-            }
-            for topic in fixtures["topics"]
-            if topic.get("courseId") == course_id
-        ]
-        return _text_response(200, json.dumps(rows), content_type="application/json")
 
     return _json_response(404, {"error": "not found"})

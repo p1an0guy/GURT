@@ -6,6 +6,7 @@ import json
 import os
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import unquote, urlparse
 
 
 class GenerationError(RuntimeError):
@@ -35,14 +36,97 @@ def _utc_now_rfc3339() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _extract_source(location: Any) -> str:
+    if isinstance(location, str):
+        return location.strip()
+    if not isinstance(location, dict):
+        return ""
+
+    s3_location = location.get("s3Location")
+    if isinstance(s3_location, dict):
+        uri = s3_location.get("uri")
+        if isinstance(uri, str):
+            return uri.strip()
+
+    web_location = location.get("webLocation")
+    if isinstance(web_location, dict):
+        url = web_location.get("url")
+        if isinstance(url, str):
+            return url.strip()
+
+    uri = location.get("uri")
+    if isinstance(uri, str):
+        return uri.strip()
+
+    url = location.get("url")
+    if isinstance(url, str):
+        return url.strip()
+
+    return ""
+
+
+def _s3_key_from_source(source: str) -> str | None:
+    parsed = urlparse(source)
+    if parsed.scheme != "s3":
+        return None
+    return unquote(parsed.path.lstrip("/"))
+
+
+def _source_in_course_scope(*, source: str, course_id: str) -> bool:
+    key = _s3_key_from_source(source)
+    if not key:
+        return False
+
+    parts = [part for part in key.split("/") if part]
+    if len(parts) < 2 or parts[0] != "uploads":
+        return False
+
+    # User uploads are stored at uploads/{courseId}/{docId}/{filename}
+    if parts[1] != "canvas-materials":
+        return parts[1] == course_id
+
+    # Canvas materials are stored at uploads/canvas-materials/{userId}/{courseId}/...
+    return len(parts) >= 4 and parts[3] == course_id
+
+
+def _retrieve_response_with_fallback(*, client: Any, kb_id: str, query: str, num_results: int, course_id: str) -> dict[str, Any]:
+    filtered_config = {
+        "vectorSearchConfiguration": {
+            "numberOfResults": num_results,
+            "filter": {"equals": {"key": "courseId", "value": course_id}},
+        }
+    }
+    try:
+        return client.retrieve(
+            knowledgeBaseId=kb_id,
+            retrievalQuery={"text": f"course:{course_id}\n{query}"},
+            retrievalConfiguration=filtered_config,
+        )
+    except Exception:
+        # Fallback keeps older data layouts working while we still enforce scope
+        # locally via source-path checks below.
+        return client.retrieve(
+            knowledgeBaseId=kb_id,
+            retrievalQuery={"text": f"course:{course_id}\n{query}"},
+            retrievalConfiguration={
+                "vectorSearchConfiguration": {
+                    "numberOfResults": num_results,
+                }
+            },
+        )
+
+
 def _retrieve_context(*, course_id: str, query: str, k: int = 8) -> list[dict[str, str]]:
     kb_id = _require_env("KNOWLEDGE_BASE_ID")
     client = _bedrock_agent_runtime()
+    num_results = max(k * 4, k)
     try:
-        response = client.retrieve(
-            knowledgeBaseId=kb_id,
-            retrievalQuery={"text": f"course:{course_id}\n{query}"},
-            retrievalConfiguration={"vectorSearchConfiguration": {"numberOfResults": k}},
+        response = _retrieve_response_with_fallback(
+            client=client,
+            kb_id=kb_id,
+            query=query,
+            num_results=num_results,
+            course_id=course_id,
         )
     except Exception as exc:  # pragma: no cover - boto3 service failure path
         raise GenerationError(f"knowledge base retrieval failed: {exc}") from exc
@@ -54,8 +138,11 @@ def _retrieve_context(*, course_id: str, query: str, k: int = 8) -> list[dict[st
         text = content.get("text") if isinstance(content, dict) else None
         if not isinstance(text, str) or not text.strip():
             continue
-        context.append({"text": text.strip(), "source": str(row.get("location", ""))})
-    return context
+        source = _extract_source(row.get("location"))
+        if not _source_in_course_scope(source=source, course_id=course_id):
+            continue
+        context.append({"text": text.strip(), "source": source})
+    return context[:k]
 
 
 def _invoke_model_json(prompt: str) -> Any:
