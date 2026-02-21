@@ -237,11 +237,15 @@ Quick runtime-hardening checks in browser:
 
 1. Use `Live API` mode, then run `Sync Canvas`.
 2. Confirm the Status panel shows last sync time and any `failedCourseIds` warnings.
-3. Confirm the Status panel shows **Knowledge Base Ingestion** outcome from Canvas sync:
+3. Run `Start Ingest` (with `docId` + S3 `key`) and confirm:
+   - loading overlay appears while polling
+   - Status panel shows `Docs Ingest` job id and status progression
+   - terminal state is `FINISHED` or actionable `FAILED` error with retry button
+4. Confirm the Status panel shows **Knowledge Base Ingestion** outcome from Canvas sync:
    - `KB ingestion started (jobId: ...)` when mirrored materials were found and KB env vars are configured.
    - `KB ingestion not started: ...` when mirrored materials were found but KB start failed/misconfigured.
    - `No new mirrored materials.` when sync did not mirror any new files.
-4. Run `Generate Cards`, `Generate Exam`, and `Ask Chat`; confirm each action reports success timestamps or actionable retry errors.
+5. Run `Generate Cards`, `Generate Exam`, and `Ask Chat`; confirm each action reports success timestamps or actionable retry errors.
 
 ## Chrome extension API validation (demo)
 
