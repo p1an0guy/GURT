@@ -10,9 +10,19 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, Protocol
 
-ALLOWED_CONTENT_TYPES = frozenset({"application/pdf", "text/plain", "application/vnd.openxmlformats-officedocument.presentationml.presentation"})
+ALLOWED_CONTENT_TYPES = frozenset(
+    {
+        "application/pdf",
+        "text/plain",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/msword",
+    }
+)
 PPTX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-MAX_PPTX_BYTES = 50 * 1024 * 1024
+DOCX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+DOC_CONTENT_TYPE = "application/msword"
+MAX_OFFICE_DOC_BYTES = 50 * 1024 * 1024
 UPLOAD_URL_EXPIRY_SECONDS = 900
 _COURSE_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 
@@ -65,7 +75,9 @@ def parse_upload_request(payload: Mapping[str, Any]) -> UploadRequest:
     if content_type not in ALLOWED_CONTENT_TYPES:
         raise UploadValidationError(
             "'contentType' must be one of: application/pdf, text/plain, "
-            "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation, "
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document, "
+            "application/msword"
         )
 
     basename = Path(filename).name
@@ -76,11 +88,22 @@ def parse_upload_request(payload: Mapping[str, Any]) -> UploadRequest:
         raise UploadValidationError("'filename' must end with '.pdf' for PDF uploads")
     if content_type == PPTX_CONTENT_TYPE and not basename.lower().endswith(".pptx"):
         raise UploadValidationError("'filename' must end with '.pptx' for PowerPoint uploads")
-    if content_type == PPTX_CONTENT_TYPE:
+    if content_type == DOCX_CONTENT_TYPE and not basename.lower().endswith(".docx"):
+        raise UploadValidationError("'filename' must end with '.docx' for Word uploads")
+    if content_type == DOC_CONTENT_TYPE and not basename.lower().endswith(".doc"):
+        raise UploadValidationError("'filename' must end with '.doc' for Word uploads")
+    if content_type in {PPTX_CONTENT_TYPE, DOCX_CONTENT_TYPE, DOC_CONTENT_TYPE}:
         if not isinstance(content_length, int) or content_length <= 0:
-            raise UploadValidationError("'contentLengthBytes' must be a positive integer for .pptx uploads")
-        if content_length > MAX_PPTX_BYTES:
-            raise UploadValidationError("'.pptx' exceeds 50MB limit")
+            raise UploadValidationError(
+                "'contentLengthBytes' must be a positive integer for .pptx/.docx/.doc uploads"
+            )
+        if content_length > MAX_OFFICE_DOC_BYTES:
+            extension = (
+                ".pptx"
+                if content_type == PPTX_CONTENT_TYPE
+                else ".docx" if content_type == DOCX_CONTENT_TYPE else ".doc"
+            )
+            raise UploadValidationError(f"'{extension}' exceeds 50MB limit")
 
     return UploadRequest(
         course_id=course_id,

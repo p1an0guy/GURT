@@ -26,9 +26,10 @@
       "enum": [
         "application/pdf",
         "text/plain",
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/msword"
       ]
     }
   }
 }
-
