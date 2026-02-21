@@ -70,6 +70,25 @@ python -m pytest -q
   - `.github/workflows/ci.yml`
   - `.github/workflows/smoke-dev.yml`
 
+## AWS/CDK + CORS Runbook (Recent Lessons)
+- Always use AWS SSO profile credentials for deploys:
+  - `aws sso login --profile <profile>`
+  - `export AWS_PROFILE=<profile>`
+  - `./scripts/deploy.sh`
+- Browser `Failed to fetch` from `http://localhost:3000` is usually CORS/preflight, not local AWS auth.
+  - Verify preflight:
+    - `curl -i -X OPTIONS "$BASE_URL/canvas/sync" -H 'Origin: http://localhost:3000' -H 'Access-Control-Request-Method: POST' -H 'Access-Control-Request-Headers: content-type'`
+  - If CORS changes were made in CDK, redeploy before retesting frontend.
+- Keep deploy stack order deterministic:
+  - `GurtDataStack` -> optional `GurtKnowledgeBaseStack` -> `GurtApiStack`.
+  - If reusing existing Bedrock KB/Data Source IDs, skip creating `GurtKnowledgeBaseStack`.
+- Known KB stack failure patterns:
+  - `security_exception 403 Forbidden`: OpenSearch Serverless access policy/vector-store permission issue.
+  - `no such index [gurt-dev-kb-index]`: required OpenSearch index missing.
+- Common CDK failure patterns:
+  - `Stack ... is in UPDATE_IN_PROGRESS`: wait for stack to finish, then retry deploy.
+  - `State '<name>' already has a next state`: Step Functions chain has duplicate `.next()` on same state.
+
 ## Fixture Policy
 - Update fixtures when behavior changes impact smoke assumptions or contract-shaped responses.
 - Keep fixture-backed behavior deterministic for parallel development and CI reproducibility.
