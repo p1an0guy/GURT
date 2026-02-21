@@ -38,7 +38,7 @@
 5. Frontend integration to deployed dev API
    - Wire Next.js app to `NEXT_PUBLIC_API_BASE_URL`.
    - Add token mint + calendar subscribe flow in UI.
-   - Add basic error/retry states for Canvas sync and study actions.
+   - Baseline complete: browser shell now supports live Canvas connect/sync, ingest, generate, and chat calls with per-action loading/error/retry states and last-success status panels.
 
 6. CI hardening
    - Keep smoke-dev required for merge.

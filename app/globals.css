@@ -115,6 +115,15 @@ button:hover {
   filter: brightness(0.95);
 }
 
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.secondary-button {
+  background: #445566;
+}
+
 .status {
   display: inline-flex;
   align-items: center;
@@ -128,6 +137,25 @@ button:hover {
 
 .status.warn {
   color: var(--accent);
+}
+
+.status-block {
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  padding: 0.55rem 0.65rem;
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.warning-text {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #8a4e00;
+}
+
+.error-text {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #a82424;
 }
 
 .stack {
