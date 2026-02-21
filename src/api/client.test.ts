@@ -332,3 +332,45 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
   assert.ok(ingestStartCall);
   assert.equal(ingestStartCall.init?.method, "POST");
 });
+
+test("preserves stage path when baseUrl includes a stage segment", async () => {
+  const calls: string[] = [];
+  const fetchImpl: typeof fetch = async (input) => {
+    const url = input instanceof URL ? input.toString() : input.toString();
+    calls.push(url);
+
+    if (url.endsWith("/dev/health")) {
+      return jsonResponse({ status: "ok" });
+    }
+    if (url.endsWith("/dev/canvas/sync")) {
+      return jsonResponse({
+        synced: true,
+        coursesUpserted: 0,
+        itemsUpserted: 0,
+        materialsUpserted: 0,
+        materialsMirrored: 0,
+        knowledgeBaseIngestionStarted: false,
+        knowledgeBaseIngestionJobId: "",
+        knowledgeBaseIngestionError: "",
+        failedCourseIds: [],
+        updatedAt: "2026-09-02T09:01:00Z",
+      });
+    }
+    return new Response("not found", { status: 404 });
+  };
+
+  const client = createApiClient({
+    baseUrl: "https://api.example.dev/dev",
+    fetchImpl,
+    useFixtures: false,
+  });
+
+  const health = await client.getHealth();
+  const sync = await client.syncCanvas();
+
+  assert.equal(health.status, "ok");
+  assert.equal(sync.synced, true);
+  assert.ok(calls.includes("https://api.example.dev/dev/health"));
+  assert.ok(calls.includes("https://api.example.dev/dev/canvas/sync"));
+  assert.equal(calls.some((url) => url === "https://api.example.dev/health"), false);
+});

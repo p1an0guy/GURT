@@ -113,7 +113,8 @@ function buildUrl(baseUrl: string, path: string, query?: Record<string, string>)
 
   if (hasScheme) {
     const absoluteBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
-    const url = new URL(path, absoluteBase);
+    const normalizedPath = path.startsWith("/") ? path.slice(1) : path;
+    const url = new URL(normalizedPath, absoluteBase);
 
     if (query) {
       for (const [key, value] of Object.entries(query)) {
