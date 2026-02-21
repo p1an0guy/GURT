@@ -73,7 +73,7 @@ export default function DeckStudyPage() {
   function keepRatingsVisible(): void {
     requestAnimationFrame(() => {
       ratingSectionRef.current?.scrollIntoView({
-        block: "nearest",
+        block: "center",
         behavior: "smooth",
       });
     });
@@ -173,6 +173,13 @@ export default function DeckStudyPage() {
     };
   }, [activeCard, deck, handleRate, isFinished, isSubmittingReview]);
 
+  useEffect(() => {
+    if (!revealed && !shortcutWarning) {
+      return;
+    }
+    keepRatingsVisible();
+  }, [revealed, shortcutWarning]);
+
   if (!deck) {
     return (
       <main className="page">
@@ -244,6 +251,7 @@ export default function DeckStudyPage() {
                 <p className="small">Rate recall quality:</p>
                 <p className="small">Space: Reveal / Hide answer</p>
                 <p className="small">1: Forgot, 2: Hard, 3: Good, 4: Easy</p>
+                {shortcutWarning ? <p className="error-text">{shortcutWarning}</p> : null}
                 <div className="rating-row">
                   <button type="button" onClick={() => void handleRate(1)} disabled={isSubmittingReview}>
                     Forgot
@@ -261,7 +269,6 @@ export default function DeckStudyPage() {
               </div>
 
               {message ? <p className="small">{message}</p> : null}
-              {shortcutWarning ? <p className="error-text">{shortcutWarning}</p> : null}
               {error ? <p className="error-text">{error}</p> : null}
             </div>
           ) : null}
