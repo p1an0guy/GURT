@@ -33,6 +33,7 @@ class SmokeContext:
     base_url: str
     calendar_token: str
     course_id: str
+    include_ingest: bool = False
 
 
 class FixtureMockHandler(BaseHTTPRequestHandler):
@@ -61,6 +62,7 @@ class FixtureMockHandler(BaseHTTPRequestHandler):
             "",
         ]
     )
+    ingest_job_id = "smoke-ingest-job-1"
 
     def _write_json(self, payload: Any, status: int = 200) -> None:
         body = json.dumps(payload).encode("utf-8")
@@ -123,6 +125,19 @@ class FixtureMockHandler(BaseHTTPRequestHandler):
             self._write_ics(self.ics_payload)
             return
 
+        if route == f"/docs/ingest/{self.ingest_job_id}":
+            self._write_json(
+                {
+                    "jobId": self.ingest_job_id,
+                    "status": "FINISHED",
+                    "textLength": 1024,
+                    "usedTextract": False,
+                    "updatedAt": "2026-09-01T10:15:02Z",
+                    "error": "",
+                }
+            )
+            return
+
         self._write_json({"error": "not found"}, status=404)
 
     def do_POST(self) -> None:  # noqa: N802
@@ -135,6 +150,16 @@ class FixtureMockHandler(BaseHTTPRequestHandler):
                     "createdAt": "2026-09-01T10:15:00Z",
                 },
                 status=201,
+            )
+            return
+
+        if self.path == "/docs/ingest":
+            self._write_json(
+                {
+                    "jobId": self.ingest_job_id,
+                    "status": "RUNNING",
+                    "updatedAt": "2026-09-01T10:15:01Z",
+                }
             )
             return
 
@@ -252,6 +277,23 @@ def run_sequence(ctx: SmokeContext) -> None:
     mastery = http_json("GET", f"{ctx.base_url}/study/mastery?{query}")
     validate_rows(mastery, "TopicMastery.json", "/study/mastery")
 
+    if ctx.include_ingest:
+        ingest_payload = {
+            "docId": "doc-smoke-001",
+            "courseId": ctx.course_id,
+            "key": "uploads/smoke/doc-smoke-001.pdf",
+        }
+        validate_instance(ingest_payload, read_schema("IngestStartRequest.json"))
+        ingest_start = http_json("POST", f"{ctx.base_url}/docs/ingest", payload=ingest_payload)
+        validate_instance(ingest_start, read_schema("IngestStartResponse.json"))
+        print("PASS /docs/ingest")
+
+        ingest_status = http_json("GET", f"{ctx.base_url}/docs/ingest/{ingest_start['jobId']}")
+        validate_instance(ingest_status, read_schema("IngestStatusResponse.json"))
+        if ingest_status.get("status") == "FAILED":
+            raise RuntimeError(f"Ingest status failed: {ingest_status}")
+        print("PASS /docs/ingest/{jobId}")
+
     ics_text = http_text(f"{ctx.base_url}/calendar/{ctx.calendar_token}.ics")
     validate_ics(ics_text)
 
@@ -280,12 +322,18 @@ def main() -> None:
     course_id = os.getenv("COURSE_ID", "").strip() or "course-psych-101"
     initial_calendar_token = os.getenv("CALENDAR_TOKEN", "").strip()
     mint_calendar_token = os.getenv("MINT_CALENDAR_TOKEN", "0").strip() == "1"
+    include_ingest = os.getenv("SMOKE_INCLUDE_INGEST", "0").strip() == "1"
     calendar_token = resolve_calendar_token(
         base_url=base_url,
         initial_token=initial_calendar_token,
         mint_if_missing=mint_calendar_token,
     )
-    ctx = SmokeContext(base_url=base_url, calendar_token=calendar_token, course_id=course_id)
+    ctx = SmokeContext(
+        base_url=base_url,
+        calendar_token=calendar_token,
+        course_id=course_id,
+        include_ingest=include_ingest,
+    )
 
     try:
         run_sequence(ctx)

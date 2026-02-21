@@ -69,6 +69,13 @@ source .venv/bin/activate
 SMOKE_MOCK_MODE=1 MINT_CALENDAR_TOKEN=1 python scripts/run_smoke_tests.py
 ```
 
+To include ingest start/status contract checks in mock smoke mode:
+
+```bash
+source .venv/bin/activate
+SMOKE_MOCK_MODE=1 MINT_CALENDAR_TOKEN=1 SMOKE_INCLUDE_INGEST=1 python scripts/run_smoke_tests.py
+```
+
 ## Smoke tests (local, deployed API)
 
 Use this mode against API Gateway/Lambda environments.
