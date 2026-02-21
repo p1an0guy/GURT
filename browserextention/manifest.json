@@ -7,11 +7,14 @@
     "sidePanel",
     "storage",
     "activeTab",
-    "tabs"
+    "tabs",
+    "scripting"
   ],
   "host_permissions": [
     "https://canvas.calpoly.edu/*",
-    "https://hpthlfk5ql.execute-api.us-west-2.amazonaws.com/*"
+    "https://*.canvas-user-content.com/*",
+    "https://hpthlfk5ql.execute-api.us-west-2.amazonaws.com/*",
+    "https://*.amazonaws.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -21,6 +24,12 @@
       "matches": ["https://canvas.calpoly.edu/*"],
       "js": ["content.js"],
       "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["canvas_scraper.js"],
+      "matches": ["https://canvas.calpoly.edu/*"]
     }
   ],
   "side_panel": {

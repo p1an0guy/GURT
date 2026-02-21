@@ -12,6 +12,28 @@
       <h1>🍦 GURT</h1>
       <span class="subtitle">Generative Uni Revision Tool</span>
     </header>
+    <section class="scrape-panel" aria-label="Scrape workflow">
+      <div class="scrape-actions">
+        <button id="scrapeBtn" class="scrape-btn" type="button">Scrape Modules &amp; Upload</button>
+        <button id="retryScrapeBtn" class="retry-btn hidden" type="button">Retry</button>
+      </div>
+      <div class="scrape-summary">
+        <p id="scrapeStatusText" class="scrape-status-text">Idle</p>
+        <div class="scrape-counters">
+          <span class="counter-pill">Discovered: <strong id="countDiscovered">0</strong></span>
+          <span class="counter-pill">Uploaded: <strong id="countUploaded">0</strong></span>
+          <span class="counter-pill">Ingest Started: <strong id="countIngestStarted">0</strong></span>
+          <span class="counter-pill">Skipped: <strong id="countSkipped">0</strong></span>
+          <span class="counter-pill">Failed: <strong id="countFailed">0</strong></span>
+        </div>
+      </div>
+      <div class="scrape-files">
+        <div class="scrape-files-header">
+          <h2>Files</h2>
+        </div>
+        <ul id="scrapeFileList" class="scrape-file-list" aria-live="polite" aria-label="Per-file scrape status"></ul>
+      </div>
+    </section>
     <div id="messages" class="messages"></div>
     <div class="input-area">
       <textarea id="userInput" placeholder="Ask about your courses..." rows="1"></textarea>

@@ -1,8 +1,7 @@
 {
   "docId": "doc-ff8bbda4-e64c-4cfa-b2d1-f44b48f64c3a",
-  "key": "uploads/course-psych-101/doc-ff8bbda4-e64c-4cfa-b2d1-f44b48f64c3a/week-1-slides.pptx",
-  "uploadUrl": "https://example-bucket.s3.amazonaws.com/uploads/course-psych-101/doc-ff8bbda4-e64c-4cfa-b2d1-f44b48f64c3a/week-1-slides.pptx?X-Amz-Signature=example",
+  "key": "uploads/course-psych-101/doc-ff8bbda4-e64c-4cfa-b2d1-f44b48f64c3a/week-1-notes.doc",
+  "uploadUrl": "https://example-bucket.s3.amazonaws.com/uploads/course-psych-101/doc-ff8bbda4-e64c-4cfa-b2d1-f44b48f64c3a/week-1-notes.doc?X-Amz-Signature=example",
   "expiresInSeconds": 900,
-  "contentType": "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+  "contentType": "application/msword"
 }
-

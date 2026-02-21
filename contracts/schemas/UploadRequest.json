@@ -18,7 +18,9 @@
       "enum": [
         "application/pdf",
         "text/plain",
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/msword"
       ]
     },
     "contentLengthBytes": {
@@ -58,6 +60,48 @@
         "properties": {
           "filename": {
             "pattern": "^[^/\\\\]+\\.[Pp][Pp][Tt][Xx]$"
+          },
+          "contentLengthBytes": {
+            "maximum": 52428800
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": ["contentType"],
+        "properties": {
+          "contentType": {
+            "const": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          }
+        }
+      },
+      "then": {
+        "required": ["contentLengthBytes"],
+        "properties": {
+          "filename": {
+            "pattern": "^[^/\\\\]+\\.[Dd][Oo][Cc][Xx]$"
+          },
+          "contentLengthBytes": {
+            "maximum": 52428800
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": ["contentType"],
+        "properties": {
+          "contentType": {
+            "const": "application/msword"
+          }
+        }
+      },
+      "then": {
+        "required": ["contentLengthBytes"],
+        "properties": {
+          "filename": {
+            "pattern": "^[^/\\\\]+\\.[Dd][Oo][Cc]$"
           },
           "contentLengthBytes": {
             "maximum": 52428800

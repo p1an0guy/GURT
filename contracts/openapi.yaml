@@ -104,6 +104,7 @@
     "/uploads": {
       "post": {
         "operationId": "createUpload",
+        "description": "Creates presigned upload metadata for supported source files (PDF, plaintext/code-as-text, PPTX, DOCX, DOC).",
         "requestBody": {
           "required": true,
           "content": {
