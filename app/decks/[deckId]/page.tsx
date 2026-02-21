@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { createApiClient } from "../../../src/api/client.ts";
 import { getDeckById, markDeckStudied, type DeckRecord } from "../../../src/decks/store.ts";
@@ -48,6 +48,7 @@ export default function DeckStudyPage() {
   const [spacePressCount, setSpacePressCount] = useState(0);
   const [shortcutWarning, setShortcutWarning] = useState("");
   const ratingSectionRef = useRef<HTMLDivElement | null>(null);
+  const revealAnchorTopRef = useRef<number | null>(null);
 
   const settings = useMemo(readRuntimeSettings, []);
   const client = useMemo(
@@ -77,6 +78,11 @@ export default function DeckStudyPage() {
         behavior: "smooth",
       });
     });
+  }
+
+  function toggleRevealKeepingControlsAnchored(): void {
+    revealAnchorTopRef.current = ratingSectionRef.current?.getBoundingClientRect().top ?? null;
+    setRevealed((prev) => !prev);
   }
 
   async function handleRate(rating: RecallRating): Promise<void> {
@@ -134,8 +140,7 @@ export default function DeckStudyPage() {
           }
           return next;
         });
-        setRevealed((prev) => !prev);
-        keepRatingsVisible();
+        toggleRevealKeepingControlsAnchored();
         return;
       }
 
@@ -174,11 +179,34 @@ export default function DeckStudyPage() {
   }, [activeCard, deck, handleRate, isFinished, isSubmittingReview]);
 
   useEffect(() => {
-    if (!revealed && !shortcutWarning) {
+    if (!shortcutWarning) {
       return;
     }
     keepRatingsVisible();
-  }, [revealed, shortcutWarning]);
+  }, [shortcutWarning]);
+
+  useLayoutEffect(() => {
+    const priorTop = revealAnchorTopRef.current;
+    if (priorTop === null) {
+      return;
+    }
+
+    revealAnchorTopRef.current = null;
+    const currentTop = ratingSectionRef.current?.getBoundingClientRect().top;
+    if (typeof currentTop !== "number") {
+      return;
+    }
+
+    const delta = currentTop - priorTop;
+    if (Math.abs(delta) < 1) {
+      return;
+    }
+
+    window.scrollBy({
+      top: delta,
+      behavior: "auto",
+    });
+  }, [revealed]);
 
   if (!deck) {
     return (
@@ -240,8 +268,7 @@ export default function DeckStudyPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setRevealed((prev) => !prev);
-                  keepRatingsVisible();
+                  toggleRevealKeepingControlsAnchored();
                 }}
               >
                 {revealed ? "Hide Answer" : "Reveal Answer"}
@@ -251,7 +278,6 @@ export default function DeckStudyPage() {
                 <p className="small">Rate recall quality:</p>
                 <p className="small">Space: Reveal / Hide answer</p>
                 <p className="small">1: Forgot, 2: Hard, 3: Good, 4: Easy</p>
-                {shortcutWarning ? <p className="error-text">{shortcutWarning}</p> : null}
                 <div className="rating-row">
                   <button type="button" onClick={() => void handleRate(1)} disabled={isSubmittingReview}>
                     Forgot
@@ -266,6 +292,7 @@ export default function DeckStudyPage() {
                     Easy
                   </button>
                 </div>
+                {shortcutWarning ? <p className="error-text">{shortcutWarning}</p> : null}
               </div>
 
               {message ? <p className="small">{message}</p> : null}
