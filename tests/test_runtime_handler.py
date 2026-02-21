@@ -6,6 +6,7 @@ import json
 import unittest
 from unittest.mock import patch
 
+from backend.canvas_client import CanvasApiError
 from gurt.calendar_tokens.model import CalendarTokenRecord
 from backend.runtime import lambda_handler
 
@@ -234,7 +235,7 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertEqual(response["statusCode"], 400)
         self.assertIn("canvas connection not found", json.loads(response["body"])["error"])
 
-    def test_canvas_sync_upserts_fixture_rows(self) -> None:
+    def test_canvas_sync_upserts_rows_and_returns_failed_course_ids(self) -> None:
         event = {
             "httpMethod": "POST",
             "path": "/canvas/sync",
@@ -242,8 +243,14 @@ class RuntimeHandlerTests(unittest.TestCase):
         }
 
         with (
-            patch("backend.runtime._read_canvas_connection", return_value={"userId": "demo-user"}),
-            patch("backend.runtime._upsert_fixture_canvas_rows_for_user", return_value=(2, 3)) as upsert_rows,
+            patch(
+                "backend.runtime._read_canvas_connection",
+                return_value={"userId": "demo-user", "canvasBaseUrl": "https://canvas.example.edu", "accessToken": "x"},
+            ),
+            patch(
+                "backend.runtime._sync_canvas_assignments_for_user",
+                return_value=(2, 3, ["42"]),
+            ) as sync_rows,
         ):
             response = self._invoke(event, env={"DEMO_MODE": "false"})
 
@@ -252,7 +259,29 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertEqual(body["synced"], True)
         self.assertEqual(body["coursesUpserted"], 2)
         self.assertEqual(body["itemsUpserted"], 3)
-        upsert_rows.assert_called_once()
+        self.assertEqual(body["failedCourseIds"], ["42"])
+        sync_rows.assert_called_once()
+
+    def test_canvas_sync_returns_502_when_canvas_fetch_fails(self) -> None:
+        event = {
+            "httpMethod": "POST",
+            "path": "/canvas/sync",
+            "requestContext": {"authorizer": {"principalId": "demo-user"}},
+        }
+
+        with (
+            patch(
+                "backend.runtime._read_canvas_connection",
+                return_value={"userId": "demo-user", "canvasBaseUrl": "https://canvas.example.edu", "accessToken": "x"},
+            ),
+            patch(
+                "backend.runtime._sync_canvas_assignments_for_user",
+                side_effect=CanvasApiError("canvas request failed"),
+            ),
+        ):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 502)
 
     def test_calendar_token_create_persists_token_and_returns_feed_url(self) -> None:
         store = _MemoryCalendarTokenStore()

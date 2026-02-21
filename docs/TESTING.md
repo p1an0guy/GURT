@@ -84,6 +84,8 @@ Canvas bootstrap for demo schedule rows:
 1. `POST <DEV_BASE_URL>/canvas/connect` with JSON body:
    `{"canvasBaseUrl":"https://canvas.example.edu","accessToken":"demo-token"}`
 2. `POST <DEV_BASE_URL>/canvas/sync`
+   - Response includes `failedCourseIds` for per-course retry visibility.
+   - Current live scope syncs published assignments with non-null due dates.
 3. Mint calendar token and fetch `/calendar/{token}.ics`.
 
 ## CDK infra synth and deploy (demo scaffold)

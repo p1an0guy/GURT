@@ -11,6 +11,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Mapping
 
+from backend.canvas_client import CanvasApiError, fetch_active_courses, fetch_course_assignments
 from backend import uploads
 from gurt.calendar_tokens.minting import (
     CalendarTokenMintingError,
@@ -367,20 +368,47 @@ def _upsert_canvas_connection(*, user_id: str, canvas_base_url: str, access_toke
     )
 
 
-def _upsert_fixture_canvas_rows_for_user(*, user_id: str, updated_at: str) -> tuple[int, int]:
+def _sync_canvas_assignments_for_user(
+    *,
+    user_id: str,
+    canvas_base_url: str,
+    access_token: str,
+    updated_at: str,
+) -> tuple[int, int, list[str]]:
     table = _canvas_data_table()
-    fixtures = _load_fixtures()
+    user_agent = os.getenv("CANVAS_USER_AGENT", "GURT-DemoCanvasSync/0.1")
 
-    courses = [Course.from_api_dict(row) for row in fixtures["courses"]]
-    items = [CanvasItem.from_api_dict(row) for row in fixtures["items"]]
-
+    course_payloads = fetch_active_courses(
+        base_url=canvas_base_url,
+        token=access_token,
+        user_agent=user_agent,
+    )
+    courses = [Course.from_api_dict(row) for row in course_payloads]
     with table.batch_writer(overwrite_by_pkeys=["pk", "sk"]) as batch:
         for course in courses:
             batch.put_item(Item=course.to_dynamodb_item(user_id=user_id, updated_at=updated_at))
-        for item in items:
-            batch.put_item(Item=item.to_dynamodb_item(user_id=user_id, updated_at=updated_at))
 
-    return len(courses), len(items)
+    failed_course_ids: list[str] = []
+    items_upserted = 0
+    with table.batch_writer(overwrite_by_pkeys=["pk", "sk"]) as batch:
+        for course in courses:
+            try:
+                item_payloads = fetch_course_assignments(
+                    base_url=canvas_base_url,
+                    token=access_token,
+                    course_id=course.id,
+                    user_agent=user_agent,
+                )
+            except CanvasApiError:
+                failed_course_ids.append(course.id)
+                continue
+
+            for payload in item_payloads:
+                item = CanvasItem.from_api_dict(payload)
+                batch.put_item(Item=item.to_dynamodb_item(user_id=user_id, updated_at=updated_at))
+                items_upserted += 1
+
+    return len(courses), items_upserted, failed_course_ids
 
 
 def _handle_canvas_connect(event: Mapping[str, Any]) -> Dict[str, Any]:
@@ -424,14 +452,18 @@ def _handle_canvas_sync(event: Mapping[str, Any]) -> Dict[str, Any]:
             return _json_response(400, {"error": "canvas connection not found; call POST /canvas/connect first"})
 
         updated_at = _utc_now_rfc3339()
-        courses_upserted, items_upserted = _upsert_fixture_canvas_rows_for_user(
+        courses_upserted, items_upserted, failed_course_ids = _sync_canvas_assignments_for_user(
             user_id=user_id,
+            canvas_base_url=str(connection.get("canvasBaseUrl", "")),
+            access_token=str(connection.get("accessToken", "")),
             updated_at=updated_at,
         )
+    except CanvasApiError as exc:
+        return _json_response(502, {"error": str(exc)})
     except RuntimeError as exc:
         return _json_response(500, {"error": str(exc)})
     except ModelValidationError as exc:
-        return _json_response(500, {"error": f"fixture validation failed: {exc}"})
+        return _json_response(500, {"error": f"canvas normalization failed: {exc}"})
 
     return _json_response(
         200,
@@ -439,6 +471,7 @@ def _handle_canvas_sync(event: Mapping[str, Any]) -> Dict[str, Any]:
             "synced": True,
             "coursesUpserted": courses_upserted,
             "itemsUpserted": items_upserted,
+            "failedCourseIds": failed_course_ids,
             "updatedAt": updated_at,
         },
     )

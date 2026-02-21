@@ -5,7 +5,7 @@
   "description": "Response payload for Canvas sync completion",
   "type": "object",
   "additionalProperties": false,
-  "required": ["synced", "coursesUpserted", "itemsUpserted", "updatedAt"],
+  "required": ["synced", "coursesUpserted", "itemsUpserted", "failedCourseIds", "updatedAt"],
   "properties": {
     "synced": {
       "type": "boolean"
@@ -17,6 +17,13 @@
     "itemsUpserted": {
       "type": "integer",
       "minimum": 0
+    },
+    "failedCourseIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
     },
     "updatedAt": {
       "type": "string",
