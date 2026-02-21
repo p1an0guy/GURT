@@ -947,6 +947,50 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertIn("DTSTART:20261015T170000Z", response["body"])
         self.assertIn("DTEND:20261015T180000Z", response["body"])
 
+    def test_calendar_route_skips_invalid_due_at_and_keeps_valid_events(self) -> None:
+        store = _MemoryCalendarTokenStore()
+        store.save(
+            CalendarTokenRecord.mint(
+                token="calendar-token-invalid-due-at",
+                user_id="demo-user",
+                created_at="2026-09-01T10:15:00Z",
+            )
+        )
+
+        event = {
+            "httpMethod": "GET",
+            "path": "/calendar/calendar-token-invalid-due-at.ics",
+            "pathParameters": {"token": "calendar-token-invalid-due-at"},
+        }
+
+        with (
+            patch("backend.runtime._calendar_token_store", return_value=store),
+            patch(
+                "backend.runtime._load_schedule_items_for_user",
+                return_value=[
+                    {
+                        "id": "item-invalid-due-at",
+                        "courseId": "course-psych-101",
+                        "title": "Invalid dueAt",
+                        "dueAt": "not-a-date",
+                    },
+                    {
+                        "id": "item-valid-due-at",
+                        "courseId": "course-psych-101",
+                        "title": "Valid dueAt",
+                        "dueAt": "2026-10-15T17:00:00Z",
+                    },
+                ],
+            ),
+        ):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 200)
+        self.assertIn("BEGIN:VCALENDAR", response["body"])
+        self.assertIn("SUMMARY:Valid dueAt", response["body"])
+        self.assertNotIn("SUMMARY:Invalid dueAt", response["body"])
+        self.assertEqual(response["body"].count("BEGIN:VEVENT"), 1)
+
     def test_calendar_route_returns_404_for_unknown_token(self) -> None:
         store = _MemoryCalendarTokenStore()
         with patch("backend.runtime._calendar_token_store", return_value=store):

@@ -339,11 +339,11 @@ def _parse_rfc3339_utc(value: str) -> datetime | None:
         return None
 
 
-def _resolve_event_window(item: Mapping[str, Any]) -> tuple[str, str]:
+def _resolve_event_window(item: Mapping[str, Any]) -> tuple[str, str] | None:
     due_at = str(item["dueAt"])
     due_dt = _parse_rfc3339_utc(due_at)
     if due_dt is None:
-        raise ValueError(f"invalid dueAt value: {due_at}")
+        return None
 
     start_at_raw = item.get("startAt")
     if isinstance(start_at_raw, str) and start_at_raw.strip():
@@ -380,7 +380,10 @@ def _build_ics_payload(*, user_id: str, items: list[dict[str, Any]]) -> str:
         item_id = str(item["id"])
         due_at = str(item["dueAt"])
         title = str(item["title"]).replace("\n", " ").replace("\r", " ")
-        start_ics, end_ics = _resolve_event_window(item)
+        resolved_window = _resolve_event_window(item)
+        if resolved_window is None:
+            continue
+        start_ics, end_ics = resolved_window
 
         lines.extend(
             [
@@ -1368,6 +1371,8 @@ def _query_canvas_items_for_user(user_id: str) -> list[dict[str, Any]]:
             start_at = row.get("startAt")
             end_at = row.get("endAt")
             if not all(isinstance(value, str) and value for value in (item_id, title, due_at)):
+                continue
+            if _parse_rfc3339_utc(due_at) is None:
                 continue
 
             normalized: dict[str, str] = {
