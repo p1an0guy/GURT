@@ -37,9 +37,65 @@ AWS-powered...
 
 ### Prerequisites
 
+- Node.js `>= 18.18.0` (recommended: Node 20 LTS)
+- npm
+- Python 3.10+ (for backend/test scripts)
 
 ### Installation
 
+```bash
+npm install
+```
+
+## Frontend Local Development
+
+Run from repo root:
+
+```bash
+npm run dev
+```
+
+Then open `http://localhost:3000`.
+
+Frontend routes:
+
+- `/` is the user-facing dashboard (`Generate Deck`, `Recent Decks`, `Study Deck`).
+- `/dev-tools` is the internal debug console (runtime/API controls).
+
+### Frontend env vars
+
+For just starting the frontend app, no env vars are strictly required.
+
+- `NEXT_PUBLIC_USE_FIXTURES`
+  - Optional
+  - Default: `true`
+  - When `true`, frontend uses local fixture responses.
+- `NEXT_PUBLIC_API_BASE_URL`
+  - Required only when using live API mode (`NEXT_PUBLIC_USE_FIXTURES=false`)
+  - Example: `https://<api-id>.execute-api.<region>.amazonaws.com/dev`
+
+Example (live API mode):
+
+```bash
+export NEXT_PUBLIC_API_BASE_URL="https://<api-id>.execute-api.<region>.amazonaws.com/dev"
+export NEXT_PUBLIC_USE_FIXTURES="false"
+npm run dev
+```
+
+### Common issue
+
+If you see:
+
+`You are using Node.js 18.15.0... Next.js requires ^18.18.0 || ^19.8.0 || >=20.0.0`
+
+upgrade Node first (recommended Node 20), then reinstall dependencies:
+
+```bash
+npm install
+npm run dev
+```
+
+For broader testing and contract/smoke workflows, see `docs/TESTING.md`.
 
 
 
