@@ -55,4 +55,5 @@ jobs:
       - name: Run smoke tests in mock mode
         env:
           SMOKE_MOCK_MODE: '1'
+          MINT_CALENDAR_TOKEN: '1'
         run: python scripts/run_smoke_tests.py
