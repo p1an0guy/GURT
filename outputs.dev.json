@@ -1,0 +1,28 @@
+{
+  "GurtDataStack": {
+    "CanvasDataTableName": "GurtDataStack-CanvasDataTable074B19A7-10031GKIDNQSW",
+    "ExportsOutputFnGetAttCardsTable99B0A449Arn6DF569E0": "arn:aws:dynamodb:us-west-2:253896052470:table/GurtDataStack-CardsTable99B0A449-Q1ERVMA5KEIY",
+    "ExportsOutputRefUploadsBucket5E5E9B64F2F56CC2": "gurtdatastack-uploadsbucket5e5e9b64-toqmlgq9f8lr",
+    "ExportsOutputRefCardsTable99B0A4493010A5D5": "GurtDataStack-CardsTable99B0A449-Q1ERVMA5KEIY",
+    "ExportsOutputRefDocsTableB13D5617174430CE": "GurtDataStack-DocsTableB13D5617-ZABVPFWSE2VC",
+    "ExportsOutputRefCanvasDataTable074B19A7D6355804": "GurtDataStack-CanvasDataTable074B19A7-10031GKIDNQSW",
+    "DocsTableName": "GurtDataStack-DocsTableB13D5617-ZABVPFWSE2VC",
+    "ExportsOutputRefCalendarTokensTableC7E91822F7C34CD5": "GurtDataStack-CalendarTokensTableC7E91822-M2E2YP3X6PVO",
+    "ExportsOutputFnGetAttDocsTableB13D5617Arn67ED65E2": "arn:aws:dynamodb:us-west-2:253896052470:table/GurtDataStack-DocsTableB13D5617-ZABVPFWSE2VC",
+    "ExportsOutputFnGetAttUploadsBucket5E5E9B64Arn8603C131": "arn:aws:s3:::gurtdatastack-uploadsbucket5e5e9b64-toqmlgq9f8lr",
+    "UploadsBucketName": "gurtdatastack-uploadsbucket5e5e9b64-toqmlgq9f8lr",
+    "ExportsOutputFnGetAttCanvasDataTable074B19A7ArnC7087825": "arn:aws:dynamodb:us-west-2:253896052470:table/GurtDataStack-CanvasDataTable074B19A7-10031GKIDNQSW",
+    "CalendarTokensTableName": "GurtDataStack-CalendarTokensTableC7E91822-M2E2YP3X6PVO",
+    "ExportsOutputFnGetAttCalendarTokensTableC7E91822Arn420D1B85": "arn:aws:dynamodb:us-west-2:253896052470:table/GurtDataStack-CalendarTokensTableC7E91822-M2E2YP3X6PVO",
+    "CardsTableName": "GurtDataStack-CardsTable99B0A449-Q1ERVMA5KEIY"
+  },
+  "GurtApiStack": {
+    "ApiBaseUrl": "https://hpthlfk5ql.execute-api.us-west-2.amazonaws.com/dev",
+    "SuggestedSmokeCourseIdSecret": "course-psych-101",
+    "SuggestedSmokeCalendarTokenSecret": "mint-via-POST-/calendar/token",
+    "CanvasSyncScheduleHours": "24",
+    "SuggestedSmokeBaseUrlSecret": "https://hpthlfk5ql.execute-api.us-west-2.amazonaws.com/dev",
+    "StudyBuddyApiEndpointCEC27CFD": "https://hpthlfk5ql.execute-api.us-west-2.amazonaws.com/dev/",
+    "CalendarTokenMintEndpoint": "https://hpthlfk5ql.execute-api.us-west-2.amazonaws.com/dev/calendar/token"
+  }
+}

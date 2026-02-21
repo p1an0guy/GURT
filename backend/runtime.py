@@ -1171,6 +1171,9 @@ def lambda_handler(event: Mapping[str, Any], context: Any) -> Dict[str, Any]:
     path = _normalized_path(event, _request_path(event))
     path_params = _path_params(event)
 
+    if method == "POST" and path == "/chat":
+        return _handle_chat(event)
+
     if method == "POST" and path == "/uploads":
         return uploads.lambda_handler(event, context)
 
@@ -1199,9 +1202,6 @@ def lambda_handler(event: Mapping[str, Any], context: Any) -> Dict[str, Any]:
 
     if method == "POST" and path == "/generate/practice-exam":
         return _handle_generate_practice_exam(event)
-
-    if method == "POST" and path == "/chat":
-        return _handle_chat(event)
 
     if method == "GET":
         token = _extract_calendar_token(path, path_params)

@@ -61,6 +61,7 @@ class ApiStack(Stack):
             "BEDROCK_MODEL_ID": bedrock_model_id,
             "KNOWLEDGE_BASE_ID": knowledge_base_id,
             "KNOWLEDGE_BASE_DATA_SOURCE_ID": knowledge_base_data_source_id,
+            "BEDROCK_MODEL_ARN": f"arn:aws:bedrock:{self.region}::foundation-model/{bedrock_model_id}",
             "CALENDAR_TOKEN_MINTING_PATH": calendar_token_minting_path,
             "CANVAS_DATA_TABLE": data_stack.canvas_data_table.table_name,
             "CALENDAR_TOKENS_TABLE": data_stack.calendar_tokens_table.table_name,
@@ -218,6 +219,7 @@ class ApiStack(Stack):
         ingest_state_machine.grant_start_execution(app_api_handler)
         app_api_handler.add_environment("INGEST_STATE_MACHINE_ARN", ingest_state_machine.state_machine_arn)
 
+
         app_api_handler.add_to_role_policy(
             iam.PolicyStatement(
                 actions=[
@@ -225,6 +227,7 @@ class ApiStack(Stack):
                     "bedrock:InvokeModelWithResponseStream",
                     "bedrock:Retrieve",
                     "bedrock:StartIngestionJob",
+                    "bedrock:RetrieveAndGenerate",
                 ],
                 resources=["*"],
             )
