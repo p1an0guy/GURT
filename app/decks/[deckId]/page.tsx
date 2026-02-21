@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { createApiClient } from "../../../src/api/client.ts";
@@ -38,6 +38,7 @@ const RATING_LABELS: Record<RecallRating, string> = {
 
 export default function DeckStudyPage() {
   const params = useParams<{ deckId: string }>();
+  const router = useRouter();
   const deckId = typeof params.deckId === "string" ? params.deckId : "";
   const [deck, setDeck] = useState<DeckRecord | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -123,11 +124,17 @@ export default function DeckStudyPage() {
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
-      if (!deck || !activeCard || isFinished || isSubmittingReview) {
+      if (isEditableTarget(event.target)) {
         return;
       }
 
-      if (isEditableTarget(event.target)) {
+      if (isFinished && event.code === "Space") {
+        event.preventDefault();
+        router.push("/");
+        return;
+      }
+
+      if (!deck || !activeCard || isSubmittingReview) {
         return;
       }
 
@@ -176,7 +183,7 @@ export default function DeckStudyPage() {
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [activeCard, deck, handleRate, isFinished, isSubmittingReview]);
+  }, [activeCard, deck, handleRate, isFinished, isSubmittingReview, router]);
 
   useEffect(() => {
     if (!shortcutWarning) {
