@@ -168,5 +168,56 @@ class GenerationCitationTests(unittest.TestCase):
         )
 
 
+class ChatCitationTests(unittest.TestCase):
+    def test_chat_falls_back_to_context_citations_when_model_omits_citations(self) -> None:
+        with (
+            patch(
+                "backend.generation._retrieve_context",
+                return_value=[
+                    {"text": "Context row 1", "source": "s3://bucket/uploads/170880/doc-a/ch1.pdf#chunk-1"},
+                    {"text": "Context row 2", "source": "s3://bucket/uploads/170880/doc-a/ch1.pdf#chunk-2"},
+                ],
+            ),
+            patch(
+                "backend.generation._invoke_model_json",
+                return_value={"answer": "The judicial branch interprets laws."},
+            ),
+        ):
+            response = generation.chat_answer(course_id="170880", question="Who interprets laws?")
+
+        self.assertEqual(response["answer"], "The judicial branch interprets laws.")
+        self.assertEqual(
+            response["citations"],
+            [
+                "s3://bucket/uploads/170880/doc-a/ch1.pdf#chunk-1",
+                "s3://bucket/uploads/170880/doc-a/ch1.pdf#chunk-2",
+            ],
+        )
+
+    def test_chat_prefers_model_citations_when_present(self) -> None:
+        with (
+            patch(
+                "backend.generation._retrieve_context",
+                return_value=[
+                    {"text": "Context row 1", "source": "s3://bucket/uploads/170880/doc-a/ch1.pdf#chunk-1"},
+                ],
+            ),
+            patch(
+                "backend.generation._invoke_model_json",
+                return_value={
+                    "answer": "Federalism divides powers.",
+                    "citations": ["s3://bucket/uploads/170880/doc-a/ch1.pdf#chunk-9"],
+                },
+            ),
+        ):
+            response = generation.chat_answer(course_id="170880", question="What is federalism?")
+
+        self.assertEqual(response["answer"], "Federalism divides powers.")
+        self.assertEqual(
+            response["citations"],
+            ["s3://bucket/uploads/170880/doc-a/ch1.pdf#chunk-9"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
