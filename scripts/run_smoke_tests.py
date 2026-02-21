@@ -34,6 +34,7 @@ class SmokeContext:
     calendar_token: str
     course_id: str
     include_canvas_sync: bool = False
+    include_chat: bool = False
     include_ingest: bool = False
 
 
@@ -190,6 +191,15 @@ class FixtureMockHandler(BaseHTTPRequestHandler):
             )
             return
 
+        if self.path == "/chat":
+            self._write_json(
+                {
+                    "answer": "Use active recall and spaced repetition for this topic.",
+                    "citations": ["s3://bucket/uploads/170880/doc-a/ch1.pdf#chunk-2"],
+                }
+            )
+            return
+
         if self.path != "/study/review":
             self._write_json({"error": "not found"}, status=404)
             return
@@ -318,6 +328,16 @@ def run_sequence(ctx: SmokeContext) -> None:
     mastery = http_json("GET", f"{ctx.base_url}/study/mastery?{query}")
     validate_rows(mastery, "TopicMastery.json", "/study/mastery")
 
+    if ctx.include_chat:
+        chat_payload = {
+            "courseId": ctx.course_id,
+            "question": "What should I focus on this week?",
+        }
+        validate_instance(chat_payload, read_schema("ChatRequest.json"))
+        chat_response = http_json("POST", f"{ctx.base_url}/chat", payload=chat_payload)
+        validate_instance(chat_response, read_schema("ChatResponse.json"))
+        print("PASS /chat")
+
     if ctx.include_ingest:
         ingest_payload = {
             "docId": "doc-smoke-001",
@@ -364,6 +384,7 @@ def main() -> None:
     initial_calendar_token = os.getenv("CALENDAR_TOKEN", "").strip()
     mint_calendar_token = os.getenv("MINT_CALENDAR_TOKEN", "0").strip() == "1"
     include_canvas_sync = os.getenv("SMOKE_INCLUDE_CANVAS_SYNC", "0").strip() == "1"
+    include_chat = os.getenv("SMOKE_INCLUDE_CHAT", "0").strip() == "1"
     include_ingest = os.getenv("SMOKE_INCLUDE_INGEST", "0").strip() == "1"
     calendar_token = resolve_calendar_token(
         base_url=base_url,
@@ -375,6 +396,7 @@ def main() -> None:
         calendar_token=calendar_token,
         course_id=course_id,
         include_canvas_sync=include_canvas_sync,
+        include_chat=include_chat,
         include_ingest=include_ingest,
     )
 
