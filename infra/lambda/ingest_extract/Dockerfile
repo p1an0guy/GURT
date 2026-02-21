@@ -1,8 +1,19 @@
-FROM public.ecr.aws/lambda/python:3.12
+FROM python:3.12-slim-bookworm
 
-RUN dnf install -y libreoffice && dnf clean all
-RUN pip install --no-cache-dir boto3 pymupdf
+# Install LibreOffice (Debian repos carry it natively)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libreoffice-core \
+        libreoffice-impress \
+        libreoffice-writer \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-COPY backend ${LAMBDA_TASK_ROOT}/backend
+# Install Lambda Runtime Interface Client + Python deps
+RUN pip install --no-cache-dir awslambdaric boto3 pymupdf
 
+COPY backend /var/task/backend
+
+WORKDIR /var/task
+
+ENTRYPOINT ["python", "-m", "awslambdaric"]
 CMD ["backend.ingest_workflow.extract_handler"]
