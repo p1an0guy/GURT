@@ -221,3 +221,16 @@ Quick runtime-hardening checks in browser:
    - `KB ingestion not started: ...` when mirrored materials were found but KB start failed/misconfigured.
    - `No new mirrored materials.` when sync did not mirror any new files.
 4. Run `Generate Cards`, `Generate Exam`, and `Ask Chat`; confirm each action reports success timestamps or actionable retry errors.
+
+## Chrome extension API validation (demo)
+
+Use the same deployed `/chat` endpoint as the web UI. There is no extension-only backend route in this phase.
+
+- Compatibility doc: `docs/EXTENSION_COMPATIBILITY.md`
+- Quick check:
+
+```bash
+curl -sS -X POST "$BASE_URL/chat" \
+  -H 'content-type: application/json' \
+  -d '{"courseId":"course-psych-101","question":"Summarize upcoming deadlines."}' | jq
+```
