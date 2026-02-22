@@ -276,6 +276,21 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertEqual(rows[0]["id"], "card-runtime-1")
         self.assertEqual(rows[0]["prompt"], "Runtime prompt")
 
+    def test_study_today_returns_fixtures_when_runtime_selection_throws(self) -> None:
+        with patch("backend.runtime._runtime_study_today", side_effect=Exception("simulated runtime failure")):
+            response = self._invoke(
+                {
+                    "httpMethod": "GET",
+                    "path": "/study/today",
+                    "queryStringParameters": {"courseId": "course-psych-101"},
+                },
+                env={"DEMO_MODE": "false"},
+            )
+
+        self.assertEqual(response["statusCode"], 200)
+        rows = json.loads(response["body"])
+        self.assertEqual(len(rows), 5)
+        self.assertEqual(rows[0]["courseId"], "course-psych-101")
     def test_study_today_falls_back_to_fixtures_when_runtime_cards_scan_fails(self) -> None:
         with patch("backend.runtime._cards_table", return_value=_FailingCardsTable()):
             response = self._invoke(

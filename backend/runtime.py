@@ -1968,11 +1968,17 @@ def lambda_handler(event: Mapping[str, Any], context: Any) -> Dict[str, Any]:
         if user_id is None and _is_demo_mode():
             user_id = _demo_user_id()
 
-        runtime_cards = _runtime_study_today(course_id, user_id=user_id, exam_id=exam_id)
+        try:
+            runtime_cards = _runtime_study_today(course_id, user_id=user_id, exam_id=exam_id)
+        except Exception:
+            runtime_cards = []
         if runtime_cards:
             return _text_response(200, json.dumps(runtime_cards), content_type="application/json")
 
-        cards = [row for row in _load_fixtures()["cards"] if row.get("courseId") == course_id]
+        try:
+            cards = [row for row in _load_fixtures()["cards"] if row.get("courseId") == course_id]
+        except Exception:
+            cards = []
         return _text_response(200, json.dumps(cards[:_STUDY_TODAY_DEFAULT_COUNT]), content_type="application/json")
 
     if method == "POST" and path == "/study/review":
