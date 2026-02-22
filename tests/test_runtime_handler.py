@@ -1151,6 +1151,106 @@ class RuntimeHandlerTests(unittest.TestCase):
             generation.GUARDRAIL_BLOCKED_MESSAGE,
         )
 
+    def test_start_practice_exam_generation_job_returns_202_and_starts_step_function(self) -> None:
+        docs_table = _MemoryDocsTable()
+        sfn_client = unittest.mock.Mock()
+        event = {
+            "httpMethod": "POST",
+            "path": "/generate/practice-exam/jobs",
+            "body": json.dumps({"courseId": "course-psych-101", "numQuestions": 12}),
+            "requestContext": {"authorizer": {"principalId": "demo-user"}},
+        }
+
+        with (
+            patch("backend.runtime._docs_table", return_value=docs_table),
+            patch("backend.runtime._stepfunctions_client", return_value=sfn_client),
+            patch(
+                "backend.runtime._practice_exam_gen_state_machine_arn",
+                return_value="arn:aws:states:::stateMachine:test-practice-exam",
+            ),
+        ):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 202)
+        body = json.loads(response["body"])
+        self.assertEqual(body["status"], "RUNNING")
+        self.assertTrue(body["jobId"].startswith("pracexam-"))
+        self.assertIn(body["jobId"], docs_table.rows)
+        self.assertEqual(docs_table.rows[body["jobId"]]["entityType"], "PracticeExamGenJob")
+        self.assertEqual(docs_table.rows[body["jobId"]]["userId"], "demo-user")
+
+        sfn_client.start_execution.assert_called_once()
+        execution_kwargs = sfn_client.start_execution.call_args.kwargs
+        execution_input = json.loads(execution_kwargs["input"])
+        self.assertEqual(execution_input["jobId"], body["jobId"])
+        self.assertEqual(execution_input["courseId"], "course-psych-101")
+        self.assertEqual(execution_input["numQuestions"], 12)
+        self.assertEqual(execution_input["userId"], "demo-user")
+
+    def test_practice_exam_generation_status_returns_finished_exam_for_owner(self) -> None:
+        docs_table = _MemoryDocsTable()
+        docs_table.put_item(
+            Item={
+                "docId": "pracexam-123",
+                "entityType": "PracticeExamGenJob",
+                "jobId": "pracexam-123",
+                "userId": "demo-user",
+                "courseId": "course-psych-101",
+                "numQuestions": 10,
+                "status": "FINISHED",
+                "exam": {
+                    "courseId": "course-psych-101",
+                    "generatedAt": "2026-09-02T08:30:00Z",
+                    "questions": [],
+                },
+                "error": "",
+                "createdAt": "2026-09-02T08:29:00Z",
+                "updatedAt": "2026-09-02T08:30:00Z",
+            }
+        )
+        event = {
+            "httpMethod": "GET",
+            "path": "/generate/practice-exam/jobs/pracexam-123",
+            "requestContext": {"authorizer": {"principalId": "demo-user"}},
+        }
+
+        with patch("backend.runtime._docs_table", return_value=docs_table):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 200)
+        body = json.loads(response["body"])
+        self.assertEqual(body["jobId"], "pracexam-123")
+        self.assertEqual(body["status"], "FINISHED")
+        self.assertIn("exam", body)
+        self.assertEqual(body["exam"]["courseId"], "course-psych-101")
+
+    def test_practice_exam_generation_status_hides_jobs_owned_by_other_user(self) -> None:
+        docs_table = _MemoryDocsTable()
+        docs_table.put_item(
+            Item={
+                "docId": "pracexam-456",
+                "entityType": "PracticeExamGenJob",
+                "jobId": "pracexam-456",
+                "userId": "another-user",
+                "status": "RUNNING",
+                "exam": {},
+                "error": "",
+                "createdAt": "2026-09-02T08:29:00Z",
+                "updatedAt": "2026-09-02T08:30:00Z",
+            }
+        )
+        event = {
+            "httpMethod": "GET",
+            "path": "/generate/practice-exam/jobs/pracexam-456",
+            "requestContext": {"authorizer": {"principalId": "demo-user"}},
+        }
+
+        with patch("backend.runtime._docs_table", return_value=docs_table):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 404)
+        self.assertIn("not found", json.loads(response["body"])["error"])
+
     def test_chat_returns_answer_with_citations(self) -> None:
         event = {
             "httpMethod": "POST",
