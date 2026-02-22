@@ -18,27 +18,43 @@ const scrapeToggle = document.getElementById("scrapeToggle");
 const scrapePanel = document.querySelector(".scrape-panel");
 const filesLoadedBadge = document.getElementById("filesLoadedBadge");
 const filesLoadedCount = document.getElementById("filesLoadedCount");
+const themeToggle = document.getElementById("themeToggle");
+const themeToggleLabel = document.getElementById("themeToggleLabel");
 
 const SCRAPE_START_MESSAGE_TYPE = "SCRAPE_MODULES_START";
 const MAX_FILE_ROWS = 200;
+const THEME_STORAGE_KEY = "gurt-theme";
+const DEFAULT_THEME = "dark";
 
 // --- Per-course state ---
 let currentCourseId = null;
 let currentCourseName = null;
 let currentCourseFileCount = 0;
 let courseRegistry = []; // [{courseId, courseName}]
+let currentTheme = DEFAULT_THEME;
 
-// Subtle pastel palette — bg for chat area, dot for the tab indicator
-const COURSE_COLORS = [
-  { bg: "#eef4fb", dot: "#4a90d9" },  // blue
-  { bg: "#edf7ee", dot: "#4caf50" },  // green
-  { bg: "#f4eefb", dot: "#9c5fc7" },  // purple
-  { bg: "#fef5ea", dot: "#e8a035" },  // orange
-  { bg: "#fbeef2", dot: "#d94f73" },  // pink
-  { bg: "#eef7f6", dot: "#3faea0" },  // teal
-  { bg: "#fbf7ee", dot: "#c4a535" },  // gold
-  { bg: "#eeeef9", dot: "#5c6bc0" },  // indigo
-];
+const COURSE_COLORS = {
+  dark: [
+    { bg: "#111a27", dot: "#4a90d9" }, // blue
+    { bg: "#101e16", dot: "#4caf50" }, // green
+    { bg: "#181225", dot: "#9c5fc7" }, // purple
+    { bg: "#24180f", dot: "#e8a035" }, // orange
+    { bg: "#23131b", dot: "#d94f73" }, // pink
+    { bg: "#10201f", dot: "#3faea0" }, // teal
+    { bg: "#221f10", dot: "#c4a535" }, // gold
+    { bg: "#14182a", dot: "#5c6bc0" }  // indigo
+  ],
+  light: [
+    { bg: "#eef4fb", dot: "#4a90d9" }, // blue
+    { bg: "#edf7ee", dot: "#4caf50" }, // green
+    { bg: "#f4eefb", dot: "#9c5fc7" }, // purple
+    { bg: "#fef5ea", dot: "#e8a035" }, // orange
+    { bg: "#fbeef2", dot: "#d94f73" }, // pink
+    { bg: "#eef7f6", dot: "#3faea0" }, // teal
+    { bg: "#fbf7ee", dot: "#c4a535" }, // gold
+    { bg: "#eeeef9", dot: "#5c6bc0" }  // indigo
+  ]
+};
 
 const scrapeState = {
   phase: "idle",
@@ -47,6 +63,7 @@ const scrapeState = {
   files: new Map()
 };
 
+applyTheme(readStoredTheme(), { persist: false });
 renderScrapeUI();
 
 // Initialize: load course registry, detect current course, load chat
@@ -58,6 +75,12 @@ if (scrapeBtn) {
 }
 if (retryScrapeBtn) {
   retryScrapeBtn.addEventListener("click", () => startScrapeWorkflow("retry"));
+}
+if (themeToggle) {
+  themeToggle.addEventListener("click", () => {
+    const nextTheme = currentTheme === "dark" ? "light" : "dark";
+    applyTheme(nextTheme);
+  });
 }
 
 // Scrape drawer toggle
@@ -997,9 +1020,54 @@ function saveCourseRegistry() {
   chromeStorageSet({ gurtCourses: courseRegistry });
 }
 
+function readStoredTheme() {
+  try {
+    return normalizeTheme(window.localStorage.getItem(THEME_STORAGE_KEY));
+  } catch {
+    return DEFAULT_THEME;
+  }
+}
+
+function normalizeTheme(theme) {
+  return theme === "light" || theme === "dark" ? theme : DEFAULT_THEME;
+}
+
+function applyTheme(theme, { persist = true } = {}) {
+  currentTheme = normalizeTheme(theme);
+  document.documentElement.setAttribute("data-theme", currentTheme);
+
+  if (themeToggle) {
+    themeToggle.classList.toggle("light", currentTheme === "light");
+    themeToggle.setAttribute("aria-pressed", String(currentTheme === "light"));
+    themeToggle.setAttribute(
+      "aria-label",
+      `Switch to ${currentTheme === "dark" ? "light" : "dark"} mode`
+    );
+  }
+  if (themeToggleLabel) {
+    themeToggleLabel.textContent = currentTheme === "dark" ? "Dark mode" : "Light mode";
+  }
+
+  if (persist) {
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, currentTheme);
+    } catch {
+      // Ignore localStorage failures (private browsing or restricted contexts).
+    }
+  }
+
+  applyCourseTheme(currentCourseId);
+  renderCourseTabs();
+}
+
+function getCoursePalette() {
+  return COURSE_COLORS[currentTheme] || COURSE_COLORS[DEFAULT_THEME];
+}
+
 function getCourseColor(courseId) {
+  const palette = getCoursePalette();
   const idx = courseRegistry.findIndex(c => c.courseId === courseId);
-  return COURSE_COLORS[(idx === -1 ? 0 : idx) % COURSE_COLORS.length];
+  return palette[(idx === -1 ? 0 : idx) % palette.length];
 }
 
 function hexToRgb(hex) {
@@ -1012,10 +1080,17 @@ function hexToRgb(hex) {
 function applyCourseTheme(courseId) {
   const color = getCourseColor(courseId);
   const container = document.querySelector(".chat-container");
+  if (!container) {
+    return;
+  }
+
+  const badgeBgAlpha = currentTheme === "dark" ? 0.12 : 0.18;
+  const badgeBorderAlpha = currentTheme === "dark" ? 0.3 : 0.4;
+
   container.style.setProperty("--course-bg", color.bg);
   container.style.setProperty("--badge-color", color.dot);
-  container.style.setProperty("--badge-bg", `rgba(${hexToRgb(color.dot)}, 0.12)`);
-  container.style.setProperty("--badge-border", `rgba(${hexToRgb(color.dot)}, 0.3)`);
+  container.style.setProperty("--badge-bg", `rgba(${hexToRgb(color.dot)}, ${badgeBgAlpha})`);
+  container.style.setProperty("--badge-border", `rgba(${hexToRgb(color.dot)}, ${badgeBorderAlpha})`);
 }
 
 function renderCourseTabs() {

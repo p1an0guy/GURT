@@ -252,7 +252,7 @@
         },
         "responses": {
           "200": {
-            "description": "Grounded answer response with citations",
+            "description": "Grounded answer response with legacy citations and structured citation details",
             "content": {
               "application/json": {
                 "schema": {
@@ -286,6 +286,36 @@
                   "type": "array",
                   "items": {
                     "$ref": "#/components/schemas/CanvasItem"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/courses/{courseId}/materials": {
+      "get": {
+        "operationId": "listCourseMaterials",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "courseId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List public material metadata by course",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CourseMaterial"
                   }
                 }
               }
@@ -449,6 +479,9 @@
       },
       "CanvasItem": {
         "$ref": "./schemas/CanvasItem.json"
+      },
+      "CourseMaterial": {
+        "$ref": "./schemas/CourseMaterial.json"
       },
       "CanvasConnectRequest": {
         "$ref": "./schemas/CanvasConnectRequest.json"

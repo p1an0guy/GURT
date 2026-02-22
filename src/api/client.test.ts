@@ -50,6 +50,8 @@ test("uses fixture mode when explicitly enabled", async () => {
   assert.equal(generatedCards.length, 2);
   assert.equal(exam.questions.length, 2);
   assert.equal(chat.citations.length, 1);
+  assert.equal(chat.citationDetails?.length, 1);
+  assert.equal(chat.citationDetails?.[0]?.url.startsWith("https://"), true);
   assert.equal(courses.length, 2);
   assert.ok(cards.length > 0);
   assert.equal(calendarToken.token, "demo-calendar-token");
@@ -200,6 +202,13 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
       return jsonResponse({
         answer: "Chat answer",
         citations: ["s3://bucket/path#chunk-1"],
+        citationDetails: [
+          {
+            source: "s3://bucket/path#chunk-1",
+            label: "path (chunk-1)",
+            url: "https://bucket.s3.us-west-2.amazonaws.com/path?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=example",
+          },
+        ],
       });
     }
 
@@ -283,7 +292,7 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
   await client.syncCanvas();
   await client.generateFlashcards("course/1", 2);
   await client.generatePracticeExam("course/1", 2);
-  await client.chat("course/1", "What is retrieval practice?");
+  const chat = await client.chat("course/1", "What is retrieval practice?");
   await client.listCourses();
   await client.listCourseItems("course/1");
   await client.getStudyToday("course/1");
@@ -299,6 +308,10 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
   const ingestStatus = await client.getDocsIngestStatus(ingestStarted.jobId);
 
   assert.match(ics, /BEGIN:VCALENDAR/);
+  assert.equal(
+    chat.citationDetails?.[0]?.url,
+    "https://bucket.s3.us-west-2.amazonaws.com/path?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=example",
+  );
   assert.equal(tokenResponse.token, "minted-token");
   assert.equal(ingestStatus.status, "FINISHED");
   assert.equal(calls.length, 15);

@@ -62,6 +62,12 @@ source .venv/bin/activate
 SMOKE_MOCK_MODE=1 python scripts/run_smoke_tests.py
 ```
 
+Mock smoke assertions now include `GET /courses/{courseId}/materials` and validate:
+- every row matches `CourseMaterial.json`
+- rows are course-scoped and sorted by `displayName` (case-insensitive)
+- response does not expose private fields like `downloadUrl` or `s3Key`
+- deterministic fixture IDs for the selected course match exactly
+
 To also exercise `POST /calendar/token` in mock smoke mode, enable token minting:
 
 ```bash
@@ -92,6 +98,8 @@ export CALENDAR_TOKEN="<calendar-token>"
 export COURSE_ID="course-psych-101"  # optional
 python scripts/run_smoke_tests.py
 ```
+
+Deployed smoke runs perform the same `/courses/{courseId}/materials` schema and metadata safety checks (without enforcing fixture-specific IDs).
 
 ## Smoke tests against dev stage (GitHub Actions)
 
@@ -139,6 +147,29 @@ Docs ingest workflow (Step Functions + PyMuPDF/Textract fallback + Bedrock KB):
 7. On successful finalize, Bedrock Knowledge Base `StartIngestionJob` is triggered automatically (no manual CLI) when `KNOWLEDGE_BASE_ID` and `KNOWLEDGE_BASE_DATA_SOURCE_ID` are configured.
 8. Status response may include `kbIngestionJobId` (when trigger succeeded) or `kbIngestionError` (when trigger failed) for traceability.
 
+Ingest finalize and KB trigger operational metrics:
+
+- CloudWatch namespace: `Gurt/IngestWorkflow`
+- Stable dimensions (all metrics):
+  - `Service=StudyBuddy`
+  - `Workflow=DocsIngest`
+  - `Handler=Finalize`
+  - `Environment=<APP_ENV|STAGE|ENV|unknown>`
+- Metric names (all `Count`):
+  - `IngestFinalizeSuccess` (emitted when finalize persists `FINISHED`)
+  - `IngestFinalizeFailure` (emitted when finalize persists `FAILED`)
+  - `IngestKbTriggerMissingConfig` (emitted when finalize is `FINISHED` but KB ids are missing)
+  - `IngestKbTriggerStarted` (emitted immediately before `StartIngestionJob`)
+  - `IngestKbTriggerSucceeded` (emitted after `StartIngestionJob` returns successfully)
+  - `IngestKbTriggerFailed` (emitted when `StartIngestionJob` raises)
+- Suggested alert thresholds:
+  - `IngestKbTriggerMissingConfig >= 1` for 10 minutes in non-local environments (critical misconfiguration).
+  - `IngestKbTriggerFailed >= 3` in 15 minutes (warning), `>= 10` in 15 minutes (critical).
+  - Finalize failure ratio > 5% over 30 minutes using metric math:
+    `IngestFinalizeFailure / (IngestFinalizeSuccess + IngestFinalizeFailure)`.
+  - Trigger failure ratio > 10% over 30 minutes using metric math:
+    `IngestKbTriggerFailed / (IngestKbTriggerSucceeded + IngestKbTriggerFailed)`.
+
 ## CDK infra synth and deploy (demo scaffold)
 
 Infrastructure is scaffolded in `infra/` with `GurtDataStack`, `GurtKnowledgeBaseStack`, and `GurtApiStack`.
@@ -174,6 +205,16 @@ KNOWLEDGE_BASE_DATA_SOURCE_ID=<data-source-id> \
 ./scripts/deploy.sh
 ```
 
+By default, CDK now provisions a Bedrock guardrail and published version in `GurtApiStack`
+and wires them into runtime env vars automatically.
+
+If you already have a guardrail and do not want CDK to create one, pass your existing ID/version:
+
+```bash
+BEDROCK_GUARDRAIL_ID=<guardrail-id> \
+BEDROCK_GUARDRAIL_VERSION=<version-or-DRAFT>
+```
+
 If `KNOWLEDGE_BASE_ID` is omitted, CDK provisions a Bedrock Knowledge Base stack automatically.
 
 Optional override for CDK CLI package/version:
@@ -187,12 +228,16 @@ Key stack outputs to use for smoke/dev secrets:
 - `ApiBaseUrl` (or `SuggestedSmokeBaseUrlSecret`) -> `DEV_BASE_URL`
 - `CalendarTokenMintEndpoint` -> call this endpoint to mint `DEV_CALENDAR_TOKEN`
 - `SuggestedSmokeCourseIdSecret` -> `DEV_COURSE_ID` (defaults to `course-psych-101`)
+- `BedrockGuardrailId` and `BedrockGuardrailVersion` (from `GurtApiStack`) -> runtime guardrail configuration
+- `BedrockGuardrailMode` (`cdk-managed` or `existing`) -> indicates whether CDK created the guardrail
 - `KnowledgeBaseId` (from `GurtKnowledgeBaseStack`) -> runtime `KNOWLEDGE_BASE_ID`
 - `KnowledgeBaseDataSourceId` -> for `aws bedrock-agent start-ingestion-job`
 
 CDK context defaults for demo deploys (`infra/cdk.json`):
 
 - `bedrockModelId`: default model id for generation/chat (`us.anthropic.claude-sonnet-4-6`)
+- `bedrockGuardrailId`: optional existing Bedrock guardrail id override; when empty, CDK creates one
+- `bedrockGuardrailVersion`: optional existing guardrail version override; if id is set and version is empty, runtime uses `DRAFT`
 - `embeddingModelId`: default embedding model for KB indexing (`amazon.titan-embed-text-v2:0`)
 - `knowledgeBaseId`: optional existing KB ID override; when empty, CDK creates one
 - `knowledgeBaseDataSourceId`: optional existing KB data source ID override (required for auto-ingestion trigger on `/canvas/sync`)

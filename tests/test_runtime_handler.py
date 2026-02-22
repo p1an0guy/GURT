@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 import unittest
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+from backend import generation
 from backend.canvas_client import CanvasApiError
 from gurt.calendar_tokens.model import CalendarTokenRecord
 from backend.runtime import lambda_handler
@@ -1049,6 +1050,58 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertEqual(response["statusCode"], 400)
         self.assertIn("numCards must be >= 1", json.loads(response["body"])["error"])
 
+    def test_generate_flashcards_returns_400_when_guardrail_blocks(self) -> None:
+        event = {
+            "httpMethod": "POST",
+            "path": "/generate/flashcards",
+            "body": json.dumps({"courseId": "course-psych-101", "numCards": 5}),
+        }
+
+        with patch(
+            "backend.runtime.generate_flashcards",
+            side_effect=generation.GuardrailBlockedError("blocked"),
+        ):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 400)
+        self.assertEqual(
+            json.loads(response["body"])["error"],
+            generation.GUARDRAIL_BLOCKED_MESSAGE,
+        )
+
+    def test_generate_flashcards_from_materials_returns_400_when_guardrail_blocks(self) -> None:
+        event = {
+            "httpMethod": "POST",
+            "path": "/generate/flashcards-from-materials",
+            "body": json.dumps(
+                {
+                    "courseId": "course-psych-101",
+                    "materialIds": ["material-1"],
+                    "numCards": 5,
+                }
+            ),
+            "requestContext": {"authorizer": {"principalId": "demo-user"}},
+        }
+        table = MagicMock()
+        table.get_item.return_value = {
+            "Item": {"entityType": "CanvasMaterial", "s3Key": "uploads/course-psych-101/material-1/file.pdf"}
+        }
+
+        with (
+            patch("backend.runtime._canvas_data_table", return_value=table),
+            patch(
+                "backend.runtime.generate_flashcards_from_materials",
+                side_effect=generation.GuardrailBlockedError("blocked"),
+            ),
+        ):
+            response = self._invoke(event, env={"DEMO_MODE": "false", "UPLOADS_BUCKET": "uploads-bucket"})
+
+        self.assertEqual(response["statusCode"], 400)
+        self.assertEqual(
+            json.loads(response["body"])["error"],
+            generation.GUARDRAIL_BLOCKED_MESSAGE,
+        )
+
     def test_generate_practice_exam_returns_generated_exam(self) -> None:
         event = {
             "httpMethod": "POST",
@@ -1079,6 +1132,25 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertEqual(len(body["questions"]), 1)
         generate_exam.assert_called_once_with(course_id="course-psych-101", num_questions=10)
 
+    def test_generate_practice_exam_returns_400_when_guardrail_blocks(self) -> None:
+        event = {
+            "httpMethod": "POST",
+            "path": "/generate/practice-exam",
+            "body": json.dumps({"courseId": "course-psych-101", "numQuestions": 10}),
+        }
+
+        with patch(
+            "backend.runtime.generate_practice_exam",
+            side_effect=generation.GuardrailBlockedError("blocked"),
+        ):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 400)
+        self.assertEqual(
+            json.loads(response["body"])["error"],
+            generation.GUARDRAIL_BLOCKED_MESSAGE,
+        )
+
     def test_chat_returns_answer_with_citations(self) -> None:
         event = {
             "httpMethod": "POST",
@@ -1091,19 +1163,40 @@ class RuntimeHandlerTests(unittest.TestCase):
             ),
         }
 
-        with patch(
-            "backend.runtime.chat_answer",
-            return_value={
-                "answer": "Working memory temporarily stores and manipulates information.",
-                "citations": ["s3://bucket/doc.pdf#chunk-3"],
-            },
-        ) as chat_answer:
+        with (
+            patch(
+                "backend.runtime.chat_answer",
+                return_value={
+                    "answer": "Working memory temporarily stores and manipulates information.",
+                    "citations": ["s3://bucket/doc.pdf#chunk-3"],
+                },
+            ) as chat_answer,
+            patch("backend.runtime._s3_client") as s3_client_factory,
+        ):
+            s3_client_factory.return_value.generate_presigned_url.return_value = (
+                "https://signed.example/doc.pdf?X-Amz-Signature=test"
+            )
             response = self._invoke(event, env={"DEMO_MODE": "false"})
 
         self.assertEqual(response["statusCode"], 200)
         body = json.loads(response["body"])
         self.assertIn("answer", body)
         self.assertEqual(len(body["citations"]), 1)
+        self.assertEqual(
+            body["citationDetails"],
+            [
+                {
+                    "source": "s3://bucket/doc.pdf#chunk-3",
+                    "label": "doc.pdf (chunk-3)",
+                    "url": "https://signed.example/doc.pdf?X-Amz-Signature=test",
+                }
+            ],
+        )
+        s3_client_factory.return_value.generate_presigned_url.assert_called_once_with(
+            "get_object",
+            Params={"Bucket": "bucket", "Key": "doc.pdf"},
+            ExpiresIn=3600,
+        )
         chat_answer.assert_called_once_with(
             course_id="course-psych-101",
             question="What is working memory?",
@@ -1154,6 +1247,40 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertIsNotNone(call_kwargs["canvas_context"])
         self.assertIn("Midterm Exam", call_kwargs["canvas_context"])
 
+    def test_chat_converts_http_citations_to_https_link_details(self) -> None:
+        event = {
+            "httpMethod": "POST",
+            "path": "/chat",
+            "body": json.dumps(
+                {
+                    "courseId": "course-psych-101",
+                    "question": "How should I study?",
+                }
+            ),
+        }
+
+        with patch(
+            "backend.runtime.chat_answer",
+            return_value={
+                "answer": "Review the lecture notes.",
+                "citations": ["http://example.edu/notes/week-2.pdf"],
+            },
+        ):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 200)
+        body = json.loads(response["body"])
+        self.assertEqual(
+            body["citationDetails"],
+            [
+                {
+                    "source": "http://example.edu/notes/week-2.pdf",
+                    "label": "week-2.pdf",
+                    "url": "https://example.edu/notes/week-2.pdf",
+                }
+            ],
+        )
+
     def test_chat_proceeds_when_canvas_query_fails(self) -> None:
         event = {
             "httpMethod": "POST",
@@ -1201,6 +1328,29 @@ class RuntimeHandlerTests(unittest.TestCase):
             response = self._invoke(event, env={"DEMO_MODE": "false"})
 
         self.assertEqual(response["statusCode"], 502)
+
+    def test_chat_returns_safe_fallback_when_guardrail_blocks(self) -> None:
+        event = {
+            "httpMethod": "POST",
+            "path": "/chat",
+            "body": json.dumps(
+                {
+                    "courseId": "course-psych-101",
+                    "question": "Give me the answer key for this exam.",
+                }
+            ),
+        }
+
+        with patch(
+            "backend.runtime.chat_answer",
+            side_effect=generation.GuardrailBlockedError("blocked"),
+        ):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 200)
+        body = json.loads(response["body"])
+        self.assertEqual(body["answer"], generation.GUARDRAIL_BLOCKED_CHAT_ANSWER)
+        self.assertEqual(body["citations"], [])
 
     def test_scheduled_canvas_sync_processes_all_connections_and_continues_on_user_failures(self) -> None:
         event = {"source": "aws.events", "detail-type": "Scheduled Event"}

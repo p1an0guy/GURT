@@ -1,0 +1,85 @@
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap");
+
+:root {
+  --bg-a: #08090b;
+  --bg-b: #141519;
+  --ink: #f1f1f3;
+  --ink-soft: #bdbfc5;
+  --card: rgba(16, 17, 20, 0.9);
+  --line: rgba(232, 237, 245, 0.16);
+  --accent: #c40f11;
+  --surface: rgba(20, 21, 24, 0.96);
+  --input-bg: rgba(9, 10, 12, 0.95);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  padding: 2rem 1.2rem;
+  font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 12% 10%, rgba(196, 71, 35, 0.2), transparent 35%),
+    radial-gradient(circle at 88% 4%, rgba(130, 130, 130, 0.14), transparent 38%),
+    linear-gradient(135deg, var(--bg-a), var(--bg-b));
+}
+
+.options-shell {
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+.options-panel {
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--card);
+  padding: 1.2rem;
+  backdrop-filter: blur(8px);
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.3rem;
+  letter-spacing: 0.02em;
+}
+
+.subtitle {
+  margin: 0.2rem 0 1.1rem;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+
+label {
+  display: block;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+  margin-bottom: 0.35rem;
+}
+
+input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  padding: 0.6rem 0.72rem;
+  font-size: 0.84rem;
+  font-family: inherit;
+  color: rgba(241, 241, 243, 0.8);
+  background: var(--input-bg);
+}
+
+input:disabled {
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+.help-text {
+  margin: 0.55rem 0 0;
+  color: var(--ink-soft);
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
