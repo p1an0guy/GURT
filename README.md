@@ -61,6 +61,7 @@ Frontend routes:
 
 - `/` is the user-facing dashboard (course overview and course navigation).
 - `/flashcards` contains the deck workflow (`Generate Deck`, `Recent Decks`, `Study Deck`).
+- `/practice-tests` contains the exam workflow (`Generate Practice Test`, question answering, instant scoring).
 - `/dev-tools` is the internal debug console (runtime/API controls).
 
 ### Frontend env vars
