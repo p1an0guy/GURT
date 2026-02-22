@@ -50,6 +50,11 @@ class _MemoryCardsTable:
         return {"Items": [dict(value) for value in self.rows.values()]}
 
 
+class _FailingCardsTable:
+    def scan(self, **kwargs: dict) -> dict:  # noqa: ARG002 - boto3 compatibility
+        raise Exception("simulated cards scan failure")
+
+
 class RuntimeHandlerTests(unittest.TestCase):
     def _invoke(self, event: dict, env: dict[str, str] | None = None) -> dict:
         env_vars = {"DEMO_MODE": "true"}
@@ -271,6 +276,22 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertEqual(rows[0]["id"], "card-runtime-1")
         self.assertEqual(rows[0]["prompt"], "Runtime prompt")
 
+    def test_study_today_falls_back_to_fixtures_when_runtime_cards_scan_fails(self) -> None:
+        with patch("backend.runtime._cards_table", return_value=_FailingCardsTable()):
+            response = self._invoke(
+                {
+                    "httpMethod": "GET",
+                    "path": "/study/today",
+                    "queryStringParameters": {"courseId": "course-psych-101"},
+                },
+                env={"DEMO_MODE": "false"},
+            )
+
+        self.assertEqual(response["statusCode"], 200)
+        rows = json.loads(response["body"])
+        self.assertEqual(len(rows), 5)
+        self.assertEqual(rows[0]["courseId"], "course-psych-101")
+
     def test_study_today_includes_near_exam_boosters_in_deterministic_order(self) -> None:
         now = datetime.now(timezone.utc)
         due_early = (now - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -421,6 +442,40 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertEqual(response["statusCode"], 200)
         rows = json.loads(response["body"])
         self.assertEqual([row["id"] for row in rows], ["card-due"])
+
+    def test_study_today_ignores_canvas_query_exceptions(self) -> None:
+        cards_table = _MemoryCardsTable()
+        cards_table.put_item(
+            Item={
+                "cardId": "card-runtime-1",
+                "entityType": "Card",
+                "courseId": "course-psych-101",
+                "topicId": "topic-memory",
+                "prompt": "Runtime prompt",
+                "answer": "Runtime answer",
+                "dueAt": "2026-09-01T09:00:00Z",
+                "updatedAt": "2026-09-01T09:00:00Z",
+            }
+        )
+
+        event = {
+            "httpMethod": "GET",
+            "path": "/study/today",
+            "queryStringParameters": {"courseId": "course-psych-101"},
+            "requestContext": {"authorizer": {"principalId": "demo-user"}},
+        }
+        with (
+            patch("backend.runtime._cards_table", return_value=cards_table),
+            patch(
+                "backend.runtime._query_canvas_course_items_for_user",
+                side_effect=Exception("simulated canvas read failure"),
+            ),
+        ):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 200)
+        rows = json.loads(response["body"])
+        self.assertEqual([row["id"] for row in rows], ["card-runtime-1"])
 
     def test_study_today_exam_id_precedence_over_fallback_exam(self) -> None:
         now = datetime.now(timezone.utc)

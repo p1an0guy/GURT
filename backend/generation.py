@@ -255,6 +255,176 @@ def _normalize_citations(raw: Any, fallback: list[str]) -> list[str]:
     return citations or list(fallback)
 
 
+def _invoke_model_multimodal_json(
+    content_blocks: list[dict[str, Any]],
+    *,
+    max_tokens: int = 4096,
+    system: str | None = None,
+    temperature: float = 0.2,
+    model_id: str | None = None,
+) -> Any:
+    """Invoke a Bedrock model with multimodal content blocks and parse JSON response."""
+    if model_id is None:
+        model_id = os.getenv("FLASHCARD_MODEL_ID", "").strip() or _require_env("BEDROCK_MODEL_ID")
+    client = _bedrock_runtime()
+    body: dict[str, Any] = {
+        "anthropic_version": "bedrock-2023-05-31",
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "messages": [{"role": "user", "content": content_blocks}],
+    }
+    if system:
+        body["system"] = [{"type": "text", "text": system}]
+    try:
+        response = client.invoke_model(
+            modelId=model_id,
+            contentType="application/json",
+            accept="application/json",
+            body=json.dumps(body).encode("utf-8"),
+        )
+    except Exception as exc:  # pragma: no cover - boto3 service failure path
+        raise GenerationError(f"model invocation failed: {exc}") from exc
+
+    try:
+        payload = json.loads(response["body"].read().decode("utf-8"))
+    except (json.JSONDecodeError, KeyError, AttributeError) as exc:
+        raise GenerationError("model returned unreadable response") from exc
+
+    chunks = payload.get("content", [])
+    if not isinstance(chunks, list) or not chunks:
+        raise GenerationError("model returned empty response")
+    text = None
+    for chunk in chunks:
+        if isinstance(chunk, dict) and chunk.get("type") == "text":
+            text = chunk.get("text")
+            break
+    if text is None:
+        text = chunks[0].get("text") if isinstance(chunks[0], dict) else None
+    if not isinstance(text, str) or not text.strip():
+        raise GenerationError("model returned non-text response")
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    import re
+    md_match = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
+    if md_match:
+        try:
+            return json.loads(md_match.group(1).strip())
+        except json.JSONDecodeError:
+            pass
+    brace_match = re.search(r"\{.*\}", text, re.DOTALL)
+    if brace_match:
+        try:
+            return json.loads(brace_match.group(0))
+        except json.JSONDecodeError:
+            pass
+    bracket_match = re.search(r"\[.*\]", text, re.DOTALL)
+    if bracket_match:
+        try:
+            return json.loads(bracket_match.group(0))
+        except json.JSONDecodeError:
+            pass
+    logger.error("model returned invalid JSON: %s", text[:500])
+    raise GenerationError("model returned invalid JSON payload")
+
+
+def generate_flashcards_from_materials(
+    *,
+    course_id: str,
+    material_s3_keys: list[str],
+    num_cards: int,
+    system_prompt: str | None = None,
+) -> list[dict[str, Any]]:
+    """Generate flashcards by sending material files directly to Claude as multimodal document blocks."""
+    import base64
+    import boto3
+
+    if not material_s3_keys:
+        raise GenerationError("no materials provided for flashcard generation")
+
+    bucket = os.getenv("UPLOADS_BUCKET", "").strip()
+    if not bucket:
+        raise GenerationError("server misconfiguration: UPLOADS_BUCKET missing")
+
+    s3 = boto3.client("s3")
+    content_blocks: list[dict[str, Any]] = []
+
+    for s3_key in material_s3_keys:
+        try:
+            obj = s3.get_object(Bucket=bucket, Key=s3_key)
+            file_bytes = obj["Body"].read()
+            content_type = obj.get("ContentType", "application/octet-stream")
+        except Exception as exc:
+            raise GenerationError(f"failed to fetch material from S3: {exc}") from exc
+
+        if "pdf" in content_type.lower():
+            encoded = base64.standard_b64encode(file_bytes).decode("ascii")
+            content_blocks.append({
+                "type": "document",
+                "source": {
+                    "type": "base64",
+                    "media_type": "application/pdf",
+                    "data": encoded,
+                },
+            })
+        else:
+            # Treat as text
+            try:
+                text_content = file_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                text_content = file_bytes.decode("latin-1")
+            content_blocks.append({"type": "text", "text": text_content})
+
+    if system_prompt is None:
+        system_prompt = (
+            "You are an expert study assistant. Your task is to create high-quality flashcards "
+            "from the provided course materials. Each flashcard should test a single concept. "
+            "Use clear, concise language. The prompt should be a question and the answer should "
+            "be a direct, complete response."
+        )
+
+    content_blocks.append({
+        "type": "text",
+        "text": (
+            "Return ONLY a JSON array. No markdown, no explanation.\n"
+            f"Create exactly {num_cards} flashcards from the provided course materials using this schema: "
+            '[{"id":"card-1","courseId":"...","topicId":"topic-...","prompt":"...","answer":"..."}].\n'
+            f"courseId must be \"{course_id}\".\n"
+            "Generate topicId values that meaningfully categorize each card (e.g. \"topic-cell-biology\", \"topic-statistics\").\n"
+            "Use only facts from the provided materials."
+        ),
+    })
+
+    payload = _invoke_model_multimodal_json(
+        content_blocks,
+        system=system_prompt,
+        max_tokens=max(4096, num_cards * 200),
+    )
+    if not isinstance(payload, list):
+        raise GenerationError("flashcard model response must be an array")
+
+    cards: list[dict[str, Any]] = []
+    for index, row in enumerate(payload, start=1):
+        if not isinstance(row, dict):
+            continue
+        card = {
+            "id": str(row.get("id", f"card-{index}")).strip() or f"card-{index}",
+            "courseId": str(row.get("courseId", course_id)).strip() or course_id,
+            "topicId": str(row.get("topicId", "topic-unknown")).strip() or "topic-unknown",
+            "prompt": str(row.get("prompt", "")).strip(),
+            "answer": str(row.get("answer", "")).strip(),
+            "citations": [],
+        }
+        if not card["prompt"] or not card["answer"]:
+            continue
+        cards.append(card)
+
+    if not cards:
+        raise GenerationError("flashcard model response did not contain valid cards")
+    return cards[:num_cards]
+
+
 def generate_flashcards(*, course_id: str, num_cards: int) -> list[dict[str, Any]]:
     context = _retrieve_context(
         course_id=course_id,

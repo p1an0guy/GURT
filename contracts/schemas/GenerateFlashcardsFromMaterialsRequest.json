@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "GenerateFlashcardsFromMaterialsRequest.json",
+  "title": "GenerateFlashcardsFromMaterialsRequest",
+  "description": "Request body for generating flashcards directly from selected course materials.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["courseId", "materialIds"],
+  "properties": {
+    "courseId": { "type": "string", "minLength": 1 },
+    "materialIds": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "maxItems": 10
+    },
+    "numCards": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100,
+      "default": 20
+    }
+  }
+}
