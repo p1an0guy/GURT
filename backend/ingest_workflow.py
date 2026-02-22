@@ -16,6 +16,13 @@ from typing import Any, Mapping
 
 logger = logging.getLogger(__name__)
 MAX_OFFICE_DOC_BYTES = 50 * 1024 * 1024
+_INGEST_METRICS_NAMESPACE = "Gurt/IngestWorkflow"
+_METRIC_FINALIZE_SUCCESS = "IngestFinalizeSuccess"
+_METRIC_FINALIZE_FAILURE = "IngestFinalizeFailure"
+_METRIC_KB_TRIGGER_MISSING_CONFIG = "IngestKbTriggerMissingConfig"
+_METRIC_KB_TRIGGER_STARTED = "IngestKbTriggerStarted"
+_METRIC_KB_TRIGGER_SUCCEEDED = "IngestKbTriggerSucceeded"
+_METRIC_KB_TRIGGER_FAILED = "IngestKbTriggerFailed"
 
 
 def _utc_now_rfc3339() -> str:
@@ -53,6 +60,47 @@ def _bedrock_agent_client() -> Any:
     import boto3
 
     return boto3.client("bedrock-agent")
+
+
+def _cloudwatch_client() -> Any:
+    import boto3
+
+    return boto3.client("cloudwatch")
+
+
+def _metrics_env_dimension() -> str:
+    for env_var in ("APP_ENV", "STAGE", "ENV"):
+        value = os.getenv(env_var, "").strip()
+        if value:
+            return value
+    return "unknown"
+
+
+def _metric_dimensions() -> list[dict[str, str]]:
+    return [
+        {"Name": "Service", "Value": "StudyBuddy"},
+        {"Name": "Workflow", "Value": "DocsIngest"},
+        {"Name": "Handler", "Value": "Finalize"},
+        {"Name": "Environment", "Value": _metrics_env_dimension()},
+    ]
+
+
+def _emit_operational_metric(metric_name: str) -> None:
+    try:
+        _cloudwatch_client().put_metric_data(
+            Namespace=_INGEST_METRICS_NAMESPACE,
+            MetricData=[
+                {
+                    "MetricName": metric_name,
+                    "Dimensions": _metric_dimensions(),
+                    "Timestamp": datetime.now(timezone.utc),
+                    "Value": 1,
+                    "Unit": "Count",
+                }
+            ],
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning("unable to emit ingest metric: %s", metric_name, exc_info=True)
 
 
 def _kb_ingestion_env_ids() -> tuple[str, str]:
@@ -363,6 +411,7 @@ def finalize_handler(event: Mapping[str, Any], _context: Any) -> dict[str, Any]:
     )
 
     if status == "FINISHED":
+        _emit_operational_metric(_METRIC_FINALIZE_SUCCESS)
         kb_id, ds_id = _kb_ingestion_env_ids()
         if not kb_id or not ds_id:
             err_msg = (
@@ -370,11 +419,13 @@ def finalize_handler(event: Mapping[str, Any], _context: Any) -> dict[str, Any]:
                 "KNOWLEDGE_BASE_DATA_SOURCE_ID (or DATA_SOURCE_ID) required for KB ingestion"
             )
             logger.error(err_msg)
+            _emit_operational_metric(_METRIC_KB_TRIGGER_MISSING_CONFIG)
             _persist_kb_ingestion_result(job_id, ingestion_error=err_msg)
         else:
             client_token = hashlib.sha256(
                 f"{source_key}:{len(text)}".encode()
             ).hexdigest()
+            _emit_operational_metric(_METRIC_KB_TRIGGER_STARTED)
             try:
                 response = _bedrock_agent_client().start_ingestion_job(
                     knowledgeBaseId=kb_id,
@@ -382,6 +433,7 @@ def finalize_handler(event: Mapping[str, Any], _context: Any) -> dict[str, Any]:
                     clientToken=client_token,
                 )
                 ingestion_job_id = response["ingestionJob"]["ingestionJobId"]
+                _emit_operational_metric(_METRIC_KB_TRIGGER_SUCCEEDED)
                 logger.info(
                     "KB ingestion started for job %s: ingestionJobId=%s",
                     job_id,
@@ -389,9 +441,12 @@ def finalize_handler(event: Mapping[str, Any], _context: Any) -> dict[str, Any]:
                 )
                 _persist_kb_ingestion_result(job_id, ingestion_job_id=ingestion_job_id)
             except Exception as exc:  # noqa: BLE001
+                _emit_operational_metric(_METRIC_KB_TRIGGER_FAILED)
                 err_msg = f"KB ingestion trigger failed: {exc}"
                 logger.exception(err_msg)
                 _persist_kb_ingestion_result(job_id, ingestion_error=err_msg)
+    else:
+        _emit_operational_metric(_METRIC_FINALIZE_FAILURE)
 
     return {
         "jobId": job_id,
