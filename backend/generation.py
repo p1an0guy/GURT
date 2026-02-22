@@ -554,49 +554,82 @@ def format_canvas_items(items: list[dict[str, Any]]) -> str | None:
     return "\n".join(lines)
 
 
-def _retrieve_and_generate(*, kb_id: str, model_arn: str, query: str, system_prompt: str) -> dict[str, Any]:
-    """Use Bedrock RetrieveAndGenerate for end-to-end RAG with maximum context."""
+def _retrieve_and_generate(*, kb_id: str, model_arn: str, query: str, system_prompt: str, course_id: str) -> dict[str, Any]:
+    """Use Bedrock RetrieveAndGenerate for end-to-end RAG with maximum context.
+
+    Attempts a courseId metadata filter first so results are scoped to the
+    active course.  Falls back to unfiltered retrieval if the filter fails
+    (e.g. KB metadata not yet indexed).
+    """
     client = _bedrock_agent_runtime()
-    try:
-        response = client.retrieve_and_generate(
-            input={"text": query},
-            retrieveAndGenerateConfiguration={
-                "type": "KNOWLEDGE_BASE",
-                "knowledgeBaseConfiguration": {
-                    "knowledgeBaseId": kb_id,
-                    "modelArn": model_arn,
-                    "retrievalConfiguration": {
-                        "vectorSearchConfiguration": {
-                            "numberOfResults": 100,
+
+    prompt_template = (
+        f"{system_prompt}\n\n"
+        "Here are the search results from the course knowledge base:\n"
+        "$search_results$\n\n"
+        "$output_format_instructions$"
+    )
+
+    def _build_config(*, use_filter: bool) -> dict:
+        vector_cfg: dict[str, Any] = {"numberOfResults": 100}
+        if use_filter:
+            vector_cfg["filter"] = {"equals": {"key": "courseId", "value": course_id}}
+        return {
+            "type": "KNOWLEDGE_BASE",
+            "knowledgeBaseConfiguration": {
+                "knowledgeBaseId": kb_id,
+                "modelArn": model_arn,
+                "retrievalConfiguration": {
+                    "vectorSearchConfiguration": vector_cfg,
+                },
+                "generationConfiguration": {
+                    "inferenceConfig": {
+                        "textInferenceConfig": {
+                            "maxTokens": 8192,
+                            "temperature": 0.1,
                         }
                     },
-                    "generationConfiguration": {
-                        "inferenceConfig": {
-                            "textInferenceConfig": {
-                                "maxTokens": 8192,
-                                "temperature": 0.1,
-                            }
-                        },
-                        "promptTemplate": {
-                            "textPromptTemplate": (
-                                f"{system_prompt}\n\n"
-                                "Here are the search results from the course knowledge base:\n"
-                                "$search_results$\n\n"
-                                "$output_format_instructions$"
-                            ),
-                        },
-                    },
-                    "orchestrationConfiguration": {
-                        "queryTransformationConfiguration": {
-                            "type": "QUERY_DECOMPOSITION",
-                        }
+                    "promptTemplate": {
+                        "textPromptTemplate": prompt_template,
                     },
                 },
+                "orchestrationConfiguration": {
+                    "queryTransformationConfiguration": {
+                        "type": "QUERY_DECOMPOSITION",
+                    }
+                },
             },
+        }
+
+    query_text = f"course:{course_id}\n{query}"
+
+    def _is_refusal(resp: dict) -> bool:
+        text = resp.get("output", {}).get("text", "").strip().lower()
+        return len(text) < 80 and ("unable to assist" in text or "i cannot" in text or "i don't have" in text)
+
+    # Try with courseId filter first
+    try:
+        response = client.retrieve_and_generate(
+            input={"text": query_text},
+            retrieveAndGenerateConfiguration=_build_config(use_filter=True),
         )
+        if not _is_refusal(response):
+            print(f"[RAG-DEBUG] filtered retrieve_and_generate succeeded for course_id={course_id}")
+            return response
+        print(f"[RAG-DEBUG] filtered retrieve_and_generate returned refusal for course_id={course_id}, falling back")
+    except Exception as exc:
+        print(f"[RAG-DEBUG] filtered retrieve_and_generate failed for course_id={course_id}, falling back: {exc}")
+
+    # Fallback: unfiltered (but only if metadata filter just isn't supported)
+    try:
+        response = client.retrieve_and_generate(
+            input={"text": query_text},
+            retrieveAndGenerateConfiguration=_build_config(use_filter=False),
+        )
+        print(f"[RAG-DEBUG] unfiltered retrieve_and_generate succeeded for course_id={course_id}")
+        return response
     except Exception as exc:
         raise GenerationError(f"retrieve_and_generate failed: {exc}") from exc
-    return response
 
 
 def chat_answer(*, course_id: str, question: str, canvas_context: str | None = None) -> dict[str, Any]:
@@ -634,6 +667,9 @@ def chat_answer(*, course_id: str, question: str, canvas_context: str | None = N
         "- Use markdown: **bold** for key info, bullet lists for multiple items.\n"
         "- Use emojis where they add clarity (✅ ❌ 📅 📊 🍦) but keep it natural.\n"
         "- Only say you don't know if the info truly isn't in the context or your knowledge.\n"
+        f"\nYou are currently assisting with course ID {course_id}. "
+        "ONLY use search results and context that belong to this course. "
+        "Ignore any results from other courses.\n"
     )
 
     query = f"{question}{canvas_section}"
@@ -644,6 +680,7 @@ def chat_answer(*, course_id: str, question: str, canvas_context: str | None = N
             model_arn=model_arn,
             query=query,
             system_prompt=system_prompt,
+            course_id=course_id,
         )
     except GenerationError:
         raise
@@ -655,12 +692,60 @@ def chat_answer(*, course_id: str, question: str, canvas_context: str | None = N
     if not answer:
         raise GenerationError("retrieve_and_generate returned empty response")
 
+    # Check if all citations belong to the requested course
     citations_list: list[str] = []
+    off_course_citations: list[str] = []
     for citation_group in response.get("citations", []):
         for ref in citation_group.get("retrievedReferences", []):
             source = _extract_source(ref.get("location"))
-            if source and source not in citations_list:
-                citations_list.append(source)
+            if source and source not in citations_list and source not in off_course_citations:
+                if _source_in_course_scope(source=source, course_id=course_id):
+                    citations_list.append(source)
+                else:
+                    off_course_citations.append(source)
 
+    # If ALL citations are from other courses, the answer is about the wrong
+    # course.  Fall back to manual retrieve (S3-path filtered) + invoke.
+    if off_course_citations and not citations_list:
+        print(f"[RAG-DEBUG] all {len(off_course_citations)} citations off-course for course_id={course_id}, falling back to manual path")
+        return _chat_answer_manual(
+            course_id=course_id,
+            question=question,
+            system_prompt=system_prompt,
+            canvas_section=canvas_section,
+        )
+
+    if off_course_citations:
+        print(f"[RAG-DEBUG] filtered out {len(off_course_citations)} off-course citations for course_id={course_id}")
     print(f"[RAG-DEBUG] answer_length={len(answer)} citations={len(citations_list)}")
     return {"answer": answer, "citations": citations_list}
+
+
+def _chat_answer_manual(*, course_id: str, question: str, system_prompt: str, canvas_section: str) -> dict[str, Any]:
+    """Fallback: manual retrieve (S3-path scoped) + invoke_model."""
+    context = _retrieve_context(course_id=course_id, query=question, k=8)
+    if not context:
+        raise GenerationError("no knowledge base context available for this course")
+
+    context_block = "\n\n".join(row["text"] for row in context)
+    prompt = (
+        f"{system_prompt}\n\n"
+        f"Course context:\n{context_block}\n\n"
+        f"{canvas_section}\n"
+        f"Student question: {question}\n\n"
+        "Answer the student's question using the course context above. "
+        "Return a JSON object: {\"answer\": \"...\", \"citations\": [\"s3://...\"]}"
+    )
+    payload = _invoke_model_json(prompt, max_tokens=4096, temperature=0.2)
+
+    answer = str(payload.get("answer", "")).strip()
+    if not answer:
+        raise GenerationError("manual chat model returned empty answer")
+
+    default_citations = [
+        row.get("source", "").strip() for row in context[:3] if row.get("source", "").strip()
+    ]
+    citations = _normalize_citations(payload.get("citations"), default_citations)
+
+    print(f"[RAG-DEBUG] manual fallback answer_length={len(answer)} citations={len(citations)} for course_id={course_id}")
+    return {"answer": answer, "citations": citations}

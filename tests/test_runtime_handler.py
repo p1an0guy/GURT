@@ -291,7 +291,6 @@ class RuntimeHandlerTests(unittest.TestCase):
         rows = json.loads(response["body"])
         self.assertEqual(len(rows), 5)
         self.assertEqual(rows[0]["courseId"], "course-psych-101")
-
     def test_study_today_falls_back_to_fixtures_when_runtime_cards_scan_fails(self) -> None:
         with patch("backend.runtime._cards_table", return_value=_FailingCardsTable()):
             response = self._invoke(

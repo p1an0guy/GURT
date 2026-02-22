@@ -14,6 +14,9 @@ const counterEls = {
   failed: document.getElementById("countFailed")
 };
 
+const scrapeToggle = document.getElementById("scrapeToggle");
+const scrapePanel = document.querySelector(".scrape-panel");
+
 const SCRAPE_START_MESSAGE_TYPE = "SCRAPE_MODULES_START";
 const MAX_FILE_ROWS = 200;
 
@@ -21,6 +24,18 @@ const MAX_FILE_ROWS = 200;
 let currentCourseId = null;
 let currentCourseName = null;
 let courseRegistry = []; // [{courseId, courseName}]
+
+// Subtle pastel palette — bg for chat area, dot for the tab indicator
+const COURSE_COLORS = [
+  { bg: "#eef4fb", dot: "#4a90d9" },  // blue
+  { bg: "#edf7ee", dot: "#4caf50" },  // green
+  { bg: "#f4eefb", dot: "#9c5fc7" },  // purple
+  { bg: "#fef5ea", dot: "#e8a035" },  // orange
+  { bg: "#fbeef2", dot: "#d94f73" },  // pink
+  { bg: "#eef7f6", dot: "#3faea0" },  // teal
+  { bg: "#fbf7ee", dot: "#c4a535" },  // gold
+  { bg: "#eeeef9", dot: "#5c6bc0" },  // indigo
+];
 
 const scrapeState = {
   phase: "idle",
@@ -40,6 +55,14 @@ if (scrapeBtn) {
 }
 if (retryScrapeBtn) {
   retryScrapeBtn.addEventListener("click", () => startScrapeWorkflow("retry"));
+}
+
+// Scrape drawer toggle
+if (scrapeToggle && scrapePanel) {
+  scrapeToggle.addEventListener("click", () => {
+    const isCollapsed = scrapePanel.classList.toggle("collapsed");
+    scrapeToggle.setAttribute("aria-expanded", String(!isCollapsed));
+  });
 }
 
 userInput.addEventListener("keydown", (e) => {
@@ -90,6 +113,13 @@ async function startScrapeWorkflow(trigger) {
   scrapeState.statusText = "Starting scrape workflow...";
   scrapeState.counts = zeroCounts();
   scrapeState.files.clear();
+
+  // Auto-expand the drawer when a scrape starts
+  if (scrapePanel && scrapePanel.classList.contains("collapsed")) {
+    scrapePanel.classList.remove("collapsed");
+    if (scrapeToggle) scrapeToggle.setAttribute("aria-expanded", "true");
+  }
+
   renderScrapeUI();
 
   try {
@@ -794,6 +824,7 @@ async function initCourseContext() {
 
   renderCourseTabs();
   if (currentCourseId) {
+    applyCourseTheme(currentCourseId);
     await loadChatHistory(currentCourseId);
   }
 }
@@ -814,23 +845,51 @@ function saveCourseRegistry() {
   chromeStorageSet({ gurtCourses: courseRegistry });
 }
 
+function getCourseColor(courseId) {
+  const idx = courseRegistry.findIndex(c => c.courseId === courseId);
+  return COURSE_COLORS[(idx === -1 ? 0 : idx) % COURSE_COLORS.length];
+}
+
+function applyCourseTheme(courseId) {
+  const color = getCourseColor(courseId);
+  document.querySelector(".chat-container").style.setProperty("--course-bg", color.bg);
+}
+
 function renderCourseTabs() {
   if (!courseTabsContainer) return;
   courseTabsContainer.innerHTML = "";
   for (const course of courseRegistry) {
-    const btn = document.createElement("button");
-    btn.className = "course-tab" + (course.courseId === currentCourseId ? " active" : "");
-    btn.textContent = shortenCourseName(course.courseName);
-    btn.title = course.courseName;
-    btn.addEventListener("click", () => switchCourse(course.courseId, course.courseName));
-    courseTabsContainer.appendChild(btn);
+    const color = getCourseColor(course.courseId);
+    const tab = document.createElement("span");
+    tab.className = "course-tab" + (course.courseId === currentCourseId ? " active" : "");
+    tab.title = course.courseName;
+
+    const dot = document.createElement("span");
+    dot.className = "course-color-dot";
+    dot.style.backgroundColor = color.dot;
+    tab.appendChild(dot);
+
+    const label = document.createTextNode(shortenCourseName(course.courseName, course.courseId));
+    tab.appendChild(label);
+
+    courseTabsContainer.appendChild(tab);
   }
 }
 
-function shortenCourseName(name) {
+// Fallback display names for known course IDs
+const COURSE_NAME_MAP = {
+  "175564": "CSC 202",
+  "177366": "PHYS 141",
+  "176823": "ENGL 147",
+  "175245": "MATH 244",
+};
+
+function shortenCourseName(name, courseId) {
+  // Check hardcoded map first
+  if (courseId && COURSE_NAME_MAP[courseId]) return COURSE_NAME_MAP[courseId];
   if (!name) return "Course";
-  // Try to extract "CSC 202" or "PHYS 141" style short names
-  const match = name.match(/([A-Z]{2,5}[\s-]\d{3}[A-Z]?)/i);
+  // Try to extract "CSC 202" or "PHYS 141" style short names (word-boundary anchored)
+  const match = name.match(/\b([A-Z]{2,5}[\s-]\d{3}[A-Z]?)\b/i);
   if (match) return match[1].toUpperCase();
   // Truncate long names
   return name.length > 20 ? name.slice(0, 18) + "..." : name;
@@ -842,12 +901,28 @@ async function switchCourse(courseId, courseName) {
   currentCourseId = courseId;
   currentCourseName = courseName || `Course ${courseId}`;
   addCourseToRegistry(courseId, courseName);
+  applyCourseTheme(courseId);
 
-  // Clear current messages
+  // Fade out current messages
+  messagesContainer.classList.add("fade-out");
+  await new Promise(resolve => {
+    messagesContainer.addEventListener("transitionend", resolve, { once: true });
+    // Safety timeout in case transitionend doesn't fire
+    setTimeout(resolve, 250);
+  });
+
+  // Swap content while invisible
   messagesContainer.innerHTML = "";
-
-  // Load this course's chat history
   await loadChatHistory(courseId);
+
+  // Fade back in
+  messagesContainer.classList.remove("fade-out");
+  messagesContainer.classList.add("fade-in");
+  await new Promise(resolve => {
+    messagesContainer.addEventListener("transitionend", resolve, { once: true });
+    setTimeout(resolve, 250);
+  });
+  messagesContainer.classList.remove("fade-in");
 
   // Update tabs UI
   renderCourseTabs();
