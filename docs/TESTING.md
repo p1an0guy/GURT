@@ -184,11 +184,17 @@ cdk synth
 cdk deploy GurtDataStack GurtKnowledgeBaseStack GurtApiStack GurtFrontendStack
 ```
 
-Or use one command from repo root (build + CDK checks + bootstrap + deploy):
+Or use one command from repo root (build + CDK checks + bootstrap + two-phase deploy):
 
 ```bash
 ./scripts/deploy.sh
 ```
+
+`scripts/deploy.sh` deploys in three phases:
+
+1. Deploy API-side stacks (`GurtDataStack`, optional `GurtKnowledgeBaseStack`, `GurtApiStack`).
+2. Rebuild frontend using fresh `ApiBaseUrl` from `outputs.<stage>.json` (`REQUIRE_API_BASE_URL=true`).
+3. Deploy `GurtFrontendStack`.
 
 Recommended usage with AWS SSO profile:
 
@@ -243,9 +249,10 @@ Deploy verification checklist:
 2. Open `FrontendCloudFrontUrl` in a browser and verify the app loads.
 3. Verify route rewrite behavior for static export:
    - open `<FrontendCloudFrontUrl>/import` and confirm page render (not S3 XML/404).
-4. Confirm extension redirect config was updated by deploy script:
+4. Confirm extension deployment config was updated by deploy script:
    - inspect `browserextention/deployment_config.json`
-   - verify `webAppBaseUrl` matches `FrontendCloudFrontUrl`.
+   - verify `webAppBaseUrl` matches `FrontendCloudFrontUrl`
+   - verify `apiBaseUrl` matches `ApiBaseUrl`.
 5. Reload unpacked extension in `chrome://extensions`, run a flashcard/practice-test generation from extension, and confirm the opened tab URL starts with `FrontendCloudFrontUrl/import#`.
 
 CDK context defaults for demo deploys (`infra/cdk.json`):

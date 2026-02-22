@@ -7,6 +7,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STAGE_NAME="${STAGE_NAME:-dev}"
 OUTPUTS_FILE="${OUTPUTS_FILE:-$ROOT_DIR/outputs.${STAGE_NAME}.json}"
+REQUIRE_API_BASE_URL="${REQUIRE_API_BASE_URL:-false}"
 
 echo "Building frontend..."
 cd "$ROOT_DIR"
@@ -45,6 +46,12 @@ if stack is None:
 print((stack or {}).get("ApiBaseUrl", ""))
 PY
   )"
+fi
+
+REQUIRE_API_BASE_URL_NORMALIZED="$(printf '%s' "$REQUIRE_API_BASE_URL" | tr '[:upper:]' '[:lower:]')"
+if [ -z "${NEXT_PUBLIC_API_BASE_URL:-}" ] && [ "$REQUIRE_API_BASE_URL_NORMALIZED" = "true" ]; then
+  echo "Error: NEXT_PUBLIC_API_BASE_URL is required but was not provided and could not be read from $OUTPUTS_FILE."
+  exit 1
 fi
 
 if [ -z "${NEXT_PUBLIC_API_BASE_URL:-}" ]; then

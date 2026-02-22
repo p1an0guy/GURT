@@ -23,12 +23,13 @@ CALENDAR_TOKEN_MINTING_PATH="${CALENDAR_TOKEN_MINTING_PATH:-endpoint}"
 CALENDAR_TOKEN="${CALENDAR_TOKEN:-demo-calendar-token}"
 CALENDAR_TOKEN_USER_ID="${CALENDAR_TOKEN_USER_ID:-demo-user}"
 FRONTEND_ASSET_PATH="${FRONTEND_ASSET_PATH:-$ROOT_DIR/out}"
+OUTPUTS_FILE="${OUTPUTS_FILE:-$ROOT_DIR/outputs.${STAGE_NAME}.json}"
 
 echo "Running CDK checks..."
 
 if [ ! -d "$FRONTEND_ASSET_PATH" ]; then
   echo "Frontend asset path missing at $FRONTEND_ASSET_PATH; running frontend build."
-  "$ROOT_DIR/scripts/build-frontend.sh"
+  STAGE_NAME="$STAGE_NAME" OUTPUTS_FILE="$OUTPUTS_FILE" "$ROOT_DIR/scripts/build-frontend.sh"
 fi
 
 python3 -m venv "$VENV_DIR"

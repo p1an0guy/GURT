@@ -19,18 +19,40 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def normalize_base_url(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+    return value.strip().rstrip("/")
+
+
 def find_frontend_url(outputs: dict[str, object]) -> str:
     stack = outputs.get("GurtFrontendStack")
     if isinstance(stack, dict):
-        value = stack.get("FrontendCloudFrontUrl")
-        if isinstance(value, str) and value.strip():
-            return value.strip().rstrip("/")
+        normalized = normalize_base_url(stack.get("FrontendCloudFrontUrl"))
+        if normalized:
+            return normalized
 
     for value in outputs.values():
         if isinstance(value, dict):
-            candidate = value.get("FrontendCloudFrontUrl")
-            if isinstance(candidate, str) and candidate.strip():
-                return candidate.strip().rstrip("/")
+            normalized = normalize_base_url(value.get("FrontendCloudFrontUrl"))
+            if normalized:
+                return normalized
+
+    return ""
+
+
+def find_api_base_url(outputs: dict[str, object]) -> str:
+    stack = outputs.get("GurtApiStack")
+    if isinstance(stack, dict):
+        normalized = normalize_base_url(stack.get("ApiBaseUrl"))
+        if normalized:
+            return normalized
+
+    for value in outputs.values():
+        if isinstance(value, dict):
+            normalized = normalize_base_url(value.get("ApiBaseUrl"))
+            if normalized:
+                return normalized
 
     return ""
 
@@ -47,13 +69,23 @@ def main() -> int:
             f"Could not find FrontendCloudFrontUrl in {outputs_path}. "
             "Deploy GurtFrontendStack first."
         )
+    api_base_url = find_api_base_url(outputs)
+    if not api_base_url:
+        raise SystemExit(
+            f"Could not find ApiBaseUrl in {outputs_path}. "
+            "Deploy GurtApiStack first."
+        )
 
-    payload = {"webAppBaseUrl": frontend_url}
+    payload = {
+        "webAppBaseUrl": frontend_url,
+        "apiBaseUrl": api_base_url,
+    }
     target_path.write_text(
         json.dumps(payload, indent=2, ensure_ascii=True) + "\n",
         encoding="utf-8",
     )
-    print(f"Updated extension redirect base URL: {frontend_url}")
+    print(f"Updated extension web app URL: {frontend_url}")
+    print(f"Updated extension API base URL: {api_base_url}")
     print(f"Wrote: {target_path}")
     return 0
 
