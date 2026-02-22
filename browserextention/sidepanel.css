@@ -230,6 +230,55 @@ body {
   flex-shrink: 0;
 }
 
+.focus-panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.focus-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  border: none;
+  padding: 0.55rem 1rem;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.focus-toggle:hover {
+  background: var(--surface-soft);
+  color: var(--ink);
+}
+
+.panel-toggle-chevron {
+  transition: transform 0.2s ease;
+}
+
+.focus-panel.collapsed .panel-toggle-chevron {
+  transform: rotate(0deg);
+}
+
+.focus-panel:not(.collapsed) .panel-toggle-chevron {
+  transform: rotate(180deg);
+}
+
+.focus-drawer {
+  padding: 0.6rem 1rem 0.7rem;
+}
+
+.focus-panel.collapsed .focus-drawer {
+  display: none;
+}
+
 .scrape-panel {
   display: flex;
   flex-direction: column;
@@ -850,5 +899,148 @@ body {
 
 .action-card-btn:disabled {
   opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.focus-block-card {
+  position: relative;
+  margin: 0;
+  padding: 0.85rem 0.76rem 0.78rem;
+  border: 1px solid var(--line);
+  border-radius: 0.8rem;
+  background: var(--surface);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas:
+    "meta ring"
+    "start ring";
+  gap: 0.55rem 0.8rem;
+  align-items: center;
+}
+
+.focus-block-meta {
+  grid-area: meta;
+  min-width: 0;
+}
+
+.focus-block-meta h2 {
+  font-size: 0.82rem;
+  margin: 0;
+  letter-spacing: 0.03em;
+}
+
+.focus-block-summary {
+  margin-top: 0.16rem;
+  font-size: 0.67rem;
+  color: var(--ink-soft);
+  line-height: 1.25;
+}
+
+.focus-ring-wrap {
+  grid-area: ring;
+  position: relative;
+  width: 116px;
+  height: 116px;
+  margin-left: auto;
+}
+
+.focus-ring {
+  width: 116px;
+  height: 116px;
+  transform: rotate(-90deg);
+}
+
+.focus-ring-track,
+.focus-ring-progress {
+  fill: none;
+  stroke-width: 8;
+}
+
+.focus-ring-track {
+  stroke: var(--surface-soft);
+}
+
+.focus-ring-progress {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  stroke-dasharray: 289.0265241303;
+  stroke-dashoffset: 289.0265241303;
+  transition: stroke-dashoffset 0.35s linear, stroke 0.2s ease;
+}
+
+.focus-ring-progress.break {
+  stroke: #53c89c;
+}
+
+.focus-ring-center {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 1px;
+  text-align: center;
+}
+
+.focus-phase-text {
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.focus-time-text {
+  font-size: 1.12rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.pomodoro-start-btn {
+  grid-area: start;
+  justify-self: start;
+  border: 1px solid var(--line);
+  border-radius: 0.62rem;
+  background: var(--surface-soft);
+  color: var(--ink);
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.38rem 0.62rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pomodoro-start-btn:hover:not(:disabled) {
+  background: var(--toggle-hover-bg);
+}
+
+.pomodoro-start-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.block-settings-icon {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--ink);
+  font-size: 0.78rem;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+}
+
+.block-settings-icon:hover:not(:disabled) {
+  background: var(--toggle-hover-bg);
+}
+
+.block-settings-icon:disabled {
+  opacity: 0.6;
   cursor: not-allowed;
 }

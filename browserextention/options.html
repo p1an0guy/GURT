@@ -3,18 +3,90 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GURT — Settings</title>
+  <title>GURT Focus Blocking Settings</title>
   <link rel="stylesheet" href="options.css">
 </head>
 <body>
   <main class="options-shell">
     <section class="options-panel">
-      <h1>GURT Extension</h1>
-      <p class="subtitle">Generative Uni Revision Tool</p>
+      <header class="panel-header">
+        <p class="eyebrow">GURT Extension</p>
+        <h1>Focus Blocking</h1>
+        <p class="subtitle">LeechBlock-style website blocking with schedule and time budget controls.</p>
+      </header>
 
-      <label for="apiEndpoint">API Endpoint</label>
-      <input id="apiEndpoint" type="text" value="https://hpthlfk5ql.execute-api.us-west-2.amazonaws.com/dev" disabled>
-      <p class="help-text">The API endpoint is preconfigured and cannot be changed.</p>
+      <div class="field toggle-row">
+        <label for="blockEnabled">Enable website blocking</label>
+        <input id="blockEnabled" type="checkbox">
+      </div>
+
+      <div class="field">
+        <label for="setName">Rule set name</label>
+        <input id="setName" type="text" maxlength="60">
+      </div>
+
+      <div class="field">
+        <label for="sites">Blocked sites (space/newline/comma separated)</label>
+        <textarea id="sites" rows="5" placeholder="youtube.com reddit.com +canvas.calpoly.edu"></textarea>
+        <p class="help-text">Use <code>+pattern</code> for allow exceptions. Example: <code>+mail.google.com</code>.</p>
+      </div>
+
+      <div class="field">
+        <label>Active days</label>
+        <div class="days-grid" id="daysGrid"></div>
+      </div>
+
+      <div class="field">
+        <label for="timeRanges">Time ranges (HHMM-HHMM, comma-separated)</label>
+        <input id="timeRanges" type="text" placeholder="0900-1700,1900-2200">
+      </div>
+
+      <div class="field split">
+        <div>
+          <label for="limitMinutes">Time limit (minutes)</label>
+          <input id="limitMinutes" type="number" min="1" step="1" placeholder="120">
+        </div>
+        <div>
+          <label for="limitPeriod">Limit period</label>
+          <select id="limitPeriod">
+            <option value="">None</option>
+            <option value="day">Per day</option>
+            <option value="week">Per week</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field pomodoro-box">
+        <div class="toggle-row">
+          <label for="pomodoroEnabled">Enable Pomodoro timer mode</label>
+          <input id="pomodoroEnabled" type="checkbox">
+        </div>
+        <div class="field split pomodoro-split">
+          <div>
+            <label for="pomodoroFocusMinutes">Focus minutes</label>
+            <input id="pomodoroFocusMinutes" type="number" min="1" step="1" placeholder="25">
+          </div>
+          <div>
+            <label for="pomodoroBreakMinutes">Break minutes</label>
+            <input id="pomodoroBreakMinutes" type="number" min="1" step="1" placeholder="5">
+          </div>
+        </div>
+        <p class="help-text">When enabled, matched sites are blocked during focus sessions and allowed during breaks.</p>
+      </div>
+
+      <div class="field readonly">
+        <label>Protected hard allowlist (read-only)</label>
+        <ul id="allowlist"></ul>
+        <p class="help-text">Deployment reminder: include the final CloudFront web app domain in this allowlist before production release.</p>
+      </div>
+
+      <div id="validationErrors" class="validation-errors hidden"></div>
+      <p id="saveStatus" class="save-status" aria-live="polite"></p>
+
+      <footer class="actions">
+        <button id="resetBtn" type="button" class="secondary">Reset to Saved</button>
+        <button id="saveBtn" type="button">Save Settings</button>
+      </footer>
     </section>
   </main>
 

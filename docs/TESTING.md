@@ -392,3 +392,38 @@ Use this runbook when Canvas file API sync is unreliable and extension fallback 
 7. Validate backend route usage:
    - Expected per-file sequence: `POST /uploads` -> signed S3 `PUT` -> `POST /docs/ingest`.
    - No extension-only ingest endpoint should appear in network logs.
+
+## Chrome extension focus blocking validation (MVP)
+
+Use this runbook to validate LeechBlock-style website blocking in the extension service worker.
+
+1. Load the extension in Chrome:
+   - Open `chrome://extensions`.
+   - Enable **Developer mode**.
+   - Click **Load unpacked** and select `browserextention/`.
+2. Open extension options page and configure blocking:
+   - Enable website blocking.
+   - Add a site pattern (for example `reddit.com`).
+   - Configure an active time window (for example `0000-2400`) and active day.
+   - Save settings.
+3. Validate blocked-page redirect:
+   - Navigate to a blocked site.
+   - Confirm tab redirects to extension `blocked.html` with reason and next-unblock details.
+4. Validate hard allowlist behavior:
+   - Navigate to `https://canvas.calpoly.edu/...`.
+   - Confirm it is never redirected to blocked page with default config.
+5. Validate side panel controls:
+   - Open side panel and locate `Focus Blocking` card.
+   - Confirm status text renders enabled/blocked state.
+   - Toggle blocking off and verify blocked pages can be revisited.
+6. Validate schedule/limit semantics:
+   - With schedule-only config, confirm block occurs only inside configured time ranges.
+   - With limit-only config, confirm block starts after exceeding configured minutes in period.
+7. Validate Pomodoro semantics:
+   - Enable Pomodoro in options with custom focus/break durations.
+   - Start Pomodoro from sidepanel `Focus Blocking` card.
+   - Confirm session cannot be manually stopped before the cycle completes.
+   - Confirm matched sites are blocked during focus phase and unblocked during break phase.
+   - Confirm blocked page countdown reaches `00:00` and page refreshes.
+8. Validate release readiness allowlist note:
+   - Confirm options UI reminder exists to include final CloudFront web app domain in hard allowlist before production release.

@@ -62,6 +62,121 @@ _CHEATING_PATTERNS = (
 )
 
 
+def _remove_trailing_commas(value: str) -> str:
+    """Remove trailing commas before JSON object/array closers."""
+    return re.sub(r",\s*([}\]])", r"\1", value)
+
+
+def _extract_balanced_json_fragment(text: str, opener: str, closer: str) -> str | None:
+    start = text.find(opener)
+    if start < 0:
+        return None
+    depth = 0
+    in_string = False
+    escaped = False
+    for index in range(start, len(text)):
+        char = text[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+            continue
+        if char == opener:
+            depth += 1
+        elif char == closer:
+            depth -= 1
+            if depth == 0:
+                return text[start : index + 1]
+    return None
+
+
+def _json_parse_candidates(text: str) -> list[str]:
+    cleaned = text.strip().lstrip("\ufeff")
+    candidates: list[str] = [cleaned]
+
+    for match in re.finditer(r"```(?:json)?\s*\n?(.*?)```", cleaned, re.DOTALL):
+        fenced = match.group(1).strip()
+        if fenced:
+            candidates.append(fenced)
+
+    for fragment in (
+        _extract_balanced_json_fragment(cleaned, "{", "}"),
+        _extract_balanced_json_fragment(cleaned, "[", "]"),
+    ):
+        if fragment:
+            candidates.append(fragment.strip())
+
+    # Preserve order while dropping duplicates.
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for candidate in candidates:
+        if candidate and candidate not in seen:
+            ordered.append(candidate)
+            seen.add(candidate)
+    return ordered
+
+
+def _parse_model_json_text(text: str) -> Any:
+    errors: list[str] = []
+    for candidate in _json_parse_candidates(text):
+        for parser_input in (candidate, _remove_trailing_commas(candidate)):
+            try:
+                return json.loads(parser_input)
+            except json.JSONDecodeError as exc:
+                errors.append(f"line {exc.lineno} col {exc.colno}: {exc.msg}")
+    detail = errors[-1] if errors else "no JSON fragment found"
+    logger.error("model returned invalid JSON: %s", text[:500])
+    raise GenerationError(f"model returned invalid JSON payload ({detail})")
+
+
+def _validate_flashcard_payload(
+    payload: Any,
+    *,
+    course_id: str,
+    num_cards: int,
+    default_citations: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    if not isinstance(payload, list):
+        raise GenerationError("flashcard model response must be an array")
+
+    cards: list[dict[str, Any]] = []
+    invalid_rows = 0
+    for index, row in enumerate(payload, start=1):
+        if not isinstance(row, dict):
+            invalid_rows += 1
+            continue
+        prompt = str(row.get("prompt", "")).strip()
+        answer = str(row.get("answer", "")).strip()
+        if not prompt or not answer:
+            invalid_rows += 1
+            continue
+
+        card = {
+            "id": str(row.get("id", f"card-{index}")).strip() or f"card-{index}",
+            "courseId": str(row.get("courseId", course_id)).strip() or course_id,
+            "topicId": str(row.get("topicId", "topic-unknown")).strip()
+            or "topic-unknown",
+            "prompt": prompt,
+            "answer": answer,
+            "citations": _normalize_citations(
+                row.get("citations"), default_citations or []
+            ),
+        }
+        cards.append(card)
+
+    if not cards:
+        raise GenerationError(
+            f"flashcard model response did not contain valid cards (invalid rows: {invalid_rows}/{len(payload)})"
+        )
+    return cards[:num_cards]
+
+
 def _require_env(name: str) -> str:
     value = os.getenv(name, "").strip()
     if not value:
@@ -385,27 +500,7 @@ def _invoke_model_json(
         text = chunks[0].get("text") if isinstance(chunks[0], dict) else None
     if not isinstance(text, str) or not text.strip():
         raise GenerationError("model returned non-text response")
-    # Try direct parse first
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-    # Try markdown fenced JSON
-    md_match = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
-    if md_match:
-        try:
-            return json.loads(md_match.group(1).strip())
-        except json.JSONDecodeError:
-            pass
-    # Try to find a JSON object anywhere in the text (model may think before responding)
-    brace_match = re.search(r"\{.*\}", text, re.DOTALL)
-    if brace_match:
-        try:
-            return json.loads(brace_match.group(0))
-        except json.JSONDecodeError:
-            pass
-    logger.error("model returned invalid JSON: %s", text[:500])
-    raise GenerationError("model returned invalid JSON payload")
+    return _parse_model_json_text(text)
 
 
 def _normalize_citations(raw: Any, fallback: list[str]) -> list[str]:
@@ -473,30 +568,7 @@ def _invoke_model_multimodal_json(
         text = chunks[0].get("text") if isinstance(chunks[0], dict) else None
     if not isinstance(text, str) or not text.strip():
         raise GenerationError("model returned non-text response")
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-    md_match = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
-    if md_match:
-        try:
-            return json.loads(md_match.group(1).strip())
-        except json.JSONDecodeError:
-            pass
-    brace_match = re.search(r"\{.*\}", text, re.DOTALL)
-    if brace_match:
-        try:
-            return json.loads(brace_match.group(0))
-        except json.JSONDecodeError:
-            pass
-    bracket_match = re.search(r"\[.*\]", text, re.DOTALL)
-    if bracket_match:
-        try:
-            return json.loads(bracket_match.group(0))
-        except json.JSONDecodeError:
-            pass
-    logger.error("model returned invalid JSON: %s", text[:500])
-    raise GenerationError("model returned invalid JSON payload")
+    return _parse_model_json_text(text)
 
 
 def generate_flashcards_from_materials(
@@ -589,29 +661,11 @@ def generate_flashcards_from_materials(
         system=system_prompt,
         max_tokens=max(4096, num_cards * 200),
     )
-    if not isinstance(payload, list):
-        raise GenerationError("flashcard model response must be an array")
-
-    cards: list[dict[str, Any]] = []
-    for index, row in enumerate(payload, start=1):
-        if not isinstance(row, dict):
-            continue
-        card = {
-            "id": str(row.get("id", f"card-{index}")).strip() or f"card-{index}",
-            "courseId": str(row.get("courseId", course_id)).strip() or course_id,
-            "topicId": str(row.get("topicId", "topic-unknown")).strip()
-            or "topic-unknown",
-            "prompt": str(row.get("prompt", "")).strip(),
-            "answer": str(row.get("answer", "")).strip(),
-            "citations": [],
-        }
-        if not card["prompt"] or not card["answer"]:
-            continue
-        cards.append(card)
-
-    if not cards:
-        raise GenerationError("flashcard model response did not contain valid cards")
-    return cards[:num_cards]
+    return _validate_flashcard_payload(
+        payload,
+        course_id=course_id,
+        num_cards=num_cards,
+    )
 
 
 def generate_flashcards(*, course_id: str, num_cards: int) -> list[dict[str, Any]]:
@@ -635,34 +689,17 @@ def generate_flashcards(*, course_id: str, num_cards: int) -> list[dict[str, Any
         f"Context:\n{context_block}"
     )
     payload = _invoke_model_json(prompt, system=_study_generation_system_prompt())
-    if not isinstance(payload, list):
-        raise GenerationError("flashcard model response must be an array")
-
     default_citations = [
         str(row.get("source", "")).strip()
         for row in context[:3]
         if str(row.get("source", "")).strip()
     ]
-    cards: list[dict[str, Any]] = []
-    for index, row in enumerate(payload, start=1):
-        if not isinstance(row, dict):
-            continue
-        card = {
-            "id": str(row.get("id", f"card-{index}")).strip() or f"card-{index}",
-            "courseId": str(row.get("courseId", course_id)).strip() or course_id,
-            "topicId": str(row.get("topicId", "topic-unknown")).strip()
-            or "topic-unknown",
-            "prompt": str(row.get("prompt", "")).strip(),
-            "answer": str(row.get("answer", "")).strip(),
-            "citations": _normalize_citations(row.get("citations"), default_citations),
-        }
-        if not card["prompt"] or not card["answer"]:
-            continue
-        cards.append(card)
-
-    if not cards:
-        raise GenerationError("flashcard model response did not contain valid cards")
-    return cards[:num_cards]
+    return _validate_flashcard_payload(
+        payload,
+        course_id=course_id,
+        num_cards=num_cards,
+        default_citations=default_citations,
+    )
 
 
 def generate_practice_exam(*, course_id: str, num_questions: int) -> dict[str, Any]:
