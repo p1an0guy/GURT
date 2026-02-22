@@ -381,10 +381,19 @@ button:disabled {
   perspective: 1200px;
   height: 14rem;
   cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  outline: none;
 }
 
 .flashcard-flip:hover {
   filter: none;
+}
+
+.flashcard-flip:focus,
+.flashcard-flip:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
 .flashcard-flip-inner {
@@ -412,6 +421,8 @@ button:disabled {
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
   overflow-y: auto;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .flashcard-side-label {
