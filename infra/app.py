@@ -19,7 +19,8 @@ env = cdk.Environment(
 
 stage_name = app.node.try_get_context("stageName") or "dev"
 demo_mode = app.node.try_get_context("demoMode") or "1"
-bedrock_model_id = app.node.try_get_context("bedrockModelId") or "us.anthropic.claude-sonnet-4-6"
+bedrock_model_id = app.node.try_get_context("bedrockModelId") or "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+bedrock_model_arn = app.node.try_get_context("bedrockModelArn") or "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
 knowledge_base_id_context = app.node.try_get_context("knowledgeBaseId") or ""
 knowledge_base_id_env = os.getenv("KNOWLEDGE_BASE_ID", "")
 knowledge_base_data_source_id_context = app.node.try_get_context("knowledgeBaseDataSourceId") or ""
@@ -67,6 +68,7 @@ api_stack = ApiStack(
     stage_name=stage_name,
     demo_mode=demo_mode,
     bedrock_model_id=bedrock_model_id,
+    bedrock_model_arn=bedrock_model_arn,
     knowledge_base_id=knowledge_base_id,
     knowledge_base_data_source_id=knowledge_base_data_source_id,
     calendar_token_minting_path=calendar_token_minting_path,
