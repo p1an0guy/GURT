@@ -16,10 +16,18 @@ const counterEls = {
 
 const scrapeToggle = document.getElementById("scrapeToggle");
 const scrapePanel = document.querySelector(".scrape-panel");
+const focusToggle = document.getElementById("focusToggle");
+const focusPanel = document.querySelector(".focus-panel");
 const filesLoadedBadge = document.getElementById("filesLoadedBadge");
 const filesLoadedCount = document.getElementById("filesLoadedCount");
 const themeToggle = document.getElementById("themeToggle");
 const themeToggleLabel = document.getElementById("themeToggleLabel");
+const blockStatusSummary = document.getElementById("blockStatusSummary");
+const pomodoroPhaseText = document.getElementById("pomodoroPhaseText");
+const pomodoroTimerText = document.getElementById("pomodoroTimerText");
+const pomodoroStartBtn = document.getElementById("pomodoroStartBtn");
+const focusRingProgress = document.getElementById("focusRingProgress");
+const blockSettingsBtn = document.getElementById("blockSettingsBtn");
 
 const SCRAPE_START_MESSAGE_TYPE = "SCRAPE_MODULES_START";
 const MAX_FILE_ROWS = 200;
@@ -63,6 +71,8 @@ const scrapeState = {
   files: new Map()
 };
 let activeCitationMenu = null;
+let currentBlockStatus = null;
+let pomodoroTickInterval = null;
 
 applyTheme(readStoredTheme(), { persist: false });
 renderScrapeUI();
@@ -83,12 +93,28 @@ if (themeToggle) {
     applyTheme(nextTheme);
   });
 }
+if (pomodoroStartBtn) {
+  pomodoroStartBtn.addEventListener("click", () => {
+    void startPomodoroSession();
+  });
+}
+if (blockSettingsBtn) {
+  blockSettingsBtn.addEventListener("click", () => {
+    chrome.runtime.openOptionsPage();
+  });
+}
 
 // Scrape drawer toggle
 if (scrapeToggle && scrapePanel) {
   scrapeToggle.addEventListener("click", () => {
     const isCollapsed = scrapePanel.classList.toggle("collapsed");
     scrapeToggle.setAttribute("aria-expanded", String(!isCollapsed));
+  });
+}
+if (focusToggle && focusPanel) {
+  focusToggle.addEventListener("click", () => {
+    const isCollapsed = focusPanel.classList.toggle("collapsed");
+    focusToggle.setAttribute("aria-expanded", String(!isCollapsed));
   });
 }
 
@@ -126,6 +152,7 @@ chrome.runtime.onMessage.addListener((message) => {
       if (message.courseId) {
         switchCourse(message.courseId, message.courseName || `Course ${message.courseId}`);
       }
+      void refreshBlockStatus();
       break;
     case "SCRAPE_PROGRESS":
       handleScrapeProgress(payload);
@@ -1168,6 +1195,7 @@ async function initCourseContext() {
     updateFilesLoadedBadge();
     await loadChatHistory(currentCourseId);
   }
+  await refreshBlockStatus();
 }
 
 function addCourseToRegistry(courseId, courseName) {
@@ -1333,6 +1361,7 @@ async function switchCourse(courseId, courseName) {
 
   // Update tabs UI
   renderCourseTabs();
+  await refreshBlockStatus();
 }
 
 async function loadChatHistory(courseId) {
@@ -1357,6 +1386,188 @@ async function loadCourseFileCount(courseId) {
   }
 }
 
+const RING_RADIUS = 46;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+
+function formatDuration(seconds) {
+  const safe = Math.max(0, Number(seconds) || 0);
+  const mins = Math.floor(safe / 60);
+  const secs = safe % 60;
+  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
+function clearPomodoroTicker() {
+  if (pomodoroTickInterval) {
+    window.clearInterval(pomodoroTickInterval);
+    pomodoroTickInterval = null;
+  }
+}
+
+function setRingProgress(progressRatio, isBreakPhase = false) {
+  if (!focusRingProgress) {
+    return;
+  }
+  const clamped = Math.min(1, Math.max(0, progressRatio));
+  const offset = RING_CIRCUMFERENCE * (1 - clamped);
+  focusRingProgress.style.strokeDasharray = String(RING_CIRCUMFERENCE);
+  focusRingProgress.style.strokeDashoffset = String(offset);
+  focusRingProgress.classList.toggle("break", Boolean(isBreakPhase));
+}
+
+function renderPomodoroVisual() {
+  if (!pomodoroTimerText || !pomodoroStartBtn || !pomodoroPhaseText) {
+    return;
+  }
+
+  const pomodoro = currentBlockStatus && currentBlockStatus.pomodoro ? currentBlockStatus.pomodoro : null;
+  if (!pomodoro || !pomodoro.enabled) {
+    blockStatusSummary.textContent = "Pomodoro disabled in settings";
+    pomodoroPhaseText.textContent = "Off";
+    pomodoroTimerText.textContent = "--:--";
+    pomodoroStartBtn.textContent = "Pomodoro Disabled";
+    pomodoroStartBtn.disabled = true;
+    setRingProgress(0, false);
+    clearPomodoroTicker();
+    return;
+  }
+
+  if (!pomodoro.active || !pomodoro.phase) {
+    if (pomodoro.paused && pomodoro.pendingPhase) {
+      const nextLabel = pomodoro.pendingPhase === "focus" ? "Focus" : "Break";
+      blockStatusSummary.textContent = `Cycle complete. Start ${nextLabel} when ready`;
+      pomodoroPhaseText.textContent = "Paused";
+      pomodoroTimerText.textContent = "00:00";
+      pomodoroStartBtn.textContent = `Start ${nextLabel}`;
+      pomodoroStartBtn.disabled = !Boolean(currentBlockStatus && currentBlockStatus.enabled);
+      setRingProgress(0, pomodoro.pendingPhase === "break");
+      clearPomodoroTicker();
+      return;
+    }
+
+    blockStatusSummary.textContent = currentBlockStatus && currentBlockStatus.enabled
+      ? "Ready to start"
+      : "Enable blocking in settings";
+    pomodoroPhaseText.textContent = "Idle";
+    pomodoroTimerText.textContent = "--:--";
+    pomodoroStartBtn.textContent = "Start Focus Session";
+    pomodoroStartBtn.disabled = !Boolean(currentBlockStatus && currentBlockStatus.enabled);
+    setRingProgress(0, false);
+    clearPomodoroTicker();
+    return;
+  }
+
+  const phaseLabel = pomodoro.phase === "focus" ? "Focus" : "Break";
+  const phaseStart = Number(pomodoro.phaseStartEpochSec) || 0;
+  const phaseEnd = Number(pomodoro.phaseEndEpochSec) || 0;
+  const total = Math.max(1, phaseEnd - phaseStart);
+  const remaining = Math.max(0, Number(pomodoro.remainingSeconds) || 0);
+  const remainingRatio = remaining / total;
+
+  blockStatusSummary.textContent = `${phaseLabel} session in progress`;
+  pomodoroPhaseText.textContent = phaseLabel;
+  pomodoroTimerText.textContent = formatDuration(remaining);
+  pomodoroStartBtn.textContent = "Session Running";
+  pomodoroStartBtn.disabled = true;
+  setRingProgress(remainingRatio, pomodoro.phase === "break");
+
+  clearPomodoroTicker();
+  pomodoroTickInterval = window.setInterval(() => {
+    if (!currentBlockStatus || !currentBlockStatus.pomodoro || !currentBlockStatus.pomodoro.active) {
+      clearPomodoroTicker();
+      return;
+    }
+
+    const endEpoch = Number(currentBlockStatus.pomodoro.phaseEndEpochSec) || 0;
+    const startEpoch = Number(currentBlockStatus.pomodoro.phaseStartEpochSec) || 0;
+    const nowEpoch = Math.floor(Date.now() / 1000);
+    const liveRemaining = Math.max(0, endEpoch - nowEpoch);
+    const liveTotal = Math.max(1, endEpoch - startEpoch);
+    const liveRemainingRatio = liveRemaining / liveTotal;
+    const livePhase = currentBlockStatus.pomodoro.phase === "focus" ? "Focus" : "Break";
+
+    currentBlockStatus.pomodoro.remainingSeconds = liveRemaining;
+    pomodoroPhaseText.textContent = livePhase;
+    pomodoroTimerText.textContent = formatDuration(liveRemaining);
+    setRingProgress(liveRemainingRatio, currentBlockStatus.pomodoro.phase === "break");
+
+    if (liveRemaining <= 0) {
+      clearPomodoroTicker();
+      void refreshBlockStatus();
+    }
+  }, 1000);
+}
+
+function renderBlockStatus() {
+  if (!blockStatusSummary || !pomodoroStartBtn || !pomodoroTimerText || !pomodoroPhaseText) {
+    return;
+  }
+
+  if (!currentBlockStatus) {
+    blockStatusSummary.textContent = "Status unavailable";
+    pomodoroPhaseText.textContent = "Idle";
+    pomodoroTimerText.textContent = "--:--";
+    pomodoroStartBtn.textContent = "Unavailable";
+    pomodoroStartBtn.disabled = true;
+    setRingProgress(0, false);
+    clearPomodoroTicker();
+    return;
+  }
+
+  renderPomodoroVisual();
+}
+
+async function refreshBlockStatus() {
+  if (!blockStatusSummary || !pomodoroStartBtn) {
+    return;
+  }
+
+  pomodoroStartBtn.disabled = true;
+  blockStatusSummary.textContent = "Refreshing...";
+
+  try {
+    const response = await chrome.runtime.sendMessage({ type: "GET_BLOCK_STATUS" });
+    if (!response || response.success !== true) {
+      throw new Error((response && response.error) || "Unable to load blocking status.");
+    }
+    currentBlockStatus = response;
+  } catch (error) {
+    currentBlockStatus = {
+      enabled: false,
+      currentlyBlocked: false,
+      activeRuleSummary: `Error: ${error.message}`,
+      pomodoro: { enabled: false, active: false, phase: null, remainingSeconds: 0 }
+    };
+  }
+
+  renderBlockStatus();
+}
+
+async function startPomodoroSession() {
+  if (!currentBlockStatus || !currentBlockStatus.pomodoro || !currentBlockStatus.pomodoro.enabled) {
+    return;
+  }
+  if (currentBlockStatus.pomodoro.active) {
+    return;
+  }
+
+  pomodoroStartBtn.disabled = true;
+  pomodoroStartBtn.textContent = "Starting...";
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: "SET_POMODORO_ACTIVE",
+      active: true
+    });
+    if (!response || response.success !== true) {
+      throw new Error((response && response.error) || "Unable to start Pomodoro session.");
+    }
+  } catch (error) {
+    blockStatusSummary.textContent = `Pomodoro error: ${error.message}`;
+  }
+
+  await refreshBlockStatus();
+}
+
 // Chrome storage helpers (Promise-based)
 function chromeStorageGet(keys) {
   return new Promise(resolve => chrome.storage.local.get(keys, resolve));
@@ -1367,3 +1578,7 @@ function chromeStorageSet(items) {
 function chromeStorageRemove(keys) {
   return new Promise(resolve => chrome.storage.local.remove(keys, resolve));
 }
+
+window.addEventListener("unload", () => {
+  clearPomodoroTicker();
+});
