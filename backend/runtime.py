@@ -39,6 +39,7 @@ _DEMO_MODE_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 _ENTITY_CANVAS_ITEM = "CanvasItem"
 _ENTITY_CANVAS_CONNECTION = "CanvasConnection"
 _ENTITY_INGEST_JOB = "IngestJob"
+_ENTITY_FLASHCARD_GEN_JOB = "FlashcardGenJob"
 _MATERIAL_FILENAME_SANITIZE = re.compile(r"[^A-Za-z0-9._-]+")
 _STUDY_TODAY_DEFAULT_COUNT = 5
 _STUDY_TODAY_MAX_COUNT = 50
@@ -562,6 +563,13 @@ def _ingest_state_machine_arn() -> str:
     return arn
 
 
+def _flashcard_gen_state_machine_arn() -> str:
+    arn = os.getenv("FLASHCARD_GEN_STATE_MACHINE_ARN", "").strip()
+    if not arn:
+        raise RuntimeError("server misconfiguration: FLASHCARD_GEN_STATE_MACHINE_ARN missing")
+    return arn
+
+
 def _start_ingest_job(*, doc_id: str, course_id: str, key: str) -> dict[str, Any]:
     job_id = f"ingest-{uuid4().hex}"
     bucket = os.getenv("UPLOADS_BUCKET", "").strip()
@@ -603,6 +611,50 @@ def _start_ingest_job(*, doc_id: str, course_id: str, key: str) -> dict[str, Any
         "status": "RUNNING",
         "updatedAt": now,
     }
+
+
+def _start_flashcard_gen_job(
+    *,
+    user_id: str,
+    course_id: str,
+    material_ids: list[str],
+    material_s3_keys: list[str],
+    num_cards: int,
+) -> dict[str, Any]:
+    job_id = f"flashgen-{uuid4().hex}"
+    now = _utc_now_rfc3339()
+    _docs_table().put_item(
+        Item={
+            "docId": job_id,
+            "entityType": _ENTITY_FLASHCARD_GEN_JOB,
+            "jobId": job_id,
+            "userId": user_id,
+            "courseId": course_id,
+            "materialIds": material_ids,
+            "materialS3Keys": material_s3_keys,
+            "numCards": num_cards,
+            "status": "RUNNING",
+            "cards": [],
+            "cardIds": [],
+            "error": "",
+            "createdAt": now,
+            "updatedAt": now,
+        }
+    )
+
+    execution_input = {
+        "jobId": job_id,
+        "userId": user_id,
+        "courseId": course_id,
+        "materialS3Keys": material_s3_keys,
+        "numCards": num_cards,
+    }
+    _stepfunctions_client().start_execution(
+        stateMachineArn=_flashcard_gen_state_machine_arn(),
+        name=job_id,
+        input=json.dumps(execution_input),
+    )
+    return {"jobId": job_id, "status": "RUNNING", "createdAt": now}
 
 
 def _get_ingest_job(job_id: str) -> dict[str, Any] | None:
@@ -1112,6 +1164,105 @@ def _handle_generate_flashcards_from_materials(event: Mapping[str, Any]) -> Dict
         return _json_response(502, {"error": str(exc)})
 
     return _text_response(200, json.dumps(cards), content_type="application/json")
+
+
+def _handle_flashcard_gen_start(event: Mapping[str, Any]) -> Dict[str, Any]:
+    """Start an async flashcard generation job."""
+    user_id, auth_error = _require_authenticated_user_id(event)
+    if auth_error is not None or user_id is None:
+        return auth_error or _json_response(401, {"error": "authenticated principal is required"})
+
+    payload, parse_error = _parse_json_body(event)
+    if parse_error is not None or payload is None:
+        return _json_response(400, {"error": parse_error or "request body must be valid JSON"})
+
+    try:
+        course_id = _require_non_empty_string(payload, "courseId")
+        material_ids_raw = payload.get("materialIds")
+        if not isinstance(material_ids_raw, list) or not material_ids_raw:
+            return _json_response(400, {"error": "materialIds is required and must be a non-empty array"})
+        if len(material_ids_raw) > 10:
+            return _json_response(400, {"error": "materialIds must contain at most 10 items"})
+        material_ids = [str(mid).strip() for mid in material_ids_raw if isinstance(mid, str) and mid.strip()]
+        if not material_ids:
+            return _json_response(400, {"error": "materialIds must contain non-empty strings"})
+
+        num_cards_raw = payload.get("numCards", 20)
+        num_cards = int(num_cards_raw)
+        if num_cards < 1:
+            return _json_response(400, {"error": "numCards must be >= 1"})
+        num_cards = min(num_cards, 100)
+
+        # Resolve material S3 keys (same logic as sync handler)
+        table = _canvas_data_table()
+        from studybuddy.models.canvas import item_partition_key, material_sort_key
+        pk = item_partition_key(user_id, course_id)
+        bucket = os.getenv("UPLOADS_BUCKET", "").strip()
+        material_s3_keys: list[str] = []
+        for mid in material_ids:
+            sk = material_sort_key(mid)
+            result = table.get_item(Key={"pk": pk, "sk": sk})
+            item = result.get("Item")
+            if item and item.get("entityType") == "CanvasMaterial":
+                s3_key = item.get("s3Key", "")
+                if s3_key:
+                    material_s3_keys.append(str(s3_key))
+                    continue
+
+            if not bucket:
+                return _json_response(404, {"error": f"material {mid} not found for this course"})
+            s3_prefix = f"uploads/{course_id}/{mid}/"
+            try:
+                listing = _s3_client().list_objects_v2(Bucket=bucket, Prefix=s3_prefix, MaxKeys=1)
+                objects = listing.get("Contents", [])
+                if not objects:
+                    return _json_response(404, {"error": f"material {mid} not found for this course"})
+                material_s3_keys.append(objects[0]["Key"])
+            except Exception as exc:
+                return _json_response(502, {"error": f"failed to look up material {mid}: {exc}"})
+
+        job = _start_flashcard_gen_job(
+            user_id=user_id,
+            course_id=course_id,
+            material_ids=material_ids,
+            material_s3_keys=material_s3_keys,
+            num_cards=num_cards,
+        )
+    except ValueError as exc:
+        return _json_response(400, {"error": str(exc)})
+    except RuntimeError as exc:
+        return _json_response(500, {"error": str(exc)})
+    except Exception as exc:
+        return _json_response(500, {"error": f"unable to start flashcard generation job: {exc}"})
+
+    return _json_response(202, job)
+
+
+def _handle_flashcard_gen_status(job_id: str) -> Dict[str, Any]:
+    """Poll the status of an async flashcard generation job."""
+    try:
+        response = _docs_table().get_item(Key={"docId": job_id})
+    except Exception as exc:
+        return _json_response(500, {"error": str(exc)})
+
+    record = response.get("Item")
+    if not isinstance(record, dict) or record.get("entityType") != _ENTITY_FLASHCARD_GEN_JOB:
+        return _json_response(404, {"error": "flashcard generation job not found"})
+
+    result: dict[str, Any] = {
+        "jobId": str(record.get("jobId", job_id)),
+        "status": str(record.get("status", "UNKNOWN")),
+        "updatedAt": str(record.get("updatedAt", "")),
+    }
+    status = record.get("status")
+    if status == "FINISHED":
+        cards = record.get("cards")
+        if isinstance(cards, list):
+            result["cards"] = cards
+    if status == "FAILED":
+        result["error"] = str(record.get("error", ""))
+
+    return _json_response(200, result)
 
 
 def _handle_generate_practice_exam(event: Mapping[str, Any]) -> Dict[str, Any]:
@@ -2061,6 +2212,14 @@ def lambda_handler(event: Mapping[str, Any], context: Any) -> Dict[str, Any]:
 
     if method == "POST" and path == "/generate/flashcards":
         return _handle_generate_flashcards(event)
+
+    if method == "POST" and path == "/generate/flashcards-from-materials/jobs":
+        return _handle_flashcard_gen_start(event)
+
+    if method == "GET":
+        flashcard_gen_job_match = re.fullmatch(r"/generate/flashcards-from-materials/jobs/([^/]+)", path)
+        if flashcard_gen_job_match:
+            return _handle_flashcard_gen_status(flashcard_gen_job_match.group(1))
 
     if method == "POST" and path == "/generate/flashcards-from-materials":
         return _handle_generate_flashcards_from_materials(event)

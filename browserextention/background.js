@@ -869,7 +869,8 @@ async function handleGenerateStudyTool(action, courseId, courseName) {
     let data;
 
     if (action.type === "flashcards") {
-      const response = await fetch(`${API_BASE_URL}/generate/flashcards-from-materials`, {
+      // --- Async: start generation job ---
+      const startResponse = await fetch(`${API_BASE_URL}/generate/flashcards-from-materials/jobs`, {
         method: "POST",
         headers: { "Content-Type": "text/plain" },
         body: JSON.stringify({
@@ -878,11 +879,47 @@ async function handleGenerateStudyTool(action, courseId, courseName) {
           numCards: action.count || 12
         })
       });
-      if (!response.ok) {
-        const detail = await response.text().catch(() => response.statusText);
-        throw new Error(`Generation failed (${response.status}): ${detail}`);
+      if (!startResponse.ok) {
+        const detail = await startResponse.text().catch(() => startResponse.statusText);
+        throw new Error(`Failed to start generation (${startResponse.status}): ${detail}`);
       }
-      data = await response.json();
+      const startData = await startResponse.json();
+      const jobId = startData.jobId;
+      if (!jobId) {
+        throw new Error("Server did not return a jobId");
+      }
+
+      // --- Async: poll for completion ---
+      const POLL_INTERVAL_MS = 4000;
+      const MAX_POLL_ATTEMPTS = 60; // 4 minutes max
+      let pollResult = null;
+
+      for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
+
+        const pollResponse = await fetch(
+          `${API_BASE_URL}/generate/flashcards-from-materials/jobs/${encodeURIComponent(jobId)}`
+        );
+        if (!pollResponse.ok) {
+          continue; // Transient error, keep polling
+        }
+        const pollData = await pollResponse.json();
+
+        if (pollData.status === "FINISHED") {
+          pollResult = pollData;
+          break;
+        }
+        if (pollData.status === "FAILED") {
+          throw new Error(pollData.error || "Flashcard generation failed");
+        }
+        // status === "RUNNING" — keep polling
+      }
+
+      if (!pollResult) {
+        throw new Error("Flashcard generation timed out — please try with fewer materials");
+      }
+
+      data = pollResult.cards;
 
       // Build import payload
       const payload = {
