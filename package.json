@@ -8,13 +8,14 @@
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit",
     "lint": "npm run typecheck",
-    "test": "tsx --test src/api/client.test.ts"
+    "test": "tsx --test src/**/*.test.ts"
   },
   "dependencies": {
     "katex": "^0.16.28",
     "next": "^15.2.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "react-dropzone": "^15.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.13.5",

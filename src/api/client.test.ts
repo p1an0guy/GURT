@@ -265,6 +265,8 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
         usedTextract: true,
         updatedAt: "2026-09-02T09:01:00Z",
         error: "",
+        kbIngestionJobId: "kb-ingest-123",
+        kbIngestionError: "kb partial ingest warning",
       });
     }
 
@@ -314,6 +316,14 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
   );
   assert.equal(tokenResponse.token, "minted-token");
   assert.equal(ingestStatus.status, "FINISHED");
+  assert.equal(
+    (ingestStatus as { kbIngestionJobId?: string }).kbIngestionJobId,
+    "kb-ingest-123",
+  );
+  assert.equal(
+    (ingestStatus as { kbIngestionError?: string }).kbIngestionError,
+    "kb partial ingest warning",
+  );
   assert.equal(calls.length, 15);
   assert.ok(calls.some((call) => call.url === "https://api.example.dev/canvas/connect"));
   assert.ok(calls.some((call) => call.url === "https://api.example.dev/canvas/sync"));
@@ -345,6 +355,52 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
   const ingestStartCall = calls.find((call) => call.url === "https://api.example.dev/docs/ingest");
   assert.ok(ingestStartCall);
   assert.equal(ingestStartCall.init?.method, "POST");
+});
+
+test("preserves optional kb ingestion fields on docs ingest status responses", async () => {
+  const fetchImpl: typeof fetch = async (input) => {
+    const url = input instanceof URL ? input.toString() : input.toString();
+
+    if (url.endsWith("/docs/ingest/job-with-kb")) {
+      return jsonResponse({
+        jobId: "job-with-kb",
+        status: "RUNNING",
+        textLength: 0,
+        usedTextract: false,
+        updatedAt: "2026-09-02T09:02:00Z",
+        error: "",
+        kbIngestionJobId: "kb-job-456",
+        kbIngestionError: "bedrock queue backlog",
+      });
+    }
+
+    if (url.endsWith("/docs/ingest/job-without-kb")) {
+      return jsonResponse({
+        jobId: "job-without-kb",
+        status: "RUNNING",
+        textLength: 0,
+        usedTextract: false,
+        updatedAt: "2026-09-02T09:03:00Z",
+        error: "",
+      });
+    }
+
+    return new Response("not found", { status: 404 });
+  };
+
+  const client = createApiClient({
+    baseUrl: "https://api.example.dev",
+    fetchImpl,
+    useFixtures: false,
+  });
+
+  const withKb = await client.getDocsIngestStatus("job-with-kb");
+  const withoutKb = await client.getDocsIngestStatus("job-without-kb");
+
+  assert.equal(withKb.kbIngestionJobId, "kb-job-456");
+  assert.equal(withKb.kbIngestionError, "bedrock queue backlog");
+  assert.equal(Object.hasOwn(withoutKb, "kbIngestionJobId"), false);
+  assert.equal(Object.hasOwn(withoutKb, "kbIngestionError"), false);
 });
 
 test("preserves stage path when baseUrl includes a stage segment", async () => {

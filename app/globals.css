@@ -1049,6 +1049,151 @@ button:disabled {
   transform: none;
 }
 
+.flashcards-upload-dropzone {
+  border: 1px dashed color-mix(in srgb, var(--line) 75%, transparent);
+  border-radius: 0.85rem;
+  padding: 0.85rem 0.95rem;
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+
+.flashcards-upload-dropzone:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+
+.flashcards-upload-dropzone.is-active {
+  border-color: color-mix(in srgb, var(--ok) 70%, var(--line));
+  background: color-mix(in srgb, var(--ok) 16%, var(--surface-soft));
+  transform: translateY(-1px);
+}
+
+.flashcards-upload-dropzone.is-disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.flashcards-upload-dropzone.is-reject,
+.flashcards-upload-dropzone.has-error {
+  border-color: color-mix(in srgb, var(--error) 75%, var(--line));
+  background: color-mix(in srgb, var(--error) 16%, var(--surface-soft));
+}
+
+.flashcards-upload-dropzone-title {
+  margin: 0;
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: var(--ink);
+}
+
+.flashcards-upload-dropzone-meta {
+  margin: 0.18rem 0 0;
+}
+
+.flashcards-upload-queue {
+  border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  border-radius: 0.85rem;
+  padding: 0.56rem 0.62rem;
+  background: color-mix(in srgb, var(--surface-soft) 66%, transparent);
+}
+
+.flashcards-upload-queue-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.42rem;
+}
+
+.flashcards-upload-clear {
+  padding: 0.34rem 0.56rem;
+  font-size: 0.77rem;
+}
+
+.flashcards-upload-chip-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.flashcards-upload-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
+  border-radius: 0.72rem;
+  padding: 0.42rem 0.52rem;
+  background: color-mix(in srgb, var(--surface) 75%, transparent);
+}
+
+.flashcards-upload-chip-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flashcards-upload-chip-size {
+  flex-shrink: 0;
+}
+
+.flashcards-upload-chip-remove {
+  padding: 0.3rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: 0.58rem;
+  background: color-mix(in srgb, var(--surface-soft) 70%, transparent);
+  color: var(--ink);
+  font-size: 0.76rem;
+  font-weight: 700;
+  box-shadow: none;
+  flex-shrink: 0;
+}
+
+.flashcards-upload-chip-remove:hover:not(:disabled) {
+  transform: none;
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+}
+
+.flashcards-upload-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.flashcards-upload-actions button {
+  min-width: 14rem;
+}
+
+.flashcards-upload-progress,
+.flashcards-upload-queue-message,
+.flashcards-upload-error {
+  margin: 0;
+}
+
+.flashcards-upload-summary {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.flashcards-upload-result-list {
+  gap: 0.42rem;
+}
+
+.flashcards-upload-result-list li {
+  padding: 0.45rem 0.58rem;
+}
+
+.flashcards-upload-warning-list .warning-text {
+  margin-bottom: 0.35rem;
+}
+
+.flashcards-upload-failure-list .small {
+  margin: 0 0 0.35rem;
+}
+
 .flashcards-modern .material-list {
   gap: 0.45rem;
   max-height: 17rem;
@@ -1136,6 +1281,11 @@ button:disabled {
   margin-right: 0;
   background: color-mix(in srgb, var(--accent) 16%, transparent);
   color: color-mix(in srgb, var(--ink) 92%, var(--accent));
+}
+
+.flashcards-note-tag {
+  background: color-mix(in srgb, var(--ok) 20%, transparent);
+  color: color-mix(in srgb, var(--ok) 76%, var(--ink));
 }
 
 .flashcards-deck-title {
@@ -1265,6 +1415,24 @@ button:disabled {
 
   .flashcards-modern .panel {
     padding: 0.92rem;
+  }
+
+  .flashcards-upload-actions {
+    display: grid;
+  }
+
+  .flashcards-upload-actions button {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .flashcards-upload-chip {
+    flex-wrap: wrap;
+  }
+
+  .flashcards-upload-chip-remove {
+    width: 100%;
+    margin-top: 0.2rem;
   }
 
   .flashcards-deck-title {

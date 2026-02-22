@@ -34,11 +34,20 @@ calendar_token = app.node.try_get_context("calendarToken") or "demo-calendar-tok
 calendar_token_user_id = app.node.try_get_context("calendarTokenUserId") or "demo-user"
 calendar_fixture_fallback = app.node.try_get_context("calendarFixtureFallback") or "1"
 canvas_sync_schedule_hours = int(app.node.try_get_context("canvasSyncScheduleHours") or "24")
+frontend_allowed_origins_raw = os.getenv("FRONTEND_ALLOWED_ORIGINS", "http://localhost:3000")
+frontend_allowed_origins = [
+    origin.strip()
+    for origin in frontend_allowed_origins_raw.split(",")
+    if origin and origin.strip()
+]
+if not frontend_allowed_origins:
+    frontend_allowed_origins = ["http://localhost:3000"]
 
 data_stack = DataStack(
     app,
     "GurtDataStack",
     env=env,
+    frontend_allowed_origins=frontend_allowed_origins,
 )
 
 knowledge_base_stack = None
