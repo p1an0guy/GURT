@@ -96,7 +96,7 @@ const NAV_ITEMS: NavItem[] = [
     href: "/flashcards",
     label: "Flashcards",
     Icon: FlashcardsIcon,
-    matches: (pathname) => pathname === "/flashcards" || pathname.startsWith("/decks/"),
+    matches: (pathname) => pathname === "/flashcards" || pathname === "/decks",
   },
   {
     href: "/practice-tests",

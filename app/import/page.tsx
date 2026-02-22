@@ -81,7 +81,7 @@ export default function ImportPage() {
 
         setStatus("success");
         setMessage(`Imported deck "${deck.title}" with ${deck.cardCount} cards`);
-        router.push(`/decks/${encodeURIComponent(deck.deckId)}`);
+        router.push(`/decks?deckId=${encodeURIComponent(deck.deckId)}`);
       } else if (type === "practiceTest") {
         const { courseId, courseName, exam, title } = payload as {
           courseId: string;

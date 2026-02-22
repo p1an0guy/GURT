@@ -57,7 +57,8 @@ chrome.action.onClicked.addListener((tab) => {
 
 const CHAT_API_URL = "https://hpthlfk5ql.execute-api.us-west-2.amazonaws.com/dev/chat";
 const API_BASE_URL = CHAT_API_URL.replace(/\/chat\/?$/, "");
-const WEBAPP_BASE_URL = "http://localhost:3000"; // TODO: update with CloudFront URL for production
+const DEFAULT_WEBAPP_BASE_URL = "http://localhost:3000";
+const DEPLOYMENT_CONFIG_PATH = "deployment_config.json";
 const MAX_FLASHCARD_MATERIAL_IDS = 10;
 
 const BLOCK_CONFIG_KEY = "gurtBlockConfigV1";
@@ -69,6 +70,7 @@ const BLOCKED_PAGE_URL = chrome.runtime.getURL(BLOCKED_PAGE);
 const BLOCKING_ENGINE_CANDIDATES = ["blocking_engine.js", "/blocking_engine.js"];
 const POMODORO_NOTIFICATION_ICON = "logo.png";
 
+let resolvedWebAppBaseUrlPromise = null;
 let blockEngineLoadError = null;
 let blockConfig = null;
 let blockRuntime = null;
@@ -78,23 +80,34 @@ let blockInitialized = false;
 let activeTabIdForBlocking = null;
 let isBrowserWindowFocused = true;
 
-const BLOCK_CONFIG_KEY = "gurtBlockConfigV1";
-const BLOCK_RUNTIME_KEY = "gurtBlockRuntimeV1";
-const BLOCK_TICK_ALARM = "GURT_BLOCK_TICK";
-const BLOCK_DEBUG_KEY = "gurtBlockDebug";
-const BLOCKED_PAGE = "blocked.html";
-const BLOCKED_PAGE_URL = chrome.runtime.getURL(BLOCKED_PAGE);
-const BLOCKING_ENGINE_CANDIDATES = ["blocking_engine.js", "/blocking_engine.js"];
-const POMODORO_NOTIFICATION_ICON = "logo.png";
+function normalizeWebAppBaseUrl(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.trim().replace(/\/+$/, "");
+}
 
-let blockEngineLoadError = null;
-let blockConfig = null;
-let blockRuntime = null;
-let blockCompiled = null;
-let blockRanges = { ranges: [], errors: [] };
-let blockInitialized = false;
-let activeTabIdForBlocking = null;
-let isBrowserWindowFocused = true;
+async function resolveWebAppBaseUrl() {
+  try {
+    const configUrl = chrome.runtime.getURL(DEPLOYMENT_CONFIG_PATH);
+    const response = await fetch(configUrl, { cache: "no-store" });
+    if (!response.ok) {
+      return DEFAULT_WEBAPP_BASE_URL;
+    }
+    const config = await response.json();
+    const configuredUrl = normalizeWebAppBaseUrl(config.webAppBaseUrl);
+    return configuredUrl || DEFAULT_WEBAPP_BASE_URL;
+  } catch {
+    return DEFAULT_WEBAPP_BASE_URL;
+  }
+}
+
+async function getWebAppBaseUrl() {
+  if (!resolvedWebAppBaseUrlPromise) {
+    resolvedWebAppBaseUrlPromise = resolveWebAppBaseUrl();
+  }
+  return resolvedWebAppBaseUrlPromise;
+}
 
 let activeScrapeRun = null;
 
@@ -137,7 +150,7 @@ function defaultHardAllowlist() {
   };
 
   const apiHost = parseHost(CHAT_API_URL);
-  const webHost = parseHost(WEBAPP_BASE_URL);
+  const webHost = parseHost(DEFAULT_WEBAPP_BASE_URL);
   if (apiHost) hosts.add(apiHost);
   if (webHost) hosts.add(webHost);
 
@@ -1630,7 +1643,8 @@ async function handleGenerateStudyTool(action, courseId, courseName) {
         cards: data
       };
       const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
-      const url = `${WEBAPP_BASE_URL}/import#${encoded}`;
+      const webAppBaseUrl = await getWebAppBaseUrl();
+      const url = `${webAppBaseUrl}/import#${encoded}`;
       chrome.tabs.create({ url });
       return { success: true };
 
@@ -1657,7 +1671,8 @@ async function handleGenerateStudyTool(action, courseId, courseName) {
         exam: data
       };
       const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
-      const url = `${WEBAPP_BASE_URL}/import#${encoded}`;
+      const webAppBaseUrl = await getWebAppBaseUrl();
+      const url = `${webAppBaseUrl}/import#${encoded}`;
       chrome.tabs.create({ url });
       return { success: true };
 

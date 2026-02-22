@@ -24,6 +24,7 @@ CALENDAR_TOKEN_MINTING_PATH="${CALENDAR_TOKEN_MINTING_PATH:-endpoint}"
 CALENDAR_TOKEN="${CALENDAR_TOKEN:-demo-calendar-token}"
 CALENDAR_TOKEN_USER_ID="${CALENDAR_TOKEN_USER_ID:-demo-user}"
 OUTPUTS_FILE="${OUTPUTS_FILE:-$ROOT_DIR/outputs.${STAGE_NAME}.json}"
+FRONTEND_ASSET_PATH="${FRONTEND_ASSET_PATH:-$ROOT_DIR/out}"
 AWS_PROFILE="${AWS_PROFILE:-default}"
 
 echo "Starting deploy for stage: $STAGE_NAME"
@@ -74,7 +75,8 @@ npx --yes "$CDK_CLI_PACKAGE" bootstrap \
   --context "createKnowledgeBaseStack=$CREATE_KB_STACK" \
   --context "calendarTokenMintingPath=$CALENDAR_TOKEN_MINTING_PATH" \
   --context "calendarToken=$CALENDAR_TOKEN" \
-  --context "calendarTokenUserId=$CALENDAR_TOKEN_USER_ID"
+  --context "calendarTokenUserId=$CALENDAR_TOKEN_USER_ID" \
+  --context "frontendAssetPath=$FRONTEND_ASSET_PATH"
 
 STACK_LIST="$(npx --yes "$CDK_CLI_PACKAGE" ls \
   --context "stageName=$STAGE_NAME" \
@@ -89,7 +91,8 @@ STACK_LIST="$(npx --yes "$CDK_CLI_PACKAGE" ls \
   --context "createKnowledgeBaseStack=$CREATE_KB_STACK" \
   --context "calendarTokenMintingPath=$CALENDAR_TOKEN_MINTING_PATH" \
   --context "calendarToken=$CALENDAR_TOKEN" \
-  --context "calendarTokenUserId=$CALENDAR_TOKEN_USER_ID")"
+  --context "calendarTokenUserId=$CALENDAR_TOKEN_USER_ID" \
+  --context "frontendAssetPath=$FRONTEND_ASSET_PATH")"
 echo "Synth stack list:"
 echo "$STACK_LIST"
 
@@ -99,9 +102,9 @@ if [ -n "$KNOWLEDGE_BASE_ID" ] && echo "$STACK_LIST" | grep -q '^GurtKnowledgeBa
   exit 1
 fi
 
-DEPLOY_STACKS="GurtDataStack GurtApiStack"
+DEPLOY_STACKS="GurtDataStack GurtApiStack GurtFrontendStack"
 if [ "$CREATE_KB_STACK" = "1" ] && [ -z "$KNOWLEDGE_BASE_ID" ]; then
-  DEPLOY_STACKS="GurtDataStack GurtKnowledgeBaseStack GurtApiStack"
+  DEPLOY_STACKS="GurtDataStack GurtKnowledgeBaseStack GurtApiStack GurtFrontendStack"
 fi
 
 npx --yes "$CDK_CLI_PACKAGE" deploy $DEPLOY_STACKS \
@@ -121,7 +124,8 @@ npx --yes "$CDK_CLI_PACKAGE" deploy $DEPLOY_STACKS \
   --context "createKnowledgeBaseStack=$CREATE_KB_STACK" \
   --context "calendarTokenMintingPath=$CALENDAR_TOKEN_MINTING_PATH" \
   --context "calendarToken=$CALENDAR_TOKEN" \
-  --context "calendarTokenUserId=$CALENDAR_TOKEN_USER_ID"
+  --context "calendarTokenUserId=$CALENDAR_TOKEN_USER_ID" \
+  --context "frontendAssetPath=$FRONTEND_ASSET_PATH"
 popd > /dev/null
 
 echo "Verifying CloudFormation stack status..."
@@ -132,6 +136,8 @@ if [ -z "$KNOWLEDGE_BASE_ID" ]; then
     --query 'Stacks[0].StackStatus' --output text
 fi
 aws cloudformation describe-stacks --profile "$AWS_PROFILE" --stack-name GurtApiStack \
+  --query 'Stacks[0].StackStatus' --output text
+aws cloudformation describe-stacks --profile "$AWS_PROFILE" --stack-name GurtFrontendStack \
   --query 'Stacks[0].StackStatus' --output text
 
 python3 - "$OUTPUTS_FILE" <<'PY'
@@ -163,9 +169,21 @@ kb_stack = data.get("GurtKnowledgeBaseStack", {})
 knowledge_base_id = kb_stack.get("KnowledgeBaseId", "")
 knowledge_base_data_source_id = kb_stack.get("KnowledgeBaseDataSourceId", "")
 
+frontend_url = ""
+frontend_stack = data.get("GurtFrontendStack")
+if isinstance(frontend_stack, dict):
+    frontend_url = frontend_stack.get("FrontendCloudFrontUrl", "")
+if not frontend_url:
+    for value in data.values():
+        if isinstance(value, dict) and value.get("FrontendCloudFrontUrl"):
+            frontend_url = value.get("FrontendCloudFrontUrl", "")
+            break
+
 print("")
 print(f"Outputs file: {outputs_path}")
 print(f"DEV_BASE_URL={api_base_url}")
+if frontend_url:
+    print(f"FRONTEND_URL={frontend_url}")
 print(f"Mint calendar token via: {mint_endpoint}")
 print(f"Suggested DEV_COURSE_ID={course_id}")
 if guardrail_id and guardrail_version:
@@ -183,5 +201,9 @@ if knowledge_base_id and knowledge_base_data_source_id:
     )
 print("After minting a token, set DEV_CALENDAR_TOKEN in GitHub Actions secrets.")
 PY
+
+python3 "$ROOT_DIR/scripts/sync_extension_deployment_config.py" \
+  --outputs-file "$OUTPUTS_FILE" \
+  --target-file "$ROOT_DIR/browserextention/deployment_config.json"
 
 echo "Deploy completed."

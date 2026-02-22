@@ -14,6 +14,7 @@
     "calendarToken": "demo-calendar-token",
     "calendarTokenUserId": "demo-user",
     "calendarFixtureFallback": "1",
-    "canvasSyncScheduleHours": "24"
+    "canvasSyncScheduleHours": "24",
+    "frontendAssetPath": "../out"
   }
 }

@@ -4,11 +4,13 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import aws_cdk as cdk
 
 from stacks.api_stack import ApiStack
 from stacks.data_stack import DataStack
+from stacks.frontend_stack import FrontendStack
 
 app = cdk.App()
 
@@ -34,6 +36,8 @@ calendar_token = app.node.try_get_context("calendarToken") or "demo-calendar-tok
 calendar_token_user_id = app.node.try_get_context("calendarTokenUserId") or "demo-user"
 calendar_fixture_fallback = app.node.try_get_context("calendarFixtureFallback") or "1"
 canvas_sync_schedule_hours = int(app.node.try_get_context("canvasSyncScheduleHours") or "24")
+project_root = Path(__file__).resolve().parents[1]
+frontend_asset_path = app.node.try_get_context("frontendAssetPath") or str(project_root / "out")
 frontend_allowed_origins_raw = os.getenv("FRONTEND_ALLOWED_ORIGINS", "http://localhost:3000")
 frontend_allowed_origins = [
     origin.strip()
@@ -93,5 +97,14 @@ api_stack = ApiStack(
 api_stack.add_dependency(data_stack)
 if knowledge_base_stack is not None:
     api_stack.add_dependency(knowledge_base_stack)
+
+frontend_stack = FrontendStack(
+    app,
+    "GurtFrontendStack",
+    env=env,
+    stage_name=stage_name,
+    frontend_asset_path=frontend_asset_path,
+)
+frontend_stack.add_dependency(api_stack)
 
 app.synth()
