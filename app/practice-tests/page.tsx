@@ -148,7 +148,6 @@ export default function PracticeTestsPage() {
   const [activeQuestionId, setActiveQuestionId] = useState<string | null>(null);
   const [isConfirmingEnd, setIsConfirmingEnd] = useState(false);
   const [isReportOpen, setIsReportOpen] = useState(false);
-  const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
 
   const [materials, setMaterials] = useState<CourseMaterial[]>([]);
   const [selectedMaterialIds, setSelectedMaterialIds] = useState<Set<string>>(new Set());
@@ -182,6 +181,10 @@ export default function PracticeTestsPage() {
     () => getSelectedFlashcardSources(materials, selectedMaterialIds),
     [materials, selectedMaterialIds],
   );
+  const selectedSyncedCount = selectedSources.filter((source) => source.kind === "synced").length;
+  const selectedNoteCount = selectedSources.filter((source) => source.kind === "note").length;
+  const selectedCourseName =
+    courses.find((course) => course.id === courseId)?.name ?? "No course selected";
   const testReport = useMemo(() => {
     if (!exam) {
       return null;
@@ -635,7 +638,6 @@ export default function PracticeTestsPage() {
       setAnswers({});
       setScore(null);
       setIsSubmitted(false);
-      setIsGenerateModalOpen(false);
       setMessage(`Generated ${generated.questions.length} questions.`);
     } catch (generateError) {
       setError(
@@ -693,181 +695,51 @@ export default function PracticeTestsPage() {
     setIsSubmitted(false);
     setIsConfirmingEnd(false);
     setIsReportOpen(false);
-    setIsGenerateModalOpen(false);
     setError("");
   }
 
   return (
-    <main className={`page practice-test-page${isInTestSession ? " in-session" : ""}`}>
+    <main className={`page practice-test-page${isInTestSession ? " in-session" : " flashcards-modern"}`}>
       {!isInTestSession ? (
-        <>
-          <section className="hero">
-            <h1>Practice Tests</h1>
-            <p>
-              Generate timed-style multiple-choice sets and check your answers instantly.
-            </p>
+          <section className="hero flashcards-modern-hero">
+            <div className="flashcards-hero-content">
+              <p className="flashcards-kicker">Study Lab</p>
+              <h1>Practice Tests</h1>
+              <p>
+                Generate timed-style multiple-choice sets and check your answers instantly.
+              </p>
+              <div className="flashcards-hero-meta">
+                <span className="flashcards-chip">
+                  <strong>{savedTests.length}</strong> saved
+                </span>
+                <span className="flashcards-chip">
+                  <strong>{selectedSources.length}</strong> selected
+                </span>
+                <span className="flashcards-chip">
+                  <strong>{selectedSyncedCount}</strong> synced
+                </span>
+                <span className="flashcards-chip">
+                  <strong>{selectedNoteCount}</strong> notes
+                </span>
+                <span className="flashcards-chip">
+                  <strong>{numQuestions || "10"}</strong> target questions
+                </span>
+                <span className="flashcards-chip flashcards-chip-course" title={selectedCourseName}>
+                  {selectedCourseName}
+                </span>
+              </div>
+            </div>
           </section>
-        </>
       ) : null}
 
       {!isInTestSession ? (
-        <section className="panel-grid">
-          <article className="panel">
-            <div className="practice-tests-list-header">
-              <h2>Saved Practice Tests</h2>
-              <button
-                type="button"
-                className="compact-button"
-                onClick={() => setIsGenerateModalOpen(true)}
-              >
-                + New Test
-              </button>
+        <section className="panel-grid flashcards-modern-grid">
+          <article className="panel flashcards-generate-panel">
+            <div className="flashcards-panel-head">
+              <h2>Generate Practice Test</h2>
+              <p className="small">Pick your course, sources, and question count.</p>
             </div>
-            {message ? <p className="small">{message}</p> : null}
-            {error ? <p className="error-text">{error}</p> : null}
-            {savedTests.length === 0 ? (
-              <p className="small">
-                No practice tests yet. Create your first one to get started.
-              </p>
-            ) : (
-              <ul className="list">
-                {savedTests.map((test) => (
-                  <li key={test.testId}>
-                    <strong>{test.title}</strong>
-                    <span className="tag">{test.courseName}</span>
-                    <div className="small">
-                      {test.questionCount} question(s) • Created {test.createdAt}
-                    </div>
-                    <div className="practice-test-list-actions">
-                      <button type="button" onClick={() => handleStartSavedTest(test.testId)}>
-                        Take Test
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </article>
-        </section>
-      ) : (
-        <section className="practice-test-session">
-          <div className="practice-test-hud">
-            <div className="practice-test-hud-nav" role="navigation" aria-label="Question navigator">
-              {exam.questions.map((question, questionIndex) => {
-                const isAnswered = typeof answers[question.id] === "number";
-                const isActive = question.id === activeQuestionId;
-                return (
-                  <button
-                    key={`nav-${question.id}`}
-                    type="button"
-                    className={`practice-nav-chip${isActive ? " active" : ""}${isAnswered ? " answered" : ""}`}
-                    onClick={() => jumpToQuestion(question.id)}
-                  >
-                    {questionIndex + 1}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="practice-test-hud-actions">
-              {!isConfirmingEnd ? (
-                <button
-                  type="button"
-                  className="practice-end-text-button"
-                  onClick={() => setIsConfirmingEnd(true)}
-                >
-                  End test
-                </button>
-              ) : (
-                <div className="practice-end-confirm">
-                  <p className="small">End this test? Your current answers will be lost.</p>
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={() => setIsConfirmingEnd(false)}
-                  >
-                    Cancel
-                  </button>
-                  <button type="button" onClick={handleExitTestSession}>
-                    End Test
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <article className="panel">
-            <h2>Practice Test In Progress</h2>
-            <div className="stack">
-              <div className="practice-test-info">
-                <p className="small practice-test-info-line">
-                  <span>{selectedCourse ? `${selectedCourse.name} (${selectedCourse.term})` : exam.courseId}</span>
-                  <span>Generated {exam.generatedAt}</span>
-                  <span>{exam.questions.length} question(s)</span>
-                  {isSubmitted && score !== null ? (
-                    <span className="status ok">Score {score}/{exam.questions.length}</span>
-                  ) : (
-                    <span>Answered {answeredCount}/{exam.questions.length}</span>
-                  )}
-                </p>
-              </div>
-              <ul className="practice-question-list">
-                {exam.questions.map((question, questionIndex) => (
-                  <li
-                    key={question.id}
-                    id={`practice-question-${question.id}`}
-                    className="practice-question"
-                  >
-                    <p className="practice-question-prompt">
-                      <strong>Q{questionIndex + 1}.</strong> {question.prompt}
-                    </p>
-                    <div className="practice-choice-grid">
-                      {question.choices.map((choice, choiceIndex) => {
-                        const selected = answers[question.id] === choiceIndex;
-                        const isCorrectChoice = choiceIndex === question.answerIndex;
-                        const showAsCorrect = isSubmitted && isCorrectChoice;
-                        const showAsWrong = isSubmitted && selected && !isCorrectChoice;
-                        return (
-                          <button
-                            key={`${question.id}-${choiceIndex}`}
-                            type="button"
-                            className={`practice-choice${selected ? " selected" : ""}${showAsCorrect ? " correct" : ""}${showAsWrong ? " wrong" : ""}`}
-                            onClick={() => selectChoice(question.id, choiceIndex)}
-                            disabled={isSubmitted}
-                          >
-                            {choice}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-
-              <button
-                type="button"
-                onClick={handleSubmitAnswers}
-                disabled={
-                  isSubmitted ||
-                  exam.questions.length === 0 ||
-                  answeredCount !== exam.questions.length
-                }
-              >
-                {isSubmitted ? "Submitted" : "Submit Answers"}
-              </button>
-            </div>
-          </article>
-        </section>
-      )}
-      {isGenerateModalOpen ? (
-        <div
-          className="practice-generate-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="practiceGenerateTitle"
-        >
-          <section className="practice-generate-modal">
-            <h3 id="practiceGenerateTitle">Generate Practice Test</h3>
-            <div className="controls">
+            <div className="controls flashcards-modern-controls">
               <label htmlFor="courseSelect">Course</label>
               {coursesLoaded ? (
                 <select
@@ -1140,13 +1012,6 @@ export default function PracticeTestsPage() {
               <div className="practice-generate-actions">
                 <button
                   type="button"
-                  className="secondary-button"
-                  onClick={() => setIsGenerateModalOpen(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
                   onClick={handleGenerateExam}
                   disabled={
                     isGenerating ||
@@ -1165,9 +1030,146 @@ export default function PracticeTestsPage() {
                 Need diagnostics? <Link href="/dev-tools">Open dev tools</Link>.
               </p>
             </div>
-          </section>
-        </div>
-      ) : null}
+          </article>
+          <article className="panel flashcards-recent-panel">
+            <div className="flashcards-panel-head practice-tests-list-header">
+              <h2>Saved Practice Tests</h2>
+            </div>
+            {message ? <p className="small">{message}</p> : null}
+            {error ? <p className="error-text">{error}</p> : null}
+            {savedTests.length === 0 ? (
+              <p className="small">
+                No practice tests yet. Create your first one to get started.
+              </p>
+            ) : (
+              <ul className="list">
+                {savedTests.map((test) => (
+                  <li key={test.testId}>
+                    <strong>{test.title}</strong>
+                    <span className="tag">{test.courseName}</span>
+                    <div className="small">
+                      {test.questionCount} question(s) • Created {test.createdAt}
+                    </div>
+                    <div className="practice-test-list-actions">
+                      <button type="button" onClick={() => handleStartSavedTest(test.testId)}>
+                        Take Test
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </article>
+        </section>
+      ) : (
+        <section className="practice-test-session">
+          <div className="practice-test-hud">
+            <div className="practice-test-hud-nav" role="navigation" aria-label="Question navigator">
+              {exam.questions.map((question, questionIndex) => {
+                const isAnswered = typeof answers[question.id] === "number";
+                const isActive = question.id === activeQuestionId;
+                return (
+                  <button
+                    key={`nav-${question.id}`}
+                    type="button"
+                    className={`practice-nav-chip${isActive ? " active" : ""}${isAnswered ? " answered" : ""}`}
+                    onClick={() => jumpToQuestion(question.id)}
+                  >
+                    {questionIndex + 1}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="practice-test-hud-actions">
+              {!isConfirmingEnd ? (
+                <button
+                  type="button"
+                  className="practice-end-text-button"
+                  onClick={() => setIsConfirmingEnd(true)}
+                >
+                  End test
+                </button>
+              ) : (
+                <div className="practice-end-confirm">
+                  <p className="small">End this test? Your current answers will be lost.</p>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => setIsConfirmingEnd(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button type="button" onClick={handleExitTestSession}>
+                    End Test
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <article className="panel">
+            <h2>Practice Test In Progress</h2>
+            <div className="stack">
+              <div className="practice-test-info">
+                <p className="small practice-test-info-line">
+                  <span>{selectedCourse ? `${selectedCourse.name} (${selectedCourse.term})` : exam.courseId}</span>
+                  <span>Generated {exam.generatedAt}</span>
+                  <span>{exam.questions.length} question(s)</span>
+                  {isSubmitted && score !== null ? (
+                    <span className="status ok">Score {score}/{exam.questions.length}</span>
+                  ) : (
+                    <span>Answered {answeredCount}/{exam.questions.length}</span>
+                  )}
+                </p>
+              </div>
+              <ul className="practice-question-list">
+                {exam.questions.map((question, questionIndex) => (
+                  <li
+                    key={question.id}
+                    id={`practice-question-${question.id}`}
+                    className="practice-question"
+                  >
+                    <p className="practice-question-prompt">
+                      <strong>Q{questionIndex + 1}.</strong> {question.prompt}
+                    </p>
+                    <div className="practice-choice-grid">
+                      {question.choices.map((choice, choiceIndex) => {
+                        const selected = answers[question.id] === choiceIndex;
+                        const isCorrectChoice = choiceIndex === question.answerIndex;
+                        const showAsCorrect = isSubmitted && isCorrectChoice;
+                        const showAsWrong = isSubmitted && selected && !isCorrectChoice;
+                        return (
+                          <button
+                            key={`${question.id}-${choiceIndex}`}
+                            type="button"
+                            className={`practice-choice${selected ? " selected" : ""}${showAsCorrect ? " correct" : ""}${showAsWrong ? " wrong" : ""}`}
+                            onClick={() => selectChoice(question.id, choiceIndex)}
+                            disabled={isSubmitted}
+                          >
+                            {choice}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+
+              <button
+                type="button"
+                onClick={handleSubmitAnswers}
+                disabled={
+                  isSubmitted ||
+                  exam.questions.length === 0 ||
+                  answeredCount !== exam.questions.length
+                }
+              >
+                {isSubmitted ? "Submitted" : "Submit Answers"}
+              </button>
+            </div>
+          </article>
+        </section>
+      )}
       {isReportOpen && exam && testReport ? (
         <div className="practice-report-overlay" role="dialog" aria-modal="true" aria-labelledby="practiceReportTitle">
           <section className="practice-report-modal">
