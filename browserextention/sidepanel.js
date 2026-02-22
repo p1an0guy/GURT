@@ -16,6 +16,8 @@ const counterEls = {
 
 const scrapeToggle = document.getElementById("scrapeToggle");
 const scrapePanel = document.querySelector(".scrape-panel");
+const filesLoadedBadge = document.getElementById("filesLoadedBadge");
+const filesLoadedCount = document.getElementById("filesLoadedCount");
 
 const SCRAPE_START_MESSAGE_TYPE = "SCRAPE_MODULES_START";
 const MAX_FILE_ROWS = 200;
@@ -23,6 +25,7 @@ const MAX_FILE_ROWS = 200;
 // --- Per-course state ---
 let currentCourseId = null;
 let currentCourseName = null;
+let currentCourseFileCount = 0;
 let courseRegistry = []; // [{courseId, courseName}]
 
 // Subtle pastel palette — bg for chat area, dot for the tab indicator
@@ -196,6 +199,11 @@ function handleScrapeComplete(payload) {
     "Scrape workflow complete."
   ]);
   renderScrapeUI();
+
+  // Refresh file count from S3 after scrape finishes
+  if (currentCourseId) {
+    loadCourseFileCount(currentCourseId).then(() => updateFilesLoadedBadge());
+  }
 }
 
 function handleScrapeError(payload) {
@@ -470,7 +478,18 @@ function renderScrapeUI() {
     retryScrapeBtn.disabled = scrapeState.phase === "running";
   }
 
+  updateFilesLoadedBadge();
   renderFileRows();
+}
+
+function updateFilesLoadedBadge() {
+  if (!filesLoadedBadge || !filesLoadedCount) return;
+  if (currentCourseFileCount > 0) {
+    filesLoadedCount.textContent = String(currentCourseFileCount);
+    filesLoadedBadge.classList.remove("hidden");
+  } else {
+    filesLoadedBadge.classList.add("hidden");
+  }
 }
 
 function renderFileRows() {
@@ -904,6 +923,8 @@ async function initCourseContext() {
   renderCourseTabs();
   if (currentCourseId) {
     applyCourseTheme(currentCourseId);
+    await loadCourseFileCount(currentCourseId);
+    updateFilesLoadedBadge();
     await loadChatHistory(currentCourseId);
   }
 }
@@ -929,9 +950,20 @@ function getCourseColor(courseId) {
   return COURSE_COLORS[(idx === -1 ? 0 : idx) % COURSE_COLORS.length];
 }
 
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `${r}, ${g}, ${b}`;
+}
+
 function applyCourseTheme(courseId) {
   const color = getCourseColor(courseId);
-  document.querySelector(".chat-container").style.setProperty("--course-bg", color.bg);
+  const container = document.querySelector(".chat-container");
+  container.style.setProperty("--course-bg", color.bg);
+  container.style.setProperty("--badge-color", color.dot);
+  container.style.setProperty("--badge-bg", `rgba(${hexToRgb(color.dot)}, 0.12)`);
+  container.style.setProperty("--badge-border", `rgba(${hexToRgb(color.dot)}, 0.3)`);
 }
 
 function renderCourseTabs() {
@@ -992,6 +1024,8 @@ async function switchCourse(courseId, courseName) {
 
   // Swap content while invisible
   messagesContainer.innerHTML = "";
+  await loadCourseFileCount(courseId);
+  updateFilesLoadedBadge();
   await loadChatHistory(courseId);
 
   // Fade back in
@@ -1014,6 +1048,18 @@ async function loadChatHistory(courseId) {
   if (history.length > 0) {
     history.forEach(msg => appendMessage(msg.role, msg.text, false));
     scrollToBottom();
+  }
+}
+
+async function loadCourseFileCount(courseId) {
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: "GET_FILE_COUNT",
+      courseId
+    });
+    currentCourseFileCount = (response && response.fileCount) || 0;
+  } catch {
+    currentCourseFileCount = 0;
   }
 }
 

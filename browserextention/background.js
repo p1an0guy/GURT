@@ -131,6 +131,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === "GET_FILE_COUNT") {
+    fetchFileCount(message.courseId).then(sendResponse);
+    return true;
+  }
+
   return undefined;
 });
 
@@ -783,6 +788,23 @@ async function handleScrapeModulesStart(message) {
     if (activeScrapeRun && activeScrapeRun.id === runId) {
       activeScrapeRun = null;
     }
+  }
+}
+
+async function fetchFileCount(courseId) {
+  if (!courseId) {
+    return { success: false, error: "No courseId provided", fileCount: 0 };
+  }
+  try {
+    const url = `${API_BASE_URL}/courses/${encodeURIComponent(courseId)}/files/count`;
+    const response = await fetch(url);
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(data ? JSON.stringify(data) : response.statusText);
+    }
+    return { success: true, fileCount: data.fileCount || 0 };
+  } catch (err) {
+    return { success: false, error: err.message, fileCount: 0 };
   }
 }
 
