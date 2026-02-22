@@ -16,6 +16,8 @@ const counterEls = {
 
 const scrapeToggle = document.getElementById("scrapeToggle");
 const scrapePanel = document.querySelector(".scrape-panel");
+const filesLoadedBadge = document.getElementById("filesLoadedBadge");
+const filesLoadedCount = document.getElementById("filesLoadedCount");
 
 const SCRAPE_START_MESSAGE_TYPE = "SCRAPE_MODULES_START";
 const MAX_FILE_ROWS = 200;
@@ -23,6 +25,7 @@ const MAX_FILE_ROWS = 200;
 // --- Per-course state ---
 let currentCourseId = null;
 let currentCourseName = null;
+let currentCourseFileCount = 0;
 let courseRegistry = []; // [{courseId, courseName}]
 
 // Subtle pastel palette — bg for chat area, dot for the tab indicator
@@ -196,6 +199,11 @@ function handleScrapeComplete(payload) {
     "Scrape workflow complete."
   ]);
   renderScrapeUI();
+
+  // Refresh file count from S3 after scrape finishes
+  if (currentCourseId) {
+    loadCourseFileCount(currentCourseId).then(() => updateFilesLoadedBadge());
+  }
 }
 
 function handleScrapeError(payload) {
@@ -470,7 +478,18 @@ function renderScrapeUI() {
     retryScrapeBtn.disabled = scrapeState.phase === "running";
   }
 
+  updateFilesLoadedBadge();
   renderFileRows();
+}
+
+function updateFilesLoadedBadge() {
+  if (!filesLoadedBadge || !filesLoadedCount) return;
+  if (currentCourseFileCount > 0) {
+    filesLoadedCount.textContent = String(currentCourseFileCount);
+    filesLoadedBadge.classList.remove("hidden");
+  } else {
+    filesLoadedBadge.classList.add("hidden");
+  }
 }
 
 function renderFileRows() {
@@ -594,6 +613,20 @@ function firstString(values) {
   return "";
 }
 
+async function getRecentHistory(courseId, limit = 5) {
+  if (!courseId) return [];
+  const key = `chatHistory_${courseId}`;
+  const result = await chrome.storage.local.get(key);
+  const history = result[key] || [];
+  return history
+    .filter(msg => msg.role === "user" || msg.role === "bot")
+    .slice(-limit)
+    .map(msg => ({
+      role: msg.role === "bot" ? "assistant" : msg.role,
+      content: msg.text
+    }));
+}
+
 async function sendMessage() {
   const text = userInput.value.trim();
   if (!text) return;
@@ -616,19 +649,26 @@ async function sendMessage() {
     // Content script may not be available — that's fine
   }
 
+  // Retrieve recent chat history for context
+  const chatHistory = await getRecentHistory(currentCourseId);
+
   // Send query to background service worker with explicit courseId
   try {
     const response = await chrome.runtime.sendMessage({
       type: "CHAT_QUERY",
       query: text,
       courseId: currentCourseId,
-      context: pageContext
+      context: pageContext,
+      history: chatHistory
     });
 
     typingEl.remove();
 
     if (response && response.success) {
       appendMessage("bot", response.answer);
+      if (response.action) {
+        renderActionCard(response.action);
+      }
     } else {
       const errMsg = (response && response.error) || "Something went wrong.";
       appendMessage("error", errMsg);
@@ -730,6 +770,64 @@ function renderMarkdown(text) {
   return html;
 }
 
+function renderActionCard(action) {
+  const card = document.createElement("div");
+  card.className = "action-card";
+
+  const isFlashcards = action.type === "flashcards";
+  const typeLabel = isFlashcards ? "Flashcard Deck" : "Practice Exam";
+  const count = action.count || (isFlashcards ? 12 : 10);
+  const countUnit = isFlashcards ? "cards" : "questions";
+  const materialNames = action.materialNames || [];
+
+  let html = `<div class="action-card-title">🍦 Ready to generate!</div>`;
+  html += `<div class="action-card-type">${typeLabel} (${count} ${countUnit})</div>`;
+
+  if (materialNames.length > 0) {
+    html += `<div class="action-card-materials"><strong>Materials:</strong><ul>`;
+    for (const name of materialNames) {
+      html += `<li>${name.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</li>`;
+    }
+    html += `</ul></div>`;
+  }
+
+  html += `<button class="action-card-btn" id="generateBtn">Generate &amp; Study</button>`;
+  card.innerHTML = html;
+
+  messagesContainer.appendChild(card);
+  scrollToBottom();
+
+  // Wire up button
+  const btn = card.querySelector("#generateBtn");
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    btn.textContent = "Generating...";
+
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: "GENERATE_STUDY_TOOL",
+        action: action,
+        courseId: currentCourseId,
+        courseName: currentCourseName
+      });
+
+      if (response && response.success) {
+        btn.textContent = "Opening...";
+        appendMessage("bot", `Your ${typeLabel.toLowerCase()} is ready! Opening in a new tab... 🍦`);
+      } else {
+        btn.textContent = "Generate & Study";
+        btn.disabled = false;
+        const errMsg = (response && response.error) || "Generation failed.";
+        appendMessage("error", errMsg);
+      }
+    } catch (err) {
+      btn.textContent = "Generate & Study";
+      btn.disabled = false;
+      appendMessage("error", "Failed to generate: " + err.message);
+    }
+  });
+}
+
 function appendMessage(role, text, save = true) {
   const div = document.createElement("div");
   div.className = `message ${role}`;
@@ -825,6 +923,8 @@ async function initCourseContext() {
   renderCourseTabs();
   if (currentCourseId) {
     applyCourseTheme(currentCourseId);
+    await loadCourseFileCount(currentCourseId);
+    updateFilesLoadedBadge();
     await loadChatHistory(currentCourseId);
   }
 }
@@ -850,9 +950,20 @@ function getCourseColor(courseId) {
   return COURSE_COLORS[(idx === -1 ? 0 : idx) % COURSE_COLORS.length];
 }
 
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `${r}, ${g}, ${b}`;
+}
+
 function applyCourseTheme(courseId) {
   const color = getCourseColor(courseId);
-  document.querySelector(".chat-container").style.setProperty("--course-bg", color.bg);
+  const container = document.querySelector(".chat-container");
+  container.style.setProperty("--course-bg", color.bg);
+  container.style.setProperty("--badge-color", color.dot);
+  container.style.setProperty("--badge-bg", `rgba(${hexToRgb(color.dot)}, 0.12)`);
+  container.style.setProperty("--badge-border", `rgba(${hexToRgb(color.dot)}, 0.3)`);
 }
 
 function renderCourseTabs() {
@@ -913,6 +1024,8 @@ async function switchCourse(courseId, courseName) {
 
   // Swap content while invisible
   messagesContainer.innerHTML = "";
+  await loadCourseFileCount(courseId);
+  updateFilesLoadedBadge();
   await loadChatHistory(courseId);
 
   // Fade back in
@@ -935,6 +1048,18 @@ async function loadChatHistory(courseId) {
   if (history.length > 0) {
     history.forEach(msg => appendMessage(msg.role, msg.text, false));
     scrollToBottom();
+  }
+}
+
+async function loadCourseFileCount(courseId) {
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: "GET_FILE_COUNT",
+      courseId
+    });
+    currentCourseFileCount = (response && response.fileCount) || 0;
+  } catch {
+    currentCourseFileCount = 0;
   }
 }
 

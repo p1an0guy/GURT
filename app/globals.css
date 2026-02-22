@@ -189,7 +189,7 @@ body {
 }
 
 :root[data-theme="light"] .sidebar-nav-item {
-  color: #7b2424;
+  color: #000000;
 }
 
 :root[data-theme="light"] .sidebar-nav-item.active {
