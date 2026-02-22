@@ -42,6 +42,14 @@ function kbIngestionStatusMessage(sync: CanvasSyncResponse): string {
   return "KB ingestion not started.";
 }
 
+function canvasSyncSummaryMessage(sync: CanvasSyncResponse): string {
+  const failed =
+    sync.failedCourseIds.length > 0
+      ? ` Failed course IDs: ${sync.failedCourseIds.join(", ")}.`
+      : "";
+  return `Canvas sync complete: ${sync.coursesUpserted} course(s), ${sync.itemsUpserted} item(s), ${sync.materialsMirrored} mirrored material(s). ${kbIngestionStatusMessage(sync)}${failed}`;
+}
+
 export function DevConsolePage() {
   const [baseUrl, setBaseUrl] = useState(
     process.env.NEXT_PUBLIC_API_BASE_URL ?? "",
@@ -180,13 +188,11 @@ export function DevConsolePage() {
       const sync = await client.syncCanvas();
       setLastCanvasSync(sync);
       if (sync.failedCourseIds.length > 0) {
-        setCanvasSyncWarning(`Partial sync. Failed course IDs: ${sync.failedCourseIds.join(", ")}`);
+        setCanvasSyncWarning(
+          `Partial sync. Failed course IDs: ${sync.failedCourseIds.join(", ")}. Retry Canvas sync after fixing credentials or API limits.`,
+        );
       }
-      const failed = sync.failedCourseIds.length > 0 ? ` (failed: ${sync.failedCourseIds.join(", ")})` : "";
-      const kbStatus = kbIngestionStatusMessage(sync);
-      setMessage(
-        `Canvas sync: ${sync.coursesUpserted} course(s), ${sync.itemsUpserted} item(s), ${sync.materialsMirrored} material(s) mirrored${failed}. ${kbStatus}`,
-      );
+      setMessage(canvasSyncSummaryMessage(sync));
       const [coursesResp, itemsResp, masteryResp] = await Promise.all([
         client.listCourses(),
         client.listCourseItems(courseId),
@@ -260,7 +266,7 @@ export function DevConsolePage() {
     }
   }
 
-  async function handleStartIngest(): Promise<void> {
+  async function handleStartManualIngest(): Promise<void> {
     setMessage("");
     setIngestError("");
     setIngestStatus("");
@@ -284,7 +290,7 @@ export function DevConsolePage() {
       setIngestJobId(start.jobId);
       setIngestStatus(start.status);
       setLastIngestUpdatedAt(start.updatedAt);
-      setMessage(`Ingest started (jobId: ${start.jobId}).`);
+      setMessage(`Manual ingest started (jobId: ${start.jobId}).`);
 
       for (let attempt = 0; attempt < 30; attempt += 1) {
         const status = await client.getDocsIngestStatus(start.jobId);
@@ -292,20 +298,22 @@ export function DevConsolePage() {
         setLastIngestUpdatedAt(status.updatedAt);
         if (status.status === "FINISHED") {
           setMessage(
-            `Ingest finished (jobId: ${status.jobId}, textLength: ${status.textLength}, textract: ${status.usedTextract ? "yes" : "no"}).`,
+            `Manual ingest finished (jobId: ${status.jobId}, textLength: ${status.textLength}, textract: ${status.usedTextract ? "yes" : "no"}).`,
           );
           return;
         }
         if (status.status === "FAILED") {
-          throw new Error(`Ingest failed (jobId: ${status.jobId}): ${status.error || "unknown error"}`);
+          throw new Error(
+            `Manual ingest failed (jobId: ${status.jobId}): ${status.error || "unknown error"}`,
+          );
         }
         await waitMs(1500);
       }
-      throw new Error(`Ingest polling timed out for job ${start.jobId}.`);
+      throw new Error(`Manual ingest polling timed out for job ${start.jobId}.`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       setIngestError(errorMessage);
-      setMessage(errorMessage);
+      setMessage(`Manual ingest fallback failed. ${errorMessage}`);
     } finally {
       setIngestLoading(false);
     }
@@ -316,11 +324,11 @@ export function DevConsolePage() {
       {ingestLoading ? (
         <div className="loading-screen" role="status" aria-live="polite">
           <div className="loading-card">
-            <h2>Processing Document</h2>
+            <h2>Processing Manual Ingest</h2>
             <p>
               {ingestJobId
                 ? `Polling ingest job ${ingestJobId} (${ingestStatus || "RUNNING"})...`
-                : "Starting ingest workflow..."}
+                : "Starting manual ingest workflow..."}
             </p>
           </div>
         </div>
@@ -394,6 +402,10 @@ export function DevConsolePage() {
             <button type="button" onClick={handleCanvasSync} disabled={canvasSyncLoading}>
               {canvasSyncLoading ? "Syncing..." : "Sync Canvas"}
             </button>
+            <p className="small">
+              Primary ingest flow: sync from Canvas. Mirrored files automatically feed KB
+              ingestion when configured.
+            </p>
             {canvasSyncWarning ? <p className="warning-text">{canvasSyncWarning}</p> : null}
             {canvasSyncError ? (
               <>
@@ -409,32 +421,38 @@ export function DevConsolePage() {
             <button type="button" onClick={handleMintCalendarToken}>
               Mint Calendar Token
             </button>
-
-            <label htmlFor="ingestDocId">Ingest Doc ID</label>
-            <input
-              id="ingestDocId"
-              value={ingestDocId}
-              onChange={(event) => setIngestDocId(event.target.value)}
-              placeholder="doc-demo-001"
-            />
-            <label htmlFor="ingestKey">Ingest S3 Key</label>
-            <input
-              id="ingestKey"
-              value={ingestKey}
-              onChange={(event) => setIngestKey(event.target.value)}
-              placeholder="uploads/course-psych-101/doc-demo-001/syllabus.pdf"
-            />
-            <button type="button" onClick={handleStartIngest} disabled={ingestLoading}>
-              {ingestLoading ? "Ingesting..." : "Start Ingest"}
-            </button>
-            {ingestError ? (
-              <>
-                <p className="error-text">Ingest failed: {ingestError}</p>
-                <button type="button" className="secondary-button" onClick={handleStartIngest} disabled={ingestLoading}>
-                  Retry Ingest
-                </button>
-              </>
-            ) : null}
+            <details>
+              <summary>Manual /docs/ingest fallback (advanced)</summary>
+              <p className="small">
+                Use this only when Canvas sync is not the right path and you already have an
+                uploaded S3 object key.
+              </p>
+              <label htmlFor="ingestDocId">Ingest Doc ID</label>
+              <input
+                id="ingestDocId"
+                value={ingestDocId}
+                onChange={(event) => setIngestDocId(event.target.value)}
+                placeholder="doc-demo-001"
+              />
+              <label htmlFor="ingestKey">Ingest S3 Key</label>
+              <input
+                id="ingestKey"
+                value={ingestKey}
+                onChange={(event) => setIngestKey(event.target.value)}
+                placeholder="uploads/course-psych-101/doc-demo-001/syllabus.pdf"
+              />
+              <button type="button" onClick={handleStartManualIngest} disabled={ingestLoading}>
+                {ingestLoading ? "Ingesting..." : "Start Manual Ingest"}
+              </button>
+              {ingestError ? (
+                <>
+                  <p className="error-text">Manual ingest failed: {ingestError}</p>
+                  <button type="button" className="secondary-button" onClick={handleStartManualIngest} disabled={ingestLoading}>
+                    Retry Manual Ingest
+                  </button>
+                </>
+              ) : null}
+            </details>
 
             <label htmlFor="numCards">Generate Flashcards</label>
             <input
@@ -503,31 +521,42 @@ export function DevConsolePage() {
             </p>
             <p className="small">{message || "No requests yet."}</p>
             <div className="status-block">
-              <p className="small"><strong>Canvas Sync</strong></p>
+              <p className="small"><strong>Ingest (Canvas-first)</strong></p>
               <p className="small">
                 {lastCanvasSync
-                  ? `Last success: ${lastCanvasSync.updatedAt} (${lastCanvasSync.itemsUpserted} items, ${lastCanvasSync.materialsMirrored} mirrored)`
-                  : "No successful sync yet."}
+                  ? `Last successful Canvas sync: ${lastCanvasSync.updatedAt} (${lastCanvasSync.itemsUpserted} item(s), ${lastCanvasSync.materialsMirrored} mirrored material(s)).`
+                  : "No successful Canvas sync yet."}
+              </p>
+              <p className="small">
+                {lastCanvasSync
+                  ? `Knowledge base status: ${kbIngestionStatusMessage(lastCanvasSync)}`
+                  : "Knowledge base status available after the first successful sync."}
               </p>
               {canvasSyncWarning ? <p className="warning-text">{canvasSyncWarning}</p> : null}
               {canvasSyncError ? <p className="error-text">{canvasSyncError}</p> : null}
+              {canvasSyncError ? (
+                <button type="button" className="secondary-button" onClick={handleCanvasSync} disabled={canvasSyncLoading}>
+                  {canvasSyncLoading ? "Retrying..." : "Retry Canvas Sync"}
+                </button>
+              ) : null}
             </div>
             <div className="status-block">
-              <p className="small"><strong>Knowledge Base Ingestion</strong></p>
-              <p className="small">
-                {lastCanvasSync
-                  ? `Last sync ${lastCanvasSync.updatedAt}: ${kbIngestionStatusMessage(lastCanvasSync)}`
-                  : "No successful canvas sync yet."}
-              </p>
-            </div>
-            <div className="status-block">
-              <p className="small"><strong>Docs Ingest</strong></p>
+              <p className="small"><strong>Manual Docs Ingest (Fallback)</strong></p>
               <p className="small">
                 {ingestJobId
                   ? `Job ${ingestJobId}: ${ingestStatus || "RUNNING"} (${lastIngestUpdatedAt || "pending"})`
-                  : "No ingest job started yet."}
+                  : "No manual ingest job started."}
+              </p>
+              <p className="small">
+                Use this only when you need direct `/docs/ingest` with known `docId` and S3
+                `key`.
               </p>
               {ingestError ? <p className="error-text">{ingestError}</p> : null}
+              {ingestError ? (
+                <button type="button" className="secondary-button" onClick={handleStartManualIngest} disabled={ingestLoading}>
+                  {ingestLoading ? "Retrying..." : "Retry Manual Ingest"}
+                </button>
+              ) : null}
             </div>
             <div className="status-block">
               <p className="small"><strong>Generation + Chat</strong></p>

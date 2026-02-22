@@ -295,19 +295,59 @@ npm run dev
 
 If browser calls fail with `Failed to fetch`, verify deployed API has CORS enabled (OPTIONS preflight + response headers) and that `NEXT_PUBLIC_API_BASE_URL` matches the deployed stage URL exactly.
 
+## S3 upload CORS origin config (presigned upload URL)
+
+`POST /uploads` returns a presigned S3 upload URL. Browser upload CORS is enforced by the uploads bucket CORS policy (not API Gateway CORS), so keep API Gateway CORS settings unchanged when debugging upload preflight issues.
+
+`infra/app.py` reads `FRONTEND_ALLOWED_ORIGINS` as a comma-separated list and passes it to `GurtDataStack` for S3 CORS.
+Default when unset or empty: `http://localhost:3000`.
+
+Example (localhost + CloudFront follow-up origin):
+
+```bash
+export FRONTEND_ALLOWED_ORIGINS="http://localhost:3000,https://d123example.cloudfront.net"
+AWS_PROFILE=<your-sso-profile> ./scripts/deploy.sh
+```
+
+Explicit preflight verification against a returned presigned upload URL:
+
+```bash
+UPLOAD_URL="$(curl -sS -X POST "$BASE_URL/uploads" \
+  -H 'content-type: application/json' \
+  -d '{"courseId":"course-psych-101","filename":"cors-check.txt","contentType":"text/plain"}' | jq -r '.uploadUrl')"
+
+curl -i -X OPTIONS "$UPLOAD_URL" \
+  -H 'Origin: http://localhost:3000' \
+  -H 'Access-Control-Request-Method: PUT' \
+  -H 'Access-Control-Request-Headers: content-type'
+```
+
+Expected preflight headers include:
+- `Access-Control-Allow-Origin: http://localhost:3000`
+- `Access-Control-Allow-Methods` includes `PUT, GET, HEAD`
+- `Access-Control-Allow-Headers` allows `*`
+
+For completed upload `PUT` responses, `ETag` should be exposed to the browser via CORS.
+
 Quick runtime-hardening checks in browser:
 
-1. Use `Live API` mode, then run `Sync Canvas`.
-2. Confirm the Status panel shows last sync time and any `failedCourseIds` warnings.
-3. Run `Start Ingest` (with `docId` + S3 `key`) and confirm:
-   - loading overlay appears while polling
-   - Status panel shows `Docs Ingest` job id and status progression
-   - terminal state is `FINISHED` or actionable `FAILED` error with retry button
-4. Confirm the Status panel shows **Knowledge Base Ingestion** outcome from Canvas sync:
+1. Use `Live API` mode, run `Connect Canvas`, then run `Sync Canvas` (primary ingest flow).
+2. Confirm the Status panel `Ingest (Canvas-first)` block shows:
+   - last successful sync time with mirrored material counts
+   - any `failedCourseIds` warning from partial syncs
+3. Confirm the same block reports **Knowledge Base Ingestion** outcome from Canvas sync:
    - `KB ingestion started (jobId: ...)` when mirrored materials were found and KB env vars are configured.
    - `KB ingestion not started: ...` when mirrored materials were found but KB start failed/misconfigured.
    - `No new mirrored materials.` when sync did not mirror any new files.
-5. Run `Generate Cards`, `Generate Exam`, and `Ask Chat`; confirm each action reports success timestamps or actionable retry errors.
+4. Force a Canvas sync failure (for example invalid token) and confirm actionable retry:
+   - `Canvas sync failed: ...` appears
+   - `Retry Canvas Sync` is available in both controls and Status panel
+5. Optional fallback check for manual ingest support:
+   - Expand `Manual /docs/ingest fallback (advanced)`.
+   - Run `Start Manual Ingest` with `docId` + S3 `key`.
+   - Confirm loading overlay while polling and status progression in `Manual Docs Ingest (Fallback)`.
+   - Terminal state is `FINISHED` or actionable `FAILED` error with `Retry Manual Ingest`.
+6. Run `Generate Cards`, `Generate Exam`, and `Ask Chat`; confirm each action reports success timestamps or actionable retry errors.
 
 ## Chrome extension API validation (demo)
 

@@ -800,6 +800,24 @@ button:disabled {
   white-space: nowrap;
 }
 
+.material-source-tag {
+  margin-left: 0;
+  margin-right: 0;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.material-source-tag.synced {
+  background: color-mix(in srgb, #4f88d8 18%, transparent);
+  color: color-mix(in srgb, #b8d8ff 90%, #3d6ca7);
+}
+
+.material-source-tag.note {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: color-mix(in srgb, var(--ink) 94%, var(--accent));
+}
+
 .deck-actions {
   margin-top: 0.65rem;
 }
@@ -1228,6 +1246,31 @@ button:disabled {
 .flashcards-modern .material-row.selected {
   border-color: color-mix(in srgb, var(--accent) 70%, var(--line));
   background: linear-gradient(90deg, color-mix(in srgb, var(--accent-soft) 75%, transparent), color-mix(in srgb, var(--surface) 82%, transparent));
+}
+
+.flashcards-selected-sources {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.flashcards-selected-sources .small {
+  margin: 0;
+}
+
+.flashcards-selected-source-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.35rem;
+  max-height: 8.4rem;
+  overflow-y: auto;
+}
+
+.flashcards-selected-source-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .flashcards-modern .status-block {

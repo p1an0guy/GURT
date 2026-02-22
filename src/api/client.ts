@@ -16,6 +16,7 @@ import {
   getFixtureStudyMastery,
   getFixtureStudyReviewAck,
   getFixtureStudyToday,
+  getFixtureUploadResponse,
 } from "./fixtures.ts";
 import type {
   CanvasConnectRequest,
@@ -35,6 +36,8 @@ import type {
   ReviewEvent,
   StudyReviewAck,
   TopicMastery,
+  UploadRequest,
+  UploadResponse,
 } from "./types.ts";
 
 type FetchLike = typeof fetch;
@@ -60,6 +63,8 @@ export interface ApiClient {
   getStudyMastery(courseId: string): Promise<TopicMastery[]>;
   getCalendarIcs(token: string): Promise<string>;
   createCalendarToken(): Promise<CalendarTokenResponse>;
+  createUpload(request: UploadRequest): Promise<UploadResponse>;
+  uploadFileToUrl(uploadUrl: string, file: Blob, contentType: UploadRequest["contentType"]): Promise<void>;
   listCourseMaterials(courseId: string): Promise<CourseMaterial[]>;
   generateFlashcardsFromMaterials(courseId: string, materialIds: string[], numCards: number): Promise<Card[]>;
   startDocsIngest(request: IngestStartRequest): Promise<IngestStartResponse>;
@@ -323,6 +328,39 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
       return requestJson<CalendarTokenResponse>("/calendar/token", {
         method: "POST",
       });
+    },
+
+    async createUpload(request: UploadRequest): Promise<UploadResponse> {
+      if (useFixtures) {
+        return getFixtureUploadResponse(request);
+      }
+      return requestJson<UploadResponse>("/uploads", {
+        method: "POST",
+        headers: {
+          "content-type": "text/plain",
+        },
+        body: JSON.stringify(request),
+      });
+    },
+
+    async uploadFileToUrl(
+      uploadUrl: string,
+      file: Blob,
+      contentType: UploadRequest["contentType"],
+    ): Promise<void> {
+      if (useFixtures) {
+        return;
+      }
+      const response = await fetchImpl(uploadUrl, {
+        method: "PUT",
+        headers: {
+          "content-type": contentType,
+        },
+        body: file,
+      });
+      if (!response.ok) {
+        throw await parseError(response);
+      }
     },
 
     async listCourseMaterials(courseId: string): Promise<CourseMaterial[]> {
