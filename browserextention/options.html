@@ -4,71 +4,19 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GURT — Settings</title>
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      max-width: 480px;
-      margin: 40px auto;
-      padding: 0 20px;
-      color: #333;
-    }
-    h1 {
-      font-size: 22px;
-      margin-bottom: 4px;
-    }
-    .subtitle {
-      color: #666;
-      font-size: 14px;
-      margin-bottom: 24px;
-    }
-    label {
-      display: block;
-      font-weight: 600;
-      font-size: 14px;
-      margin-bottom: 6px;
-      margin-top: 16px;
-    }
-    input {
-      width: 100%;
-      padding: 10px 12px;
-      border: 1px solid #d1d5db;
-      border-radius: 6px;
-      font-size: 14px;
-      font-family: inherit;
-      outline: none;
-    }
-    input:focus {
-      border-color: #0374b5;
-      box-shadow: 0 0 0 2px rgba(3, 116, 181, 0.15);
-    }
-    button {
-      margin-top: 24px;
-      padding: 10px 24px;
-      background: #0374b5;
-      color: #fff;
-      border: none;
-      border-radius: 6px;
-      font-size: 14px;
-      cursor: pointer;
-    }
-    button:hover {
-      background: #025d91;
-    }
-    .status {
-      margin-top: 12px;
-      font-size: 14px;
-      color: #16a34a;
-      display: none;
-    }
-  </style>
+  <link rel="stylesheet" href="options.css">
 </head>
 <body>
-  <h1>🍦 GURT Settings</h1>
-  <p class="subtitle">Generative Uni Revision Tool</p>
+  <main class="options-shell">
+    <section class="options-panel">
+      <h1>GURT Extension</h1>
+      <p class="subtitle">Generative Uni Revision Tool</p>
 
-  <label>API Endpoint</label>
-  <input type="text" value="https://hpthlfk5ql.execute-api.us-west-2.amazonaws.com/dev" disabled>
-  <p style="margin-top: 8px; font-size: 13px; color: #666;">The API endpoint is preconfigured and cannot be changed.</p>
+      <label for="apiEndpoint">API Endpoint</label>
+      <input id="apiEndpoint" type="text" value="https://hpthlfk5ql.execute-api.us-west-2.amazonaws.com/dev" disabled>
+      <p class="help-text">The API endpoint is preconfigured and cannot be changed.</p>
+    </section>
+  </main>
 
   <script src="options.js"></script>
 </body>
