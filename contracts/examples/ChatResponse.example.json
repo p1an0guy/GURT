@@ -3,5 +3,17 @@
   "citations": [
     "s3://studybuddy-dev-uploads/course-psych-101/syllabus.pdf#chunk-14",
     "s3://studybuddy-dev-uploads/course-psych-101/chapter-3-notes.pdf#chunk-6"
+  ],
+  "citationDetails": [
+    {
+      "source": "s3://studybuddy-dev-uploads/course-psych-101/syllabus.pdf#chunk-14",
+      "label": "syllabus.pdf (chunk-14)",
+      "url": "https://s3.console.aws.amazon.com/s3/object/studybuddy-dev-uploads?prefix=course-psych-101/syllabus.pdf"
+    },
+    {
+      "source": "s3://studybuddy-dev-uploads/course-psych-101/chapter-3-notes.pdf#chunk-6",
+      "label": "chapter-3-notes.pdf (chunk-6)",
+      "url": "https://s3.console.aws.amazon.com/s3/object/studybuddy-dev-uploads?prefix=course-psych-101/chapter-3-notes.pdf"
+    }
   ]
 }

@@ -1104,6 +1104,16 @@ class RuntimeHandlerTests(unittest.TestCase):
         body = json.loads(response["body"])
         self.assertIn("answer", body)
         self.assertEqual(len(body["citations"]), 1)
+        self.assertEqual(
+            body["citationDetails"],
+            [
+                {
+                    "source": "s3://bucket/doc.pdf#chunk-3",
+                    "label": "doc.pdf (chunk-3)",
+                    "url": "https://s3.console.aws.amazon.com/s3/object/bucket?prefix=doc.pdf",
+                }
+            ],
+        )
         chat_answer.assert_called_once_with(
             course_id="course-psych-101",
             question="What is working memory?",
@@ -1153,6 +1163,40 @@ class RuntimeHandlerTests(unittest.TestCase):
         call_kwargs = chat_mock.call_args.kwargs
         self.assertIsNotNone(call_kwargs["canvas_context"])
         self.assertIn("Midterm Exam", call_kwargs["canvas_context"])
+
+    def test_chat_converts_http_citations_to_https_link_details(self) -> None:
+        event = {
+            "httpMethod": "POST",
+            "path": "/chat",
+            "body": json.dumps(
+                {
+                    "courseId": "course-psych-101",
+                    "question": "How should I study?",
+                }
+            ),
+        }
+
+        with patch(
+            "backend.runtime.chat_answer",
+            return_value={
+                "answer": "Review the lecture notes.",
+                "citations": ["http://example.edu/notes/week-2.pdf"],
+            },
+        ):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 200)
+        body = json.loads(response["body"])
+        self.assertEqual(
+            body["citationDetails"],
+            [
+                {
+                    "source": "http://example.edu/notes/week-2.pdf",
+                    "label": "week-2.pdf",
+                    "url": "https://example.edu/notes/week-2.pdf",
+                }
+            ],
+        )
 
     def test_chat_proceeds_when_canvas_query_fails(self) -> None:
         event = {

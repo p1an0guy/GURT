@@ -252,7 +252,7 @@
         },
         "responses": {
           "200": {
-            "description": "Grounded answer response with citations",
+            "description": "Grounded answer response with legacy citations and structured citation details",
             "content": {
               "application/json": {
                 "schema": {
