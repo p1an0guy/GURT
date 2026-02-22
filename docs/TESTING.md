@@ -174,7 +174,10 @@ KNOWLEDGE_BASE_DATA_SOURCE_ID=<data-source-id> \
 ./scripts/deploy.sh
 ```
 
-To enforce Bedrock guardrails at runtime, optionally include:
+By default, CDK now provisions a Bedrock guardrail and published version in `GurtApiStack`
+and wires them into runtime env vars automatically.
+
+If you already have a guardrail and do not want CDK to create one, pass your existing ID/version:
 
 ```bash
 BEDROCK_GUARDRAIL_ID=<guardrail-id> \
@@ -194,14 +197,16 @@ Key stack outputs to use for smoke/dev secrets:
 - `ApiBaseUrl` (or `SuggestedSmokeBaseUrlSecret`) -> `DEV_BASE_URL`
 - `CalendarTokenMintEndpoint` -> call this endpoint to mint `DEV_CALENDAR_TOKEN`
 - `SuggestedSmokeCourseIdSecret` -> `DEV_COURSE_ID` (defaults to `course-psych-101`)
+- `BedrockGuardrailId` and `BedrockGuardrailVersion` (from `GurtApiStack`) -> runtime guardrail configuration
+- `BedrockGuardrailMode` (`cdk-managed` or `existing`) -> indicates whether CDK created the guardrail
 - `KnowledgeBaseId` (from `GurtKnowledgeBaseStack`) -> runtime `KNOWLEDGE_BASE_ID`
 - `KnowledgeBaseDataSourceId` -> for `aws bedrock-agent start-ingestion-job`
 
 CDK context defaults for demo deploys (`infra/cdk.json`):
 
 - `bedrockModelId`: default model id for generation/chat (`us.anthropic.claude-sonnet-4-6`)
-- `bedrockGuardrailId`: optional Bedrock guardrail id for chat/generation safety enforcement
-- `bedrockGuardrailVersion`: optional Bedrock guardrail version (must be set together with `bedrockGuardrailId`)
+- `bedrockGuardrailId`: optional existing Bedrock guardrail id override; when empty, CDK creates one
+- `bedrockGuardrailVersion`: optional existing guardrail version override; if id is set and version is empty, runtime uses `DRAFT`
 - `embeddingModelId`: default embedding model for KB indexing (`amazon.titan-embed-text-v2:0`)
 - `knowledgeBaseId`: optional existing KB ID override; when empty, CDK creates one
 - `knowledgeBaseDataSourceId`: optional existing KB data source ID override (required for auto-ingestion trigger on `/canvas/sync`)

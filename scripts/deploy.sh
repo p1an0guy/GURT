@@ -155,6 +155,9 @@ if stack is None:
 api_base_url = stack.get("ApiBaseUrl", "")
 mint_endpoint = stack.get("CalendarTokenMintEndpoint", "")
 course_id = stack.get("SuggestedSmokeCourseIdSecret", "course-psych-101")
+guardrail_id = stack.get("BedrockGuardrailId", "")
+guardrail_version = stack.get("BedrockGuardrailVersion", "")
+guardrail_mode = stack.get("BedrockGuardrailMode", "")
 
 kb_stack = data.get("GurtKnowledgeBaseStack", {})
 knowledge_base_id = kb_stack.get("KnowledgeBaseId", "")
@@ -165,6 +168,11 @@ print(f"Outputs file: {outputs_path}")
 print(f"DEV_BASE_URL={api_base_url}")
 print(f"Mint calendar token via: {mint_endpoint}")
 print(f"Suggested DEV_COURSE_ID={course_id}")
+if guardrail_id and guardrail_version:
+    print(f"BEDROCK_GUARDRAIL_ID={guardrail_id}")
+    print(f"BEDROCK_GUARDRAIL_VERSION={guardrail_version}")
+if guardrail_mode:
+    print(f"Bedrock guardrail mode: {guardrail_mode}")
 if knowledge_base_id:
     print(f"KNOWLEDGE_BASE_ID={knowledge_base_id}")
 if knowledge_base_id and knowledge_base_data_source_id:
