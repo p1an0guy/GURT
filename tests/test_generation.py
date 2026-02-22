@@ -386,6 +386,57 @@ class BedrockGuardrailInvocationTests(unittest.TestCase):
                 generation._invoke_model_json("Return json.")
 
 
+class ModelJsonParsingTests(unittest.TestCase):
+    def test_parse_model_json_text_handles_markdown_wrapped_array(self) -> None:
+        payload = generation._parse_model_json_text(
+            """Here is your result:
+```json
+[{"prompt":"What is ATP?","answer":"Cell energy currency."}]
+```"""
+        )
+        self.assertIsInstance(payload, list)
+        self.assertEqual(payload[0]["prompt"], "What is ATP?")
+
+    def test_parse_model_json_text_handles_trailing_commas(self) -> None:
+        payload = generation._parse_model_json_text(
+            '[{"prompt":"Q1","answer":"A1",},{"prompt":"Q2","answer":"A2",},]'
+        )
+        self.assertEqual(len(payload), 2)
+        self.assertEqual(payload[1]["answer"], "A2")
+
+    def test_parse_model_json_text_raises_generation_error_for_invalid_payload(self) -> None:
+        with self.assertRaises(generation.GenerationError) as exc_info:
+            generation._parse_model_json_text("not json at all")
+        self.assertIn("invalid JSON payload", str(exc_info.exception))
+
+
+class FlashcardPayloadValidationTests(unittest.TestCase):
+    def test_validate_flashcard_payload_includes_only_valid_rows(self) -> None:
+        cards = generation._validate_flashcard_payload(
+            [
+                {"prompt": "Q1", "answer": "A1", "citations": ["s3://bucket/row1"]},
+                {"prompt": " ", "answer": "A2"},
+                "bad-row",
+                {"prompt": "Q3", "answer": "A3"},
+            ],
+            course_id="170880",
+            num_cards=5,
+            default_citations=["s3://bucket/default"],
+        )
+        self.assertEqual(len(cards), 2)
+        self.assertEqual(cards[0]["citations"], ["s3://bucket/row1"])
+        self.assertEqual(cards[1]["citations"], ["s3://bucket/default"])
+
+    def test_validate_flashcard_payload_raises_when_all_rows_invalid(self) -> None:
+        with self.assertRaises(generation.GenerationError) as exc_info:
+            generation._validate_flashcard_payload(
+                [{"prompt": "", "answer": ""}],
+                course_id="170880",
+                num_cards=3,
+            )
+        self.assertIn("did not contain valid cards", str(exc_info.exception))
+
+
 class RetrieveAndGenerateGuardrailTests(unittest.TestCase):
     @patch.dict(
         "os.environ",
