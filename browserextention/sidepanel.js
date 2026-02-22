@@ -31,6 +31,7 @@ const blockSettingsBtn = document.getElementById("blockSettingsBtn");
 
 const SCRAPE_START_MESSAGE_TYPE = "SCRAPE_MODULES_START";
 const MAX_FILE_ROWS = 200;
+const MAX_FLASHCARD_MATERIAL_IDS = 10;
 const THEME_STORAGE_KEY = "gurt-theme";
 const DEFAULT_THEME = "dark";
 
@@ -853,7 +854,9 @@ function buildActionConfirmationMessage(answer, action) {
   const typeLabel = isFlashcards ? "Flashcard Deck" : "Practice Exam";
   const count = (action && action.count) || (isFlashcards ? 12 : 10);
   const unit = isFlashcards ? "cards" : "questions";
-  const materialNames = Array.isArray(action && action.materialNames) ? action.materialNames : [];
+  const materialNames = Array.isArray(action && action.materialNames)
+    ? action.materialNames.slice(0, MAX_FLASHCARD_MATERIAL_IDS)
+    : [];
 
   const lines = [
     "Ready to generate!",
@@ -864,6 +867,10 @@ function buildActionConfirmationMessage(answer, action) {
     lines.push("Materials:");
     for (const name of materialNames) {
       lines.push(String(name));
+    }
+    const originalCount = Array.isArray(action && action.materialNames) ? action.materialNames.length : 0;
+    if (originalCount > MAX_FLASHCARD_MATERIAL_IDS) {
+      lines.push(`(Using first ${MAX_FLASHCARD_MATERIAL_IDS} materials)`);
     }
   }
 
@@ -901,7 +908,10 @@ function renderActionCard(action) {
   const typeLabel = isFlashcards ? "Flashcard Deck" : "Practice Exam";
   const count = action.count || (isFlashcards ? 12 : 10);
   const countUnit = isFlashcards ? "cards" : "questions";
-  const materialNames = action.materialNames || [];
+  const materialNames = Array.isArray(action.materialNames)
+    ? action.materialNames.slice(0, MAX_FLASHCARD_MATERIAL_IDS)
+    : [];
+  const originalMaterialCount = Array.isArray(action.materialNames) ? action.materialNames.length : 0;
 
   let html = `<div class="action-card-title">🍦 Ready to generate!</div>`;
   html += `<div class="action-card-type">${typeLabel} (${count} ${countUnit})</div>`;
@@ -912,6 +922,9 @@ function renderActionCard(action) {
       html += `<li>${name.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</li>`;
     }
     html += `</ul></div>`;
+    if (originalMaterialCount > MAX_FLASHCARD_MATERIAL_IDS) {
+      html += `<div class="small">(Using first ${MAX_FLASHCARD_MATERIAL_IDS} materials)</div>`;
+    }
   }
 
   html += `<button class="action-card-btn" id="generateBtn">Generate &amp; Study</button>`;
@@ -927,9 +940,19 @@ function renderActionCard(action) {
     btn.textContent = "Generating...";
 
     try {
+      const actionForGeneration = { ...action };
+      if (action.type === "flashcards") {
+        actionForGeneration.materialIds = Array.isArray(action.materialIds)
+          ? action.materialIds.slice(0, MAX_FLASHCARD_MATERIAL_IDS)
+          : [];
+        actionForGeneration.materialNames = Array.isArray(action.materialNames)
+          ? action.materialNames.slice(0, MAX_FLASHCARD_MATERIAL_IDS)
+          : [];
+      }
+
       const response = await chrome.runtime.sendMessage({
         type: "GENERATE_STUDY_TOOL",
-        action: action,
+        action: actionForGeneration,
         courseId: currentCourseId,
         courseName: currentCourseName
       });
