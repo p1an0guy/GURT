@@ -1211,11 +1211,15 @@ def _scan_cards_table() -> list[dict[str, Any]]:
     if table is None:
         return []
 
-    response = table.scan()
-    rows = list(response.get("Items", []))
-    while "LastEvaluatedKey" in response:
-        response = table.scan(ExclusiveStartKey=response["LastEvaluatedKey"])
-        rows.extend(response.get("Items", []))
+    try:
+        response = table.scan()
+        rows = list(response.get("Items", []))
+        while "LastEvaluatedKey" in response:
+            response = table.scan(ExclusiveStartKey=response["LastEvaluatedKey"])
+            rows.extend(response.get("Items", []))
+    except Exception:
+        # Runtime card storage is best-effort; callers can fall back to fixtures.
+        return []
     return [row for row in rows if isinstance(row, dict)]
 
 
