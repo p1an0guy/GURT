@@ -1171,16 +1171,27 @@ class RuntimeHandlerTests(unittest.TestCase):
 
     def test_start_practice_exam_generation_job_returns_202_and_starts_step_function(self) -> None:
         docs_table = _MemoryDocsTable()
+        canvas_table = MagicMock()
+        canvas_table.get_item.return_value = {
+            "Item": {"entityType": "CanvasMaterial", "s3Key": "uploads/course-psych-101/material-1/file.pdf"}
+        }
         sfn_client = unittest.mock.Mock()
         event = {
             "httpMethod": "POST",
             "path": "/generate/practice-exam/jobs",
-            "body": json.dumps({"courseId": "course-psych-101", "numQuestions": 12}),
+            "body": json.dumps(
+                {
+                    "courseId": "course-psych-101",
+                    "materialIds": ["material-1"],
+                    "numQuestions": 12,
+                }
+            ),
             "requestContext": {"authorizer": {"principalId": "demo-user"}},
         }
 
         with (
             patch("backend.runtime._docs_table", return_value=docs_table),
+            patch("backend.runtime._canvas_data_table", return_value=canvas_table),
             patch("backend.runtime._stepfunctions_client", return_value=sfn_client),
             patch(
                 "backend.runtime._practice_exam_gen_state_machine_arn",
@@ -1202,8 +1213,23 @@ class RuntimeHandlerTests(unittest.TestCase):
         execution_input = json.loads(execution_kwargs["input"])
         self.assertEqual(execution_input["jobId"], body["jobId"])
         self.assertEqual(execution_input["courseId"], "course-psych-101")
+        self.assertEqual(execution_input["materialIds"], ["material-1"])
+        self.assertEqual(execution_input["materialS3Keys"], ["uploads/course-psych-101/material-1/file.pdf"])
         self.assertEqual(execution_input["numQuestions"], 12)
         self.assertEqual(execution_input["userId"], "demo-user")
+
+    def test_start_practice_exam_generation_job_requires_material_ids(self) -> None:
+        event = {
+            "httpMethod": "POST",
+            "path": "/generate/practice-exam/jobs",
+            "body": json.dumps({"courseId": "course-psych-101", "numQuestions": 12}),
+            "requestContext": {"authorizer": {"principalId": "demo-user"}},
+        }
+
+        response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 400)
+        self.assertIn("materialIds is required", json.loads(response["body"])["error"])
 
     def test_practice_exam_generation_status_returns_finished_exam_for_owner(self) -> None:
         docs_table = _MemoryDocsTable()

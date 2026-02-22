@@ -1,4 +1,5 @@
 {
   "courseId": "course-psych-101",
+  "materialIds": ["file-101", "file-102"],
   "numQuestions": 10
 }

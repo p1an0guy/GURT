@@ -59,6 +59,7 @@ export interface ApiClient {
   generatePracticeExam(courseId: string, numQuestions: number): Promise<PracticeExam>;
   startPracticeExamGeneration(
     courseId: string,
+    materialIds: string[],
     numQuestions: number,
   ): Promise<PracticeExamGenerationStartResponse>;
   getPracticeExamGenerationStatus(jobId: string): Promise<PracticeExamGenerationStatusResponse>;
@@ -263,6 +264,7 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
 
     async startPracticeExamGeneration(
       courseId: string,
+      materialIds: string[],
       numQuestions: number,
     ): Promise<PracticeExamGenerationStartResponse> {
       if (useFixtures) {
@@ -280,7 +282,7 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
         headers: {
           "content-type": "text/plain",
         },
-        body: JSON.stringify({ courseId, numQuestions }),
+        body: JSON.stringify({ courseId, materialIds, numQuestions }),
       });
     },
 

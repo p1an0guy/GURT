@@ -1733,6 +1733,16 @@ button:disabled {
   margin: 0;
 }
 
+.practice-generate-modal .material-list {
+  max-height: 220px;
+  overflow: auto;
+}
+
+.practice-generate-modal .flashcards-upload-chip-list {
+  max-height: 160px;
+  overflow: auto;
+}
+
 .practice-generate-actions {
   display: flex;
   gap: 0.55rem;

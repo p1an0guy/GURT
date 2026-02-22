@@ -29,17 +29,34 @@ def worker_handler(event: Mapping[str, Any], _context: Any) -> dict[str, Any]:
     job_id = str(payload.get("jobId", "")).strip()
     course_id = str(payload.get("courseId", "")).strip()
     num_questions = int(payload.get("numQuestions", 10))
+    material_s3_keys_raw = payload.get("materialS3Keys")
+    material_s3_keys = (
+        [str(key).strip() for key in material_s3_keys_raw if str(key).strip()]
+        if isinstance(material_s3_keys_raw, list)
+        else []
+    )
 
     if not course_id:
         return {**payload, "exam": {}, "error": "courseId is required"}
 
     try:
-        from backend.generation import generate_practice_exam
-
-        exam = generate_practice_exam(
-            course_id=course_id,
-            num_questions=max(1, min(num_questions, 20)),
+        from backend.generation import (
+            generate_practice_exam,
+            generate_practice_exam_from_materials,
         )
+
+        bounded_questions = max(1, min(num_questions, 20))
+        if material_s3_keys:
+            exam = generate_practice_exam_from_materials(
+                course_id=course_id,
+                material_s3_keys=material_s3_keys,
+                num_questions=bounded_questions,
+            )
+        else:
+            exam = generate_practice_exam(
+                course_id=course_id,
+                num_questions=bounded_questions,
+            )
     except Exception as exc:
         logger.exception("Practice exam generation failed for job %s", job_id)
         return {**payload, "exam": {}, "error": str(exc)}
