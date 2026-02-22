@@ -26,12 +26,16 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 - **AI features:**
   - Model provider: **Amazon Bedrock**.
   - Default model id: `us.anthropic.claude-sonnet-4-6`.
+  - Guardrails: `GurtApiStack` provisions Bedrock guardrails by default and wires
+    `BEDROCK_GUARDRAIL_ID` + `BEDROCK_GUARDRAIL_VERSION` into runtime automatically.
+    If an existing guardrail is provided via CDK context, CDK reuses it and does not create a new one.
   - Retrieval source: Bedrock Knowledge Base (`KNOWLEDGE_BASE_ID`).
   - RAG index over uploaded sources (chunk + embeddings + retrieval).
   - Generate:
     - Flashcards (<=100 for demo)
     - Practice exam questions (MCQ + short answer, citations)
     - Chat Q&A grounded in sources (citations)
+  - Runtime safety behavior: guardrail-triggered blocks return deterministic safe fallback messaging.
 - **Spaced repetition:** Web-hosted **FSRS** (no Anki integration).
 - **Schedule truth sources:**
   - **Canvas** is source of truth for _dates/deadlines_.

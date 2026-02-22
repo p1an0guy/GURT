@@ -22,7 +22,18 @@ from backend.canvas_client import (
     fetch_course_files,
     fetch_file_bytes,
 )
-from backend.generation import GenerationError, chat_answer, chat_answer_with_actions, format_canvas_items, generate_flashcards, generate_flashcards_from_materials, generate_practice_exam
+from backend.generation import (
+    GUARDRAIL_BLOCKED_MESSAGE,
+    GenerationError,
+    GuardrailBlockedError,
+    chat_answer,
+    chat_answer_with_actions,
+    format_canvas_items,
+    generate_flashcards,
+    generate_flashcards_from_materials,
+    generate_practice_exam,
+    guardrail_blocked_chat_response,
+)
 from backend import uploads
 from gurt.calendar_tokens.minting import (
     CalendarTokenMintingError,
@@ -1086,6 +1097,8 @@ def _handle_generate_flashcards(event: Mapping[str, Any]) -> Dict[str, Any]:
         _persist_generated_cards(cards)
     except ValueError as exc:
         return _json_response(400, {"error": str(exc)})
+    except GuardrailBlockedError:
+        return _json_response(400, {"error": GUARDRAIL_BLOCKED_MESSAGE})
     except GenerationError as exc:
         return _json_response(502, {"error": str(exc)})
     except RuntimeError as exc:
@@ -1158,6 +1171,8 @@ def _handle_generate_flashcards_from_materials(event: Mapping[str, Any]) -> Dict
         _persist_generated_cards(cards)
     except ValueError as exc:
         return _json_response(400, {"error": str(exc)})
+    except GuardrailBlockedError:
+        return _json_response(400, {"error": GUARDRAIL_BLOCKED_MESSAGE})
     except GenerationError as exc:
         return _json_response(502, {"error": str(exc)})
     except RuntimeError as exc:
@@ -1278,6 +1293,8 @@ def _handle_generate_practice_exam(event: Mapping[str, Any]) -> Dict[str, Any]:
         exam = generate_practice_exam(course_id=course_id, num_questions=min(num_questions, 20))
     except ValueError as exc:
         return _json_response(400, {"error": str(exc)})
+    except GuardrailBlockedError:
+        return _json_response(400, {"error": GUARDRAIL_BLOCKED_MESSAGE})
     except GenerationError as exc:
         return _json_response(502, {"error": str(exc)})
     except RuntimeError as exc:
@@ -1343,6 +1360,8 @@ def _handle_chat(event: Mapping[str, Any]) -> Dict[str, Any]:
             answer = chat_answer(course_id=course_id, question=question, canvas_context=canvas_context)
     except ValueError as exc:
         return _json_response(400, {"error": str(exc)})
+    except GuardrailBlockedError:
+        return _json_response(200, guardrail_blocked_chat_response())
     except GenerationError as exc:
         return _json_response(502, {"error": str(exc)})
     except RuntimeError as exc:
