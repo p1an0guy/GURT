@@ -1,3 +1,4 @@
 {
-  "webAppBaseUrl": "http://localhost:3000"
+  "webAppBaseUrl": "http://localhost:3000",
+  "apiBaseUrl": "http://localhost:3000"
 }

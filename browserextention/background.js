@@ -55,9 +55,8 @@ chrome.action.onClicked.addListener((tab) => {
   chrome.sidePanel.open({ tabId: tab.id });
 });
 
-const CHAT_API_URL = "https://hpthlfk5ql.execute-api.us-west-2.amazonaws.com/dev/chat";
-const API_BASE_URL = CHAT_API_URL.replace(/\/chat\/?$/, "");
 const DEFAULT_WEBAPP_BASE_URL = "http://localhost:3000";
+const DEFAULT_API_BASE_URL = "http://localhost:3000";
 const DEPLOYMENT_CONFIG_PATH = "deployment_config.json";
 const MAX_FLASHCARD_MATERIAL_IDS = 10;
 
@@ -70,7 +69,6 @@ const BLOCKED_PAGE_URL = chrome.runtime.getURL(BLOCKED_PAGE);
 const BLOCKING_ENGINE_CANDIDATES = ["blocking_engine.js", "/blocking_engine.js"];
 const POMODORO_NOTIFICATION_ICON = "logo.png";
 
-let resolvedWebAppBaseUrlPromise = null;
 let blockEngineLoadError = null;
 let blockConfig = null;
 let blockRuntime = null;
@@ -79,34 +77,51 @@ let blockRanges = { ranges: [], errors: [] };
 let blockInitialized = false;
 let activeTabIdForBlocking = null;
 let isBrowserWindowFocused = true;
+let resolvedDeploymentConfigPromise = null;
 
-function normalizeWebAppBaseUrl(value) {
+function normalizeBaseUrl(value) {
   if (typeof value !== "string") {
     return "";
   }
   return value.trim().replace(/\/+$/, "");
 }
 
-async function resolveWebAppBaseUrl() {
+async function resolveDeploymentConfig() {
+  const fallback = {
+    webAppBaseUrl: DEFAULT_WEBAPP_BASE_URL,
+    apiBaseUrl: DEFAULT_API_BASE_URL
+  };
+
   try {
     const configUrl = chrome.runtime.getURL(DEPLOYMENT_CONFIG_PATH);
     const response = await fetch(configUrl, { cache: "no-store" });
     if (!response.ok) {
-      return DEFAULT_WEBAPP_BASE_URL;
+      return fallback;
     }
     const config = await response.json();
-    const configuredUrl = normalizeWebAppBaseUrl(config.webAppBaseUrl);
-    return configuredUrl || DEFAULT_WEBAPP_BASE_URL;
+    const webAppBaseUrl = normalizeBaseUrl(config.webAppBaseUrl) || fallback.webAppBaseUrl;
+    const apiBaseUrl = normalizeBaseUrl(config.apiBaseUrl) || fallback.apiBaseUrl;
+    return { webAppBaseUrl, apiBaseUrl };
   } catch {
-    return DEFAULT_WEBAPP_BASE_URL;
+    return fallback;
   }
 }
 
-async function getWebAppBaseUrl() {
-  if (!resolvedWebAppBaseUrlPromise) {
-    resolvedWebAppBaseUrlPromise = resolveWebAppBaseUrl();
+async function getDeploymentConfig() {
+  if (!resolvedDeploymentConfigPromise) {
+    resolvedDeploymentConfigPromise = resolveDeploymentConfig();
   }
-  return resolvedWebAppBaseUrlPromise;
+  return resolvedDeploymentConfigPromise;
+}
+
+async function getWebAppBaseUrl() {
+  const config = await getDeploymentConfig();
+  return config.webAppBaseUrl;
+}
+
+async function getApiBaseUrl() {
+  const config = await getDeploymentConfig();
+  return config.apiBaseUrl;
 }
 
 let activeScrapeRun = null;
@@ -149,7 +164,7 @@ function defaultHardAllowlist() {
     }
   };
 
-  const apiHost = parseHost(CHAT_API_URL);
+  const apiHost = parseHost(DEFAULT_API_BASE_URL);
   const webHost = parseHost(DEFAULT_WEBAPP_BASE_URL);
   if (apiHost) hosts.add(apiHost);
   if (webHost) hosts.add(webHost);
@@ -1175,6 +1190,7 @@ async function handleScrapeModulesStart(message) {
 
   try {
     canvasUpload = ensureCanvasUploadLoaded();
+    const apiBaseUrl = await getApiBaseUrl();
     assertNotCancelled(run);
 
     await emitScrapeEvent("SCRAPE_PROGRESS", {
@@ -1306,7 +1322,7 @@ async function handleScrapeModulesStart(message) {
       });
       try {
         const uploaded = await canvasUpload.uploadAndIngestFile({
-          apiBaseUrl: API_BASE_URL,
+          apiBaseUrl,
           courseId: fileCourseId,
           file: discoveredFile,
           signal: run.controller.signal
@@ -1482,7 +1498,8 @@ async function fetchFileCount(courseId) {
     return { success: false, error: "No courseId provided", fileCount: 0 };
   }
   try {
-    const url = `${API_BASE_URL}/courses/${encodeURIComponent(courseId)}/files/count`;
+    const apiBaseUrl = await getApiBaseUrl();
+    const url = `${apiBaseUrl}/courses/${encodeURIComponent(courseId)}/files/count`;
     const response = await fetch(url);
     const data = await response.json().catch(() => null);
     if (!response.ok) {
@@ -1496,6 +1513,7 @@ async function fetchFileCount(courseId) {
 
 async function handleChatQuery(query, pageContext, explicitCourseId, history) {
   try {
+    const apiBaseUrl = await getApiBaseUrl();
     const body = { question: query };
 
     // Use explicit courseId from side panel (per-course tabs) first
@@ -1529,7 +1547,7 @@ async function handleChatQuery(query, pageContext, explicitCourseId, history) {
       body.history = history;
     }
 
-    const response = await fetch(CHAT_API_URL, {
+    const response = await fetch(`${apiBaseUrl}/chat`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -1558,6 +1576,7 @@ async function handleChatQuery(query, pageContext, explicitCourseId, history) {
 
 async function handleGenerateStudyTool(action, courseId, courseName) {
   try {
+    const apiBaseUrl = await getApiBaseUrl();
     let data;
 
     if (action.type === "flashcards") {
@@ -1580,7 +1599,7 @@ async function handleGenerateStudyTool(action, courseId, courseName) {
       }
 
       // --- Async: start generation job ---
-      const startResponse = await fetch(`${API_BASE_URL}/generate/flashcards-from-materials/jobs`, {
+      const startResponse = await fetch(`${apiBaseUrl}/generate/flashcards-from-materials/jobs`, {
         method: "POST",
         headers: { "Content-Type": "text/plain" },
         body: JSON.stringify({
@@ -1608,7 +1627,7 @@ async function handleGenerateStudyTool(action, courseId, courseName) {
         await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
 
         const pollResponse = await fetch(
-          `${API_BASE_URL}/generate/flashcards-from-materials/jobs/${encodeURIComponent(jobId)}`
+          `${apiBaseUrl}/generate/flashcards-from-materials/jobs/${encodeURIComponent(jobId)}`
         );
         if (!pollResponse.ok) {
           continue; // Transient error, keep polling
@@ -1649,7 +1668,7 @@ async function handleGenerateStudyTool(action, courseId, courseName) {
       return { success: true };
 
     } else if (action.type === "practice_exam") {
-      const response = await fetch(`${API_BASE_URL}/generate/practice-exam`, {
+      const response = await fetch(`${apiBaseUrl}/generate/practice-exam`, {
         method: "POST",
         headers: { "Content-Type": "text/plain" },
         body: JSON.stringify({
