@@ -37,6 +37,7 @@ EXAMPLE_SCHEMA_MAP = {
     "GeneratePracticeExamRequest.example.json": "GeneratePracticeExamRequest.json",
     "ChatRequest.example.json": "ChatRequest.json",
     "ChatResponse.example.json": "ChatResponse.json",
+    "StoredCard.example.json": "StoredCard.json",
 }
 
 

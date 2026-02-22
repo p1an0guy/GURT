@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "StoredCard.json",
+  "title": "StoredCard",
+  "description": "DynamoDB item shape for persisted flashcards in CardsTable.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "cardId",
+    "entityType",
+    "courseId",
+    "topicId",
+    "prompt",
+    "answer",
+    "dueAt",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "cardId": {"type": "string", "minLength": 1},
+    "entityType": {"type": "string", "const": "Card"},
+    "courseId": {"type": "string", "minLength": 1},
+    "topicId": {"type": "string", "minLength": 1},
+    "prompt": {"type": "string", "minLength": 1},
+    "answer": {"type": "string", "minLength": 1},
+    "dueAt": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "lastReviewedAt": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "reviewCount": {"type": "integer", "minimum": 0},
+    "fsrsState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dueAt", "stability", "difficulty", "reps", "lapses", "lastReviewedAt"],
+      "properties": {
+        "dueAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+        },
+        "stability": {"type": "string", "pattern": "^-?[0-9]+(\\.[0-9]+)?$"},
+        "difficulty": {"type": "string", "pattern": "^-?[0-9]+(\\.[0-9]+)?$"},
+        "reps": {"type": "integer", "minimum": 0},
+        "lapses": {"type": "integer", "minimum": 0},
+        "lastReviewedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+        }
+      }
+    }
+  },
+  "dependentRequired": {
+    "fsrsState": ["lastReviewedAt"],
+    "lastReviewedAt": ["fsrsState"]
+  }
+}
