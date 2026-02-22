@@ -23,31 +23,34 @@ Last updated: **February 22, 2026**
 - Study queue includes near-exam booster behavior with deterministic ordering tests.
 - CI currently runs contracts, tests, and mock smoke checks; CDK checks run conditionally on `infra/**` changes.
 - `main` merge governance is enforced via active repository ruleset requiring status check `contracts-and-tests` (which includes the mock smoke gate).
+- Chat responses include structured citations with link-friendly source metadata.
+- Ingest observability metrics for finalize/KB-trigger outcomes are implemented.
+- Canvas-first ingest UX is finalized in the primary dashboard flow.
+- Materials metadata contract + smoke assertions are finalized.
+- Web app flashcard workflow supports uploaded notes as selectable sources.
+
+## Recently completed (closed issues on February 22, 2026)
+
+- `#50` Chat citations UX and structure hardening
+- `#52` Ingest observability metrics
+- `#53` Materials metadata smoke expansion
+- `#55` Frontend ingest UX finalization
+- `#97` Web app notes upload in flashcard source selection
 
 ## Remaining roadmap (mapped to open issues)
 
-1. `#50` Chat citations UX and structure hardening
-   - Keep responses grounded while exposing citation structure suitable for clickable source links in clients.
-2. `#52` Ingest observability metrics
-   - Add explicit metrics and thresholds for finalize and KB trigger outcomes.
-3. `#55` Frontend ingest UX finalization
-   - Resolve mixed dashboard behavior between manual ingest controls and Canvas-first ingest status model.
-4. `#96` Frontend deployment to CloudFront via CDK + extension redirect update
+1. `#96` Frontend deployment to CloudFront via CDK + extension redirect update
    - Deploy the web app via CloudFront infrastructure and point browser extension redirect flow to the deployed CloudFront URL.
-5. `#97` Web app notes upload in flashcard source selection
-   - Allow users to upload/select their own notes in the web app material selection flow for flashcard generation.
-6. `#98` Knowledge Base guardrails for prompt injection/abuse protection
-   - Configure Bedrock guardrails and runtime enforcement to block unsafe or cheating-oriented requests with deterministic safe responses.
-7. `#99` Browser extension UI parity with web app styling
+2. `#98` Knowledge Base guardrails for prompt injection/abuse protection
+   - Guardrail runtime wiring is present; remaining work is closeout validation, operator documentation, and issue closure.
+3. `#99` Browser extension UI parity with web app styling
    - Align extension visuals to the web app UI using existing web app CSS patterns.
-8. `#53` Blocked smoke expansion
-   - Add materials metadata smoke assertions after the materials metadata contract is finalized.
+   - Core styling updates are merged; remaining work is manual QA capture and issue closeout.
 
 ## Execution order
 
-1. `#98` (`priority/p0`)
-2. `#50`, `#52`, `#55`, `#96`, `#97`, `#99` (`priority/p1`)
-3. `#53` (`priority/p2`, unblock after contract finalization)
+1. `#98`, `#99` closeout validation and documentation pass
+2. `#96` CloudFront deployment + extension redirect cutover
 
 ## Operator checklist before each merge
 
