@@ -14,6 +14,8 @@ STAGE_NAME="${STAGE_NAME:-dev}"
 DEMO_MODE="${DEMO_MODE:-1}"
 BEDROCK_MODEL_ID="${BEDROCK_MODEL_ID:-us.anthropic.claude-sonnet-4-5-20250929-v1:0}"
 BEDROCK_MODEL_ARN="${BEDROCK_MODEL_ARN:-us.anthropic.claude-sonnet-4-5-20250929-v1:0}"
+BEDROCK_GUARDRAIL_ID="${BEDROCK_GUARDRAIL_ID:-}"
+BEDROCK_GUARDRAIL_VERSION="${BEDROCK_GUARDRAIL_VERSION:-}"
 EMBEDDING_MODEL_ID="${EMBEDDING_MODEL_ID:-amazon.titan-embed-text-v2:0}"
 KNOWLEDGE_BASE_ID="${KNOWLEDGE_BASE_ID-YPNYU6LWMA}"
 KNOWLEDGE_BASE_DATA_SOURCE_ID="${KNOWLEDGE_BASE_DATA_SOURCE_ID-D19GB87TMV}"
@@ -65,6 +67,8 @@ npx --yes "$CDK_CLI_PACKAGE" bootstrap \
   --context "demoMode=$DEMO_MODE" \
   --context "bedrockModelId=$BEDROCK_MODEL_ID" \
   --context "bedrockModelArn=$BEDROCK_MODEL_ARN" \
+  --context "bedrockGuardrailId=$BEDROCK_GUARDRAIL_ID" \
+  --context "bedrockGuardrailVersion=$BEDROCK_GUARDRAIL_VERSION" \
   --context "embeddingModelId=$EMBEDDING_MODEL_ID" \
   --context "knowledgeBaseId=$KNOWLEDGE_BASE_ID" \
   --context "knowledgeBaseDataSourceId=$KNOWLEDGE_BASE_DATA_SOURCE_ID" \
@@ -79,6 +83,8 @@ STACK_LIST="$(npx --yes "$CDK_CLI_PACKAGE" ls \
   --context "demoMode=$DEMO_MODE" \
   --context "bedrockModelId=$BEDROCK_MODEL_ID" \
   --context "bedrockModelArn=$BEDROCK_MODEL_ARN" \
+  --context "bedrockGuardrailId=$BEDROCK_GUARDRAIL_ID" \
+  --context "bedrockGuardrailVersion=$BEDROCK_GUARDRAIL_VERSION" \
   --context "embeddingModelId=$EMBEDDING_MODEL_ID" \
   --context "knowledgeBaseId=$KNOWLEDGE_BASE_ID" \
   --context "knowledgeBaseDataSourceId=$KNOWLEDGE_BASE_DATA_SOURCE_ID" \
@@ -110,6 +116,8 @@ npx --yes "$CDK_CLI_PACKAGE" deploy $DEPLOY_STACKS \
   --context "demoMode=$DEMO_MODE" \
   --context "bedrockModelId=$BEDROCK_MODEL_ID" \
   --context "bedrockModelArn=$BEDROCK_MODEL_ARN" \
+  --context "bedrockGuardrailId=$BEDROCK_GUARDRAIL_ID" \
+  --context "bedrockGuardrailVersion=$BEDROCK_GUARDRAIL_VERSION" \
   --context "embeddingModelId=$EMBEDDING_MODEL_ID" \
   --context "knowledgeBaseId=$KNOWLEDGE_BASE_ID" \
   --context "knowledgeBaseDataSourceId=$KNOWLEDGE_BASE_DATA_SOURCE_ID" \
@@ -153,6 +161,9 @@ if stack is None:
 api_base_url = stack.get("ApiBaseUrl", "")
 mint_endpoint = stack.get("CalendarTokenMintEndpoint", "")
 course_id = stack.get("SuggestedSmokeCourseIdSecret", "course-psych-101")
+guardrail_id = stack.get("BedrockGuardrailId", "")
+guardrail_version = stack.get("BedrockGuardrailVersion", "")
+guardrail_mode = stack.get("BedrockGuardrailMode", "")
 
 kb_stack = data.get("GurtKnowledgeBaseStack", {})
 knowledge_base_id = kb_stack.get("KnowledgeBaseId", "")
@@ -175,6 +186,11 @@ if frontend_url:
     print(f"FRONTEND_URL={frontend_url}")
 print(f"Mint calendar token via: {mint_endpoint}")
 print(f"Suggested DEV_COURSE_ID={course_id}")
+if guardrail_id and guardrail_version:
+    print(f"BEDROCK_GUARDRAIL_ID={guardrail_id}")
+    print(f"BEDROCK_GUARDRAIL_VERSION={guardrail_version}")
+if guardrail_mode:
+    print(f"Bedrock guardrail mode: {guardrail_mode}")
 if knowledge_base_id:
     print(f"KNOWLEDGE_BASE_ID={knowledge_base_id}")
 if knowledge_base_id and knowledge_base_data_source_id:

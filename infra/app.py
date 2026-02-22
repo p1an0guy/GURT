@@ -23,6 +23,8 @@ stage_name = app.node.try_get_context("stageName") or "dev"
 demo_mode = app.node.try_get_context("demoMode") or "1"
 bedrock_model_id = app.node.try_get_context("bedrockModelId") or "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
 bedrock_model_arn = app.node.try_get_context("bedrockModelArn") or "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+bedrock_guardrail_id = app.node.try_get_context("bedrockGuardrailId") or ""
+bedrock_guardrail_version = app.node.try_get_context("bedrockGuardrailVersion") or ""
 knowledge_base_id_context = app.node.try_get_context("knowledgeBaseId") or ""
 knowledge_base_id_env = os.getenv("KNOWLEDGE_BASE_ID", "")
 knowledge_base_data_source_id_context = app.node.try_get_context("knowledgeBaseDataSourceId") or ""
@@ -36,11 +38,20 @@ calendar_fixture_fallback = app.node.try_get_context("calendarFixtureFallback") 
 canvas_sync_schedule_hours = int(app.node.try_get_context("canvasSyncScheduleHours") or "24")
 project_root = Path(__file__).resolve().parents[1]
 frontend_asset_path = app.node.try_get_context("frontendAssetPath") or str(project_root / "out")
+frontend_allowed_origins_raw = os.getenv("FRONTEND_ALLOWED_ORIGINS", "http://localhost:3000")
+frontend_allowed_origins = [
+    origin.strip()
+    for origin in frontend_allowed_origins_raw.split(",")
+    if origin and origin.strip()
+]
+if not frontend_allowed_origins:
+    frontend_allowed_origins = ["http://localhost:3000"]
 
 data_stack = DataStack(
     app,
     "GurtDataStack",
     env=env,
+    frontend_allowed_origins=frontend_allowed_origins,
 )
 
 knowledge_base_stack = None
@@ -73,6 +84,8 @@ api_stack = ApiStack(
     demo_mode=demo_mode,
     bedrock_model_id=bedrock_model_id,
     bedrock_model_arn=bedrock_model_arn,
+    bedrock_guardrail_id=bedrock_guardrail_id,
+    bedrock_guardrail_version=bedrock_guardrail_version,
     knowledge_base_id=knowledge_base_id,
     knowledge_base_data_source_id=knowledge_base_data_source_id,
     calendar_token_minting_path=calendar_token_minting_path,

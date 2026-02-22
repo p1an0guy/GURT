@@ -4,6 +4,8 @@
     "stageName": "dev",
     "demoMode": "1",
     "bedrockModelId": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "bedrockGuardrailId": "",
+    "bedrockGuardrailVersion": "",
     "embeddingModelId": "amazon.titan-embed-text-v2:0",
     "knowledgeBaseId": "YPNYU6LWMA",
     "knowledgeBaseDataSourceId": "D19GB87TMV",

@@ -37,6 +37,7 @@ class SmokeContext:
     include_canvas_sync: bool = False
     include_chat: bool = False
     include_ingest: bool = False
+    expected_material_ids: List[str] | None = None
 
 
 class FixtureMockHandler(BaseHTTPRequestHandler):
@@ -45,6 +46,7 @@ class FixtureMockHandler(BaseHTTPRequestHandler):
     fixtures = {
         "courses": load_json(FIXTURES / "courses.json"),
         "items": load_json(FIXTURES / "canvas_items.json"),
+        "materials": load_json(FIXTURES / "course_materials.json"),
         "topics": load_json(FIXTURES / "topics.json"),
         "cards": load_json(FIXTURES / "cards.json"),
     }
@@ -100,6 +102,13 @@ class FixtureMockHandler(BaseHTTPRequestHandler):
         if route.startswith("/courses/") and route.endswith("/items"):
             course_id = route.split("/")[2]
             rows = [x for x in self.fixtures["items"] if x["courseId"] == course_id]
+            self._write_json(rows)
+            return
+
+        if route.startswith("/courses/") and route.endswith("/materials"):
+            course_id = route.split("/")[2]
+            rows = [x for x in self.fixtures["materials"] if x["courseId"] == course_id]
+            rows.sort(key=lambda row: str(row.get("displayName", "")).lower())
             self._write_json(rows)
             return
 
@@ -197,6 +206,13 @@ class FixtureMockHandler(BaseHTTPRequestHandler):
                 {
                     "answer": "Use active recall and spaced repetition for this topic.",
                     "citations": ["s3://bucket/uploads/170880/doc-a/ch1.pdf#chunk-2"],
+                    "citationDetails": [
+                        {
+                            "source": "s3://bucket/uploads/170880/doc-a/ch1.pdf#chunk-2",
+                            "label": "ch1.pdf (chunk-2)",
+                            "url": "https://bucket.s3.us-west-2.amazonaws.com/uploads/170880/doc-a/ch1.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=example",
+                        }
+                    ],
                 }
             )
             return
@@ -260,6 +276,36 @@ def validate_rows(rows: List[Dict[str, Any]], schema_name: str, label: str) -> N
     print(f"PASS {label}: {len(rows)} record(s)")
 
 
+def validate_material_rows(
+    rows: List[Dict[str, Any]],
+    *,
+    course_id: str,
+    expected_material_ids: List[str] | None,
+) -> None:
+    """Assert materials metadata behavior shared by mock and deployed smoke runs."""
+    for row in rows:
+        if row.get("courseId") != course_id:
+            raise RuntimeError(
+                f"Materials validation failed: expected courseId={course_id}, got {row.get('courseId')!r}"
+            )
+        if "downloadUrl" in row or "s3Key" in row:
+            raise RuntimeError("Materials validation failed: response leaked private material fields")
+
+    display_names = [str(row.get("displayName", "")) for row in rows]
+    if display_names != sorted(display_names, key=str.lower):
+        raise RuntimeError("Materials validation failed: rows must be sorted by displayName")
+
+    if expected_material_ids is not None:
+        actual_ids = sorted(str(row.get("canvasFileId", "")) for row in rows)
+        if actual_ids != expected_material_ids:
+            raise RuntimeError(
+                "Materials validation failed: deterministic mock IDs mismatch "
+                f"(expected={expected_material_ids}, actual={actual_ids})"
+            )
+
+    print("PASS /courses/{courseId}/materials metadata assertions")
+
+
 def validate_ics(ics_text: str, *, content_type: str, require_event: bool) -> None:
     """Perform iCalendar checks while avoiding live-data flakiness."""
     if "text/calendar" not in content_type.lower():
@@ -314,6 +360,14 @@ def run_sequence(ctx: SmokeContext) -> None:
 
     items = http_json("GET", f"{ctx.base_url}/courses/{ctx.course_id}/items")
     validate_rows(items, "CanvasItem.json", "/courses/{courseId}/items")
+
+    materials = http_json("GET", f"{ctx.base_url}/courses/{ctx.course_id}/materials")
+    validate_rows(materials, "CourseMaterial.json", "/courses/{courseId}/materials")
+    validate_material_rows(
+        materials,
+        course_id=ctx.course_id,
+        expected_material_ids=ctx.expected_material_ids,
+    )
 
     query = urlencode({"courseId": ctx.course_id})
     cards = http_json("GET", f"{ctx.base_url}/study/today?{query}")
@@ -399,6 +453,13 @@ def main() -> None:
         initial_token=initial_calendar_token,
         mint_if_missing=mint_calendar_token,
     )
+    expected_material_ids = None
+    if mock_mode:
+        expected_material_ids = sorted(
+            str(row.get("canvasFileId", ""))
+            for row in FixtureMockHandler.fixtures["materials"]
+            if row.get("courseId") == course_id
+        )
     ctx = SmokeContext(
         base_url=base_url,
         calendar_token=calendar_token,
@@ -407,6 +468,7 @@ def main() -> None:
         include_canvas_sync=include_canvas_sync,
         include_chat=include_chat,
         include_ingest=include_ingest,
+        expected_material_ids=expected_material_ids,
     )
 
     try:

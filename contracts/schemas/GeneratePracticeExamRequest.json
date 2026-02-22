@@ -4,9 +4,15 @@
   "title": "GeneratePracticeExamRequest",
   "type": "object",
   "additionalProperties": false,
-  "required": ["courseId"],
+  "required": ["courseId", "materialIds"],
   "properties": {
     "courseId": {"type": "string", "minLength": 1},
+    "materialIds": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "maxItems": 10
+    },
     "numQuestions": {"type": "integer", "minimum": 1, "maximum": 20}
   }
 }

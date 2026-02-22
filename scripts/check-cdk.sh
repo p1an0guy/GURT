@@ -13,6 +13,8 @@ CDK_CLI_PACKAGE="${CDK_CLI_PACKAGE:-aws-cdk@latest}"
 STAGE_NAME="${STAGE_NAME:-dev}"
 DEMO_MODE="${DEMO_MODE:-1}"
 BEDROCK_MODEL_ID="${BEDROCK_MODEL_ID:-us.anthropic.claude-sonnet-4-6}"
+BEDROCK_GUARDRAIL_ID="${BEDROCK_GUARDRAIL_ID:-}"
+BEDROCK_GUARDRAIL_VERSION="${BEDROCK_GUARDRAIL_VERSION:-}"
 EMBEDDING_MODEL_ID="${EMBEDDING_MODEL_ID:-amazon.titan-embed-text-v2:0}"
 KNOWLEDGE_BASE_ID="${KNOWLEDGE_BASE_ID:-}"
 KNOWLEDGE_BASE_DATA_SOURCE_ID="${KNOWLEDGE_BASE_DATA_SOURCE_ID:-HYYHTCJQFP}"
@@ -48,6 +50,8 @@ npx --yes "$CDK_CLI_PACKAGE" synth \
   --context "stageName=$STAGE_NAME" \
   --context "demoMode=$DEMO_MODE" \
   --context "bedrockModelId=$BEDROCK_MODEL_ID" \
+  --context "bedrockGuardrailId=$BEDROCK_GUARDRAIL_ID" \
+  --context "bedrockGuardrailVersion=$BEDROCK_GUARDRAIL_VERSION" \
   --context "embeddingModelId=$EMBEDDING_MODEL_ID" \
   --context "knowledgeBaseId=$KNOWLEDGE_BASE_ID" \
   --context "knowledgeBaseDataSourceId=$KNOWLEDGE_BASE_DATA_SOURCE_ID" \
@@ -63,6 +67,8 @@ if [ -n "$KNOWLEDGE_BASE_ID" ]; then
     --context "stageName=$STAGE_NAME" \
     --context "demoMode=$DEMO_MODE" \
     --context "bedrockModelId=$BEDROCK_MODEL_ID" \
+    --context "bedrockGuardrailId=$BEDROCK_GUARDRAIL_ID" \
+    --context "bedrockGuardrailVersion=$BEDROCK_GUARDRAIL_VERSION" \
     --context "embeddingModelId=$EMBEDDING_MODEL_ID" \
     --context "knowledgeBaseId=$KNOWLEDGE_BASE_ID" \
     --context "knowledgeBaseDataSourceId=$KNOWLEDGE_BASE_DATA_SOURCE_ID" \

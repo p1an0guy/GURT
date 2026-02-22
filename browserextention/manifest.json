@@ -8,9 +8,13 @@
     "storage",
     "activeTab",
     "tabs",
-    "scripting"
+    "scripting",
+    "webNavigation",
+    "alarms",
+    "notifications"
   ],
   "host_permissions": [
+    "<all_urls>",
     "https://canvas.calpoly.edu/*",
     "https://*.canvas-user-content.com/*",
     "https://hpthlfk5ql.execute-api.us-west-2.amazonaws.com/*",
@@ -30,6 +34,10 @@
     {
       "resources": ["canvas_scraper.js"],
       "matches": ["https://canvas.calpoly.edu/*"]
+    },
+    {
+      "resources": ["blocked.css", "blocked.js"],
+      "matches": ["<all_urls>"]
     }
   ],
   "side_panel": {

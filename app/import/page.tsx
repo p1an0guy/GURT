@@ -122,7 +122,7 @@ export default function ImportPage() {
   }, [router]);
 
   return (
-    <main className="page" style={{ display: "grid", placeItems: "center", minHeight: "60vh" }}>
+    <main className="page import-modern" style={{ display: "grid", placeItems: "center", minHeight: "60vh" }}>
       <div
         style={{
           width: "100%",

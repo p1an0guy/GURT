@@ -50,6 +50,8 @@ test("uses fixture mode when explicitly enabled", async () => {
   assert.equal(generatedCards.length, 2);
   assert.equal(exam.questions.length, 2);
   assert.equal(chat.citations.length, 1);
+  assert.equal(chat.citationDetails?.length, 1);
+  assert.equal(chat.citationDetails?.[0]?.url.startsWith("https://"), true);
   assert.equal(courses.length, 2);
   assert.ok(cards.length > 0);
   assert.equal(calendarToken.token, "demo-calendar-token");
@@ -200,6 +202,13 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
       return jsonResponse({
         answer: "Chat answer",
         citations: ["s3://bucket/path#chunk-1"],
+        citationDetails: [
+          {
+            source: "s3://bucket/path#chunk-1",
+            label: "path (chunk-1)",
+            url: "https://bucket.s3.us-west-2.amazonaws.com/path?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=example",
+          },
+        ],
       });
     }
 
@@ -256,6 +265,8 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
         usedTextract: true,
         updatedAt: "2026-09-02T09:01:00Z",
         error: "",
+        kbIngestionJobId: "kb-ingest-123",
+        kbIngestionError: "kb partial ingest warning",
       });
     }
 
@@ -283,7 +294,7 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
   await client.syncCanvas();
   await client.generateFlashcards("course/1", 2);
   await client.generatePracticeExam("course/1", 2);
-  await client.chat("course/1", "What is retrieval practice?");
+  const chat = await client.chat("course/1", "What is retrieval practice?");
   await client.listCourses();
   await client.listCourseItems("course/1");
   await client.getStudyToday("course/1");
@@ -299,8 +310,20 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
   const ingestStatus = await client.getDocsIngestStatus(ingestStarted.jobId);
 
   assert.match(ics, /BEGIN:VCALENDAR/);
+  assert.equal(
+    chat.citationDetails?.[0]?.url,
+    "https://bucket.s3.us-west-2.amazonaws.com/path?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=example",
+  );
   assert.equal(tokenResponse.token, "minted-token");
   assert.equal(ingestStatus.status, "FINISHED");
+  assert.equal(
+    (ingestStatus as { kbIngestionJobId?: string }).kbIngestionJobId,
+    "kb-ingest-123",
+  );
+  assert.equal(
+    (ingestStatus as { kbIngestionError?: string }).kbIngestionError,
+    "kb partial ingest warning",
+  );
   assert.equal(calls.length, 15);
   assert.ok(calls.some((call) => call.url === "https://api.example.dev/canvas/connect"));
   assert.ok(calls.some((call) => call.url === "https://api.example.dev/canvas/sync"));
@@ -332,6 +355,52 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
   const ingestStartCall = calls.find((call) => call.url === "https://api.example.dev/docs/ingest");
   assert.ok(ingestStartCall);
   assert.equal(ingestStartCall.init?.method, "POST");
+});
+
+test("preserves optional kb ingestion fields on docs ingest status responses", async () => {
+  const fetchImpl: typeof fetch = async (input) => {
+    const url = input instanceof URL ? input.toString() : input.toString();
+
+    if (url.endsWith("/docs/ingest/job-with-kb")) {
+      return jsonResponse({
+        jobId: "job-with-kb",
+        status: "RUNNING",
+        textLength: 0,
+        usedTextract: false,
+        updatedAt: "2026-09-02T09:02:00Z",
+        error: "",
+        kbIngestionJobId: "kb-job-456",
+        kbIngestionError: "bedrock queue backlog",
+      });
+    }
+
+    if (url.endsWith("/docs/ingest/job-without-kb")) {
+      return jsonResponse({
+        jobId: "job-without-kb",
+        status: "RUNNING",
+        textLength: 0,
+        usedTextract: false,
+        updatedAt: "2026-09-02T09:03:00Z",
+        error: "",
+      });
+    }
+
+    return new Response("not found", { status: 404 });
+  };
+
+  const client = createApiClient({
+    baseUrl: "https://api.example.dev",
+    fetchImpl,
+    useFixtures: false,
+  });
+
+  const withKb = await client.getDocsIngestStatus("job-with-kb");
+  const withoutKb = await client.getDocsIngestStatus("job-without-kb");
+
+  assert.equal(withKb.kbIngestionJobId, "kb-job-456");
+  assert.equal(withKb.kbIngestionError, "bedrock queue backlog");
+  assert.equal(Object.hasOwn(withoutKb, "kbIngestionJobId"), false);
+  assert.equal(Object.hasOwn(withoutKb, "kbIngestionError"), false);
 });
 
 test("preserves stage path when baseUrl includes a stage segment", async () => {

@@ -37,7 +37,7 @@ export default function DashboardPage() {
   const [calendarError, setCalendarError] = useState("");
   const [isMintingCalendar, setIsMintingCalendar] = useState(false);
 
-  const userName = "Student";
+  const userName = "Mason";
 
   const client = useMemo(
     () =>
@@ -102,9 +102,13 @@ export default function DashboardPage() {
   }
 
   return (
-    <main className="page dashboard-page">
-      <section className="hero">
-        <h1 className="dashboard-heading">Hello, {userName}</h1>
+    <main className="page dashboard-page dashboard-modern">
+      <section className="hero dashboard-modern-hero">
+        <div className="dashboard-hero-content">
+          <p className="dashboard-kicker">Study Lab</p>
+          <h1 className="dashboard-heading">Hello, {userName}</h1>
+          <p>Track your calendar feed, browse courses, and jump into your study tools.</p>
+        </div>
       </section>
 
       <section className="stack">

@@ -16,29 +16,54 @@ const counterEls = {
 
 const scrapeToggle = document.getElementById("scrapeToggle");
 const scrapePanel = document.querySelector(".scrape-panel");
+const focusToggle = document.getElementById("focusToggle");
+const focusPanel = document.querySelector(".focus-panel");
 const filesLoadedBadge = document.getElementById("filesLoadedBadge");
 const filesLoadedCount = document.getElementById("filesLoadedCount");
+const themeToggle = document.getElementById("themeToggle");
+const themeToggleLabel = document.getElementById("themeToggleLabel");
+const blockStatusSummary = document.getElementById("blockStatusSummary");
+const pomodoroPhaseText = document.getElementById("pomodoroPhaseText");
+const pomodoroTimerText = document.getElementById("pomodoroTimerText");
+const pomodoroStartBtn = document.getElementById("pomodoroStartBtn");
+const focusRingProgress = document.getElementById("focusRingProgress");
+const blockSettingsBtn = document.getElementById("blockSettingsBtn");
 
 const SCRAPE_START_MESSAGE_TYPE = "SCRAPE_MODULES_START";
 const MAX_FILE_ROWS = 200;
+const MAX_FLASHCARD_MATERIAL_IDS = 10;
+const THEME_STORAGE_KEY = "gurt-theme";
+const DEFAULT_THEME = "dark";
 
 // --- Per-course state ---
 let currentCourseId = null;
 let currentCourseName = null;
 let currentCourseFileCount = 0;
 let courseRegistry = []; // [{courseId, courseName}]
+let currentTheme = DEFAULT_THEME;
 
-// Subtle pastel palette — bg for chat area, dot for the tab indicator
-const COURSE_COLORS = [
-  { bg: "#eef4fb", dot: "#4a90d9" },  // blue
-  { bg: "#edf7ee", dot: "#4caf50" },  // green
-  { bg: "#f4eefb", dot: "#9c5fc7" },  // purple
-  { bg: "#fef5ea", dot: "#e8a035" },  // orange
-  { bg: "#fbeef2", dot: "#d94f73" },  // pink
-  { bg: "#eef7f6", dot: "#3faea0" },  // teal
-  { bg: "#fbf7ee", dot: "#c4a535" },  // gold
-  { bg: "#eeeef9", dot: "#5c6bc0" },  // indigo
-];
+const COURSE_COLORS = {
+  dark: [
+    { bg: "#111a27", dot: "#4a90d9" }, // blue
+    { bg: "#101e16", dot: "#4caf50" }, // green
+    { bg: "#181225", dot: "#9c5fc7" }, // purple
+    { bg: "#24180f", dot: "#e8a035" }, // orange
+    { bg: "#23131b", dot: "#d94f73" }, // pink
+    { bg: "#10201f", dot: "#3faea0" }, // teal
+    { bg: "#221f10", dot: "#c4a535" }, // gold
+    { bg: "#14182a", dot: "#5c6bc0" }  // indigo
+  ],
+  light: [
+    { bg: "#eef4fb", dot: "#4a90d9" }, // blue
+    { bg: "#edf7ee", dot: "#4caf50" }, // green
+    { bg: "#f4eefb", dot: "#9c5fc7" }, // purple
+    { bg: "#fef5ea", dot: "#e8a035" }, // orange
+    { bg: "#fbeef2", dot: "#d94f73" }, // pink
+    { bg: "#eef7f6", dot: "#3faea0" }, // teal
+    { bg: "#fbf7ee", dot: "#c4a535" }, // gold
+    { bg: "#eeeef9", dot: "#5c6bc0" }  // indigo
+  ]
+};
 
 const scrapeState = {
   phase: "idle",
@@ -46,7 +71,11 @@ const scrapeState = {
   counts: zeroCounts(),
   files: new Map()
 };
+let activeCitationMenu = null;
+let currentBlockStatus = null;
+let pomodoroTickInterval = null;
 
+applyTheme(readStoredTheme(), { persist: false });
 renderScrapeUI();
 
 // Initialize: load course registry, detect current course, load chat
@@ -59,12 +88,34 @@ if (scrapeBtn) {
 if (retryScrapeBtn) {
   retryScrapeBtn.addEventListener("click", () => startScrapeWorkflow("retry"));
 }
+if (themeToggle) {
+  themeToggle.addEventListener("click", () => {
+    const nextTheme = currentTheme === "dark" ? "light" : "dark";
+    applyTheme(nextTheme);
+  });
+}
+if (pomodoroStartBtn) {
+  pomodoroStartBtn.addEventListener("click", () => {
+    void startPomodoroSession();
+  });
+}
+if (blockSettingsBtn) {
+  blockSettingsBtn.addEventListener("click", () => {
+    chrome.runtime.openOptionsPage();
+  });
+}
 
 // Scrape drawer toggle
 if (scrapeToggle && scrapePanel) {
   scrapeToggle.addEventListener("click", () => {
     const isCollapsed = scrapePanel.classList.toggle("collapsed");
     scrapeToggle.setAttribute("aria-expanded", String(!isCollapsed));
+  });
+}
+if (focusToggle && focusPanel) {
+  focusToggle.addEventListener("click", () => {
+    const isCollapsed = focusPanel.classList.toggle("collapsed");
+    focusToggle.setAttribute("aria-expanded", String(!isCollapsed));
   });
 }
 
@@ -81,6 +132,16 @@ userInput.addEventListener("input", () => {
   userInput.style.height = Math.min(userInput.scrollHeight, 120) + "px";
 });
 
+document.addEventListener("click", () => {
+  closeActiveCitationMenu();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    closeActiveCitationMenu();
+  }
+});
+
 chrome.runtime.onMessage.addListener((message) => {
   if (!message || typeof message !== "object" || !message.type) {
     return;
@@ -92,6 +153,7 @@ chrome.runtime.onMessage.addListener((message) => {
       if (message.courseId) {
         switchCourse(message.courseId, message.courseName || `Course ${message.courseId}`);
       }
+      void refreshBlockStatus();
       break;
     case "SCRAPE_PROGRESS":
       handleScrapeProgress(payload);
@@ -666,10 +728,20 @@ async function sendMessage() {
 
     if (response && response.success) {
       if (response.action) {
-        appendMessage("bot", buildActionConfirmationMessage(response.answer, response.action));
+        appendMessage({
+          role: "bot",
+          text: buildActionConfirmationMessage(response.answer, response.action),
+          citations: response.citations,
+          citationDetails: response.citationDetails
+        });
         renderActionCard(response.action);
       } else {
-        appendMessage("bot", response.answer);
+        appendMessage({
+          role: "bot",
+          text: response.answer,
+          citations: response.citations,
+          citationDetails: response.citationDetails
+        });
       }
     } else {
       const errMsg = (response && response.error) || "Something went wrong.";
@@ -782,7 +854,9 @@ function buildActionConfirmationMessage(answer, action) {
   const typeLabel = isFlashcards ? "Flashcard Deck" : "Practice Exam";
   const count = (action && action.count) || (isFlashcards ? 12 : 10);
   const unit = isFlashcards ? "cards" : "questions";
-  const materialNames = Array.isArray(action && action.materialNames) ? action.materialNames : [];
+  const materialNames = Array.isArray(action && action.materialNames)
+    ? action.materialNames.slice(0, MAX_FLASHCARD_MATERIAL_IDS)
+    : [];
 
   const lines = [
     "Ready to generate!",
@@ -793,6 +867,10 @@ function buildActionConfirmationMessage(answer, action) {
     lines.push("Materials:");
     for (const name of materialNames) {
       lines.push(String(name));
+    }
+    const originalCount = Array.isArray(action && action.materialNames) ? action.materialNames.length : 0;
+    if (originalCount > MAX_FLASHCARD_MATERIAL_IDS) {
+      lines.push(`(Using first ${MAX_FLASHCARD_MATERIAL_IDS} materials)`);
     }
   }
 
@@ -830,7 +908,10 @@ function renderActionCard(action) {
   const typeLabel = isFlashcards ? "Flashcard Deck" : "Practice Exam";
   const count = action.count || (isFlashcards ? 12 : 10);
   const countUnit = isFlashcards ? "cards" : "questions";
-  const materialNames = action.materialNames || [];
+  const materialNames = Array.isArray(action.materialNames)
+    ? action.materialNames.slice(0, MAX_FLASHCARD_MATERIAL_IDS)
+    : [];
+  const originalMaterialCount = Array.isArray(action.materialNames) ? action.materialNames.length : 0;
 
   let html = `<div class="action-card-title">🍦 Ready to generate!</div>`;
   html += `<div class="action-card-type">${typeLabel} (${count} ${countUnit})</div>`;
@@ -841,6 +922,9 @@ function renderActionCard(action) {
       html += `<li>${name.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</li>`;
     }
     html += `</ul></div>`;
+    if (originalMaterialCount > MAX_FLASHCARD_MATERIAL_IDS) {
+      html += `<div class="small">(Using first ${MAX_FLASHCARD_MATERIAL_IDS} materials)</div>`;
+    }
   }
 
   html += `<button class="action-card-btn" id="generateBtn">Generate &amp; Study</button>`;
@@ -856,9 +940,19 @@ function renderActionCard(action) {
     btn.textContent = "Generating...";
 
     try {
+      const actionForGeneration = { ...action };
+      if (action.type === "flashcards") {
+        actionForGeneration.materialIds = Array.isArray(action.materialIds)
+          ? action.materialIds.slice(0, MAX_FLASHCARD_MATERIAL_IDS)
+          : [];
+        actionForGeneration.materialNames = Array.isArray(action.materialNames)
+          ? action.materialNames.slice(0, MAX_FLASHCARD_MATERIAL_IDS)
+          : [];
+      }
+
       const response = await chrome.runtime.sendMessage({
         type: "GENERATE_STUDY_TOOL",
-        action: action,
+        action: actionForGeneration,
         courseId: currentCourseId,
         courseName: currentCourseName
       });
@@ -880,19 +974,164 @@ function renderActionCard(action) {
   });
 }
 
-function appendMessage(role, text, save = true) {
-  const div = document.createElement("div");
-  div.className = `message ${role}`;
-  if (role === "bot") {
-    div.innerHTML = renderMarkdown(text);
-  } else {
-    div.textContent = text;
+function isHttpsUrl(value) {
+  return typeof value === "string" && value.startsWith("https://");
+}
+
+function normalizeCitationStrings(raw) {
+  if (!Array.isArray(raw)) return [];
+  const deduped = [];
+  const seen = new Set();
+  raw.forEach((entry) => {
+    if (typeof entry !== "string") return;
+    const citation = entry.trim();
+    if (!citation || seen.has(citation)) return;
+    seen.add(citation);
+    deduped.push(citation);
+  });
+  return deduped;
+}
+
+function normalizeCitationDetails(raw) {
+  if (!Array.isArray(raw)) return [];
+  const deduped = [];
+  const seenUrls = new Set();
+  raw.forEach((entry) => {
+    if (!entry || typeof entry !== "object") return;
+    const source = typeof entry.source === "string" ? entry.source.trim() : "";
+    const label = typeof entry.label === "string" ? entry.label.trim() : "";
+    const url = typeof entry.url === "string" ? entry.url.trim() : "";
+    if (!source || !label || !isHttpsUrl(url) || seenUrls.has(url)) return;
+    seenUrls.add(url);
+    deduped.push({ source, label, url });
+  });
+  return deduped;
+}
+
+function normalizeChatMessage(roleOrMessage, text) {
+  const raw = roleOrMessage && typeof roleOrMessage === "object" && !Array.isArray(roleOrMessage)
+    ? roleOrMessage
+    : { role: roleOrMessage, text };
+  const normalizedRole = raw.role === "user" || raw.role === "bot" || raw.role === "error"
+    ? raw.role
+    : "bot";
+  const normalizedText = typeof raw.text === "string" ? raw.text : "";
+  const normalized = {
+    role: normalizedRole,
+    text: normalizedText
+  };
+  const citations = normalizeCitationStrings(raw.citations);
+  const citationDetails = normalizeCitationDetails(raw.citationDetails);
+  if (citations.length > 0) {
+    normalized.citations = citations;
   }
+  if (citationDetails.length > 0) {
+    normalized.citationDetails = citationDetails;
+  }
+  return normalized;
+}
+
+function getRenderableCitations(message) {
+  const structured = normalizeCitationDetails(message.citationDetails);
+  if (structured.length > 0) {
+    return structured;
+  }
+  return normalizeCitationStrings(message.citations)
+    .filter((citation) => isHttpsUrl(citation))
+    .map((citation) => ({
+      source: citation,
+      label: citation,
+      url: citation
+    }));
+}
+
+function closeActiveCitationMenu() {
+  if (!activeCitationMenu) return;
+  activeCitationMenu.menu.classList.remove("open");
+  activeCitationMenu.button.setAttribute("aria-expanded", "false");
+  activeCitationMenu = null;
+}
+
+function toggleCitationMenu(button, menu) {
+  if (activeCitationMenu && activeCitationMenu.menu === menu) {
+    closeActiveCitationMenu();
+    return;
+  }
+
+  closeActiveCitationMenu();
+  menu.classList.add("open");
+  button.setAttribute("aria-expanded", "true");
+  activeCitationMenu = { button, menu };
+}
+
+function buildCitationMenu(citations) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "message-citation-menu";
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "citation-menu-button";
+  button.textContent = `⋯ Sources (${citations.length})`;
+  button.setAttribute("aria-expanded", "false");
+  button.setAttribute("aria-label", `Show ${citations.length} citation links`);
+
+  const menu = document.createElement("div");
+  menu.className = "citation-menu-dropdown";
+  menu.setAttribute("role", "menu");
+
+  citations.forEach((citation) => {
+    const link = document.createElement("a");
+    link.className = "citation-menu-link";
+    link.href = citation.url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = citation.label;
+    link.title = citation.url;
+    link.addEventListener("click", () => {
+      closeActiveCitationMenu();
+    });
+    menu.appendChild(link);
+  });
+
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleCitationMenu(button, menu);
+  });
+
+  menu.addEventListener("click", (event) => {
+    event.stopPropagation();
+  });
+
+  wrapper.appendChild(button);
+  wrapper.appendChild(menu);
+  return wrapper;
+}
+
+function appendMessage(roleOrMessage, text, save = true) {
+  const shouldSave = typeof text === "boolean" ? text : save;
+  const message = normalizeChatMessage(roleOrMessage, text);
+  const div = document.createElement("div");
+  div.className = `message ${message.role}`;
+
+  if (message.role === "bot") {
+    const body = document.createElement("div");
+    body.className = "message-body";
+    body.innerHTML = renderMarkdown(message.text);
+    div.appendChild(body);
+
+    const citations = getRenderableCitations(message);
+    if (citations.length > 0) {
+      div.appendChild(buildCitationMenu(citations));
+    }
+  } else {
+    div.textContent = message.text;
+  }
+
   messagesContainer.appendChild(div);
   scrollToBottom();
 
-  if (save) {
-    saveChatMessage(role, text);
+  if (shouldSave) {
+    saveChatMessage(message);
   }
 }
 
@@ -909,12 +1148,12 @@ function scrollToBottom() {
   messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
 
-function saveChatMessage(role, text) {
+function saveChatMessage(message) {
   if (!currentCourseId) return;
   const key = `chatHistory_${currentCourseId}`;
   chrome.storage.local.get(key, (result) => {
     const history = result[key] || [];
-    history.push({ role, text });
+    history.push(normalizeChatMessage(message));
     if (history.length > 100) {
       history.splice(0, history.length - 100);
     }
@@ -979,6 +1218,7 @@ async function initCourseContext() {
     updateFilesLoadedBadge();
     await loadChatHistory(currentCourseId);
   }
+  await refreshBlockStatus();
 }
 
 function addCourseToRegistry(courseId, courseName) {
@@ -997,9 +1237,54 @@ function saveCourseRegistry() {
   chromeStorageSet({ gurtCourses: courseRegistry });
 }
 
+function readStoredTheme() {
+  try {
+    return normalizeTheme(window.localStorage.getItem(THEME_STORAGE_KEY));
+  } catch {
+    return DEFAULT_THEME;
+  }
+}
+
+function normalizeTheme(theme) {
+  return theme === "light" || theme === "dark" ? theme : DEFAULT_THEME;
+}
+
+function applyTheme(theme, { persist = true } = {}) {
+  currentTheme = normalizeTheme(theme);
+  document.documentElement.setAttribute("data-theme", currentTheme);
+
+  if (themeToggle) {
+    themeToggle.classList.toggle("light", currentTheme === "light");
+    themeToggle.setAttribute("aria-pressed", String(currentTheme === "light"));
+    themeToggle.setAttribute(
+      "aria-label",
+      `Switch to ${currentTheme === "dark" ? "light" : "dark"} mode`
+    );
+  }
+  if (themeToggleLabel) {
+    themeToggleLabel.textContent = currentTheme === "dark" ? "Dark mode" : "Light mode";
+  }
+
+  if (persist) {
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, currentTheme);
+    } catch {
+      // Ignore localStorage failures (private browsing or restricted contexts).
+    }
+  }
+
+  applyCourseTheme(currentCourseId);
+  renderCourseTabs();
+}
+
+function getCoursePalette() {
+  return COURSE_COLORS[currentTheme] || COURSE_COLORS[DEFAULT_THEME];
+}
+
 function getCourseColor(courseId) {
+  const palette = getCoursePalette();
   const idx = courseRegistry.findIndex(c => c.courseId === courseId);
-  return COURSE_COLORS[(idx === -1 ? 0 : idx) % COURSE_COLORS.length];
+  return palette[(idx === -1 ? 0 : idx) % palette.length];
 }
 
 function hexToRgb(hex) {
@@ -1012,10 +1297,17 @@ function hexToRgb(hex) {
 function applyCourseTheme(courseId) {
   const color = getCourseColor(courseId);
   const container = document.querySelector(".chat-container");
+  if (!container) {
+    return;
+  }
+
+  const badgeBgAlpha = currentTheme === "dark" ? 0.12 : 0.18;
+  const badgeBorderAlpha = currentTheme === "dark" ? 0.3 : 0.4;
+
   container.style.setProperty("--course-bg", color.bg);
   container.style.setProperty("--badge-color", color.dot);
-  container.style.setProperty("--badge-bg", `rgba(${hexToRgb(color.dot)}, 0.12)`);
-  container.style.setProperty("--badge-border", `rgba(${hexToRgb(color.dot)}, 0.3)`);
+  container.style.setProperty("--badge-bg", `rgba(${hexToRgb(color.dot)}, ${badgeBgAlpha})`);
+  container.style.setProperty("--badge-border", `rgba(${hexToRgb(color.dot)}, ${badgeBorderAlpha})`);
 }
 
 function renderCourseTabs() {
@@ -1068,6 +1360,7 @@ async function switchCourse(courseId, courseName) {
 
   // Fade out current messages
   messagesContainer.classList.add("fade-out");
+  closeActiveCitationMenu();
   await new Promise(resolve => {
     messagesContainer.addEventListener("transitionend", resolve, { once: true });
     // Safety timeout in case transitionend doesn't fire
@@ -1091,6 +1384,7 @@ async function switchCourse(courseId, courseName) {
 
   // Update tabs UI
   renderCourseTabs();
+  await refreshBlockStatus();
 }
 
 async function loadChatHistory(courseId) {
@@ -1098,7 +1392,7 @@ async function loadChatHistory(courseId) {
   const data = await chromeStorageGet(key);
   const history = data[key] || [];
   if (history.length > 0) {
-    history.forEach(msg => appendMessage(msg.role, msg.text, false));
+    history.forEach(msg => appendMessage(msg, false));
     scrollToBottom();
   }
 }
@@ -1115,6 +1409,188 @@ async function loadCourseFileCount(courseId) {
   }
 }
 
+const RING_RADIUS = 46;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+
+function formatDuration(seconds) {
+  const safe = Math.max(0, Number(seconds) || 0);
+  const mins = Math.floor(safe / 60);
+  const secs = safe % 60;
+  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
+function clearPomodoroTicker() {
+  if (pomodoroTickInterval) {
+    window.clearInterval(pomodoroTickInterval);
+    pomodoroTickInterval = null;
+  }
+}
+
+function setRingProgress(progressRatio, isBreakPhase = false) {
+  if (!focusRingProgress) {
+    return;
+  }
+  const clamped = Math.min(1, Math.max(0, progressRatio));
+  const offset = RING_CIRCUMFERENCE * (1 - clamped);
+  focusRingProgress.style.strokeDasharray = String(RING_CIRCUMFERENCE);
+  focusRingProgress.style.strokeDashoffset = String(offset);
+  focusRingProgress.classList.toggle("break", Boolean(isBreakPhase));
+}
+
+function renderPomodoroVisual() {
+  if (!pomodoroTimerText || !pomodoroStartBtn || !pomodoroPhaseText) {
+    return;
+  }
+
+  const pomodoro = currentBlockStatus && currentBlockStatus.pomodoro ? currentBlockStatus.pomodoro : null;
+  if (!pomodoro || !pomodoro.enabled) {
+    blockStatusSummary.textContent = "Pomodoro disabled in settings";
+    pomodoroPhaseText.textContent = "Off";
+    pomodoroTimerText.textContent = "--:--";
+    pomodoroStartBtn.textContent = "Pomodoro Disabled";
+    pomodoroStartBtn.disabled = true;
+    setRingProgress(0, false);
+    clearPomodoroTicker();
+    return;
+  }
+
+  if (!pomodoro.active || !pomodoro.phase) {
+    if (pomodoro.paused && pomodoro.pendingPhase) {
+      const nextLabel = pomodoro.pendingPhase === "focus" ? "Focus" : "Break";
+      blockStatusSummary.textContent = `Cycle complete. Start ${nextLabel} when ready`;
+      pomodoroPhaseText.textContent = "Paused";
+      pomodoroTimerText.textContent = "00:00";
+      pomodoroStartBtn.textContent = `Start ${nextLabel}`;
+      pomodoroStartBtn.disabled = !Boolean(currentBlockStatus && currentBlockStatus.enabled);
+      setRingProgress(0, pomodoro.pendingPhase === "break");
+      clearPomodoroTicker();
+      return;
+    }
+
+    blockStatusSummary.textContent = currentBlockStatus && currentBlockStatus.enabled
+      ? "Ready to start"
+      : "Enable blocking in settings";
+    pomodoroPhaseText.textContent = "Idle";
+    pomodoroTimerText.textContent = "--:--";
+    pomodoroStartBtn.textContent = "Start Focus Session";
+    pomodoroStartBtn.disabled = !Boolean(currentBlockStatus && currentBlockStatus.enabled);
+    setRingProgress(0, false);
+    clearPomodoroTicker();
+    return;
+  }
+
+  const phaseLabel = pomodoro.phase === "focus" ? "Focus" : "Break";
+  const phaseStart = Number(pomodoro.phaseStartEpochSec) || 0;
+  const phaseEnd = Number(pomodoro.phaseEndEpochSec) || 0;
+  const total = Math.max(1, phaseEnd - phaseStart);
+  const remaining = Math.max(0, Number(pomodoro.remainingSeconds) || 0);
+  const remainingRatio = remaining / total;
+
+  blockStatusSummary.textContent = `${phaseLabel} session in progress`;
+  pomodoroPhaseText.textContent = phaseLabel;
+  pomodoroTimerText.textContent = formatDuration(remaining);
+  pomodoroStartBtn.textContent = "Session Running";
+  pomodoroStartBtn.disabled = true;
+  setRingProgress(remainingRatio, pomodoro.phase === "break");
+
+  clearPomodoroTicker();
+  pomodoroTickInterval = window.setInterval(() => {
+    if (!currentBlockStatus || !currentBlockStatus.pomodoro || !currentBlockStatus.pomodoro.active) {
+      clearPomodoroTicker();
+      return;
+    }
+
+    const endEpoch = Number(currentBlockStatus.pomodoro.phaseEndEpochSec) || 0;
+    const startEpoch = Number(currentBlockStatus.pomodoro.phaseStartEpochSec) || 0;
+    const nowEpoch = Math.floor(Date.now() / 1000);
+    const liveRemaining = Math.max(0, endEpoch - nowEpoch);
+    const liveTotal = Math.max(1, endEpoch - startEpoch);
+    const liveRemainingRatio = liveRemaining / liveTotal;
+    const livePhase = currentBlockStatus.pomodoro.phase === "focus" ? "Focus" : "Break";
+
+    currentBlockStatus.pomodoro.remainingSeconds = liveRemaining;
+    pomodoroPhaseText.textContent = livePhase;
+    pomodoroTimerText.textContent = formatDuration(liveRemaining);
+    setRingProgress(liveRemainingRatio, currentBlockStatus.pomodoro.phase === "break");
+
+    if (liveRemaining <= 0) {
+      clearPomodoroTicker();
+      void refreshBlockStatus();
+    }
+  }, 1000);
+}
+
+function renderBlockStatus() {
+  if (!blockStatusSummary || !pomodoroStartBtn || !pomodoroTimerText || !pomodoroPhaseText) {
+    return;
+  }
+
+  if (!currentBlockStatus) {
+    blockStatusSummary.textContent = "Status unavailable";
+    pomodoroPhaseText.textContent = "Idle";
+    pomodoroTimerText.textContent = "--:--";
+    pomodoroStartBtn.textContent = "Unavailable";
+    pomodoroStartBtn.disabled = true;
+    setRingProgress(0, false);
+    clearPomodoroTicker();
+    return;
+  }
+
+  renderPomodoroVisual();
+}
+
+async function refreshBlockStatus() {
+  if (!blockStatusSummary || !pomodoroStartBtn) {
+    return;
+  }
+
+  pomodoroStartBtn.disabled = true;
+  blockStatusSummary.textContent = "Refreshing...";
+
+  try {
+    const response = await chrome.runtime.sendMessage({ type: "GET_BLOCK_STATUS" });
+    if (!response || response.success !== true) {
+      throw new Error((response && response.error) || "Unable to load blocking status.");
+    }
+    currentBlockStatus = response;
+  } catch (error) {
+    currentBlockStatus = {
+      enabled: false,
+      currentlyBlocked: false,
+      activeRuleSummary: `Error: ${error.message}`,
+      pomodoro: { enabled: false, active: false, phase: null, remainingSeconds: 0 }
+    };
+  }
+
+  renderBlockStatus();
+}
+
+async function startPomodoroSession() {
+  if (!currentBlockStatus || !currentBlockStatus.pomodoro || !currentBlockStatus.pomodoro.enabled) {
+    return;
+  }
+  if (currentBlockStatus.pomodoro.active) {
+    return;
+  }
+
+  pomodoroStartBtn.disabled = true;
+  pomodoroStartBtn.textContent = "Starting...";
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: "SET_POMODORO_ACTIVE",
+      active: true
+    });
+    if (!response || response.success !== true) {
+      throw new Error((response && response.error) || "Unable to start Pomodoro session.");
+    }
+  } catch (error) {
+    blockStatusSummary.textContent = `Pomodoro error: ${error.message}`;
+  }
+
+  await refreshBlockStatus();
+}
+
 // Chrome storage helpers (Promise-based)
 function chromeStorageGet(keys) {
   return new Promise(resolve => chrome.storage.local.get(keys, resolve));
@@ -1125,3 +1601,7 @@ function chromeStorageSet(items) {
 function chromeStorageRemove(keys) {
   return new Promise(resolve => chrome.storage.local.remove(keys, resolve));
 }
+
+window.addEventListener("unload", () => {
+  clearPomodoroTicker();
+});

@@ -16,6 +16,7 @@ import {
   getFixtureStudyMastery,
   getFixtureStudyReviewAck,
   getFixtureStudyToday,
+  getFixtureUploadResponse,
 } from "./fixtures.ts";
 import type {
   CanvasConnectRequest,
@@ -32,9 +33,13 @@ import type {
   IngestStartResponse,
   IngestStatusResponse,
   PracticeExam,
+  PracticeExamGenerationStartResponse,
+  PracticeExamGenerationStatusResponse,
   ReviewEvent,
   StudyReviewAck,
   TopicMastery,
+  UploadRequest,
+  UploadResponse,
 } from "./types.ts";
 
 type FetchLike = typeof fetch;
@@ -52,6 +57,17 @@ export interface ApiClient {
   syncCanvas(): Promise<CanvasSyncResponse>;
   generateFlashcards(courseId: string, numCards: number): Promise<Card[]>;
   generatePracticeExam(courseId: string, numQuestions: number): Promise<PracticeExam>;
+  generatePracticeExamFromMaterials(
+    courseId: string,
+    materialIds: string[],
+    numQuestions: number,
+  ): Promise<PracticeExam>;
+  startPracticeExamGeneration(
+    courseId: string,
+    materialIds: string[],
+    numQuestions: number,
+  ): Promise<PracticeExamGenerationStartResponse>;
+  getPracticeExamGenerationStatus(jobId: string): Promise<PracticeExamGenerationStatusResponse>;
   chat(courseId: string, question: string): Promise<ChatResponse>;
   listCourses(): Promise<Course[]>;
   listCourseItems(courseId: string): Promise<CanvasItem[]>;
@@ -60,6 +76,8 @@ export interface ApiClient {
   getStudyMastery(courseId: string): Promise<TopicMastery[]>;
   getCalendarIcs(token: string): Promise<string>;
   createCalendarToken(): Promise<CalendarTokenResponse>;
+  createUpload(request: UploadRequest): Promise<UploadResponse>;
+  uploadFileToUrl(uploadUrl: string, file: Blob, contentType: UploadRequest["contentType"]): Promise<void>;
   listCourseMaterials(courseId: string): Promise<CourseMaterial[]>;
   generateFlashcardsFromMaterials(courseId: string, materialIds: string[], numCards: number): Promise<Card[]>;
   startDocsIngest(request: IngestStartRequest): Promise<IngestStartResponse>;
@@ -150,6 +168,7 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
   const fetchImpl = options.fetchImpl ?? fetch;
   const useFixtures = options.useFixtures ?? readFixtureModeEnv();
   const demoUserId = options.demoUserId?.trim() ?? "";
+  const fixturePracticeExamJobs = new Map<string, PracticeExam>();
 
   function withDemoHeader(init?: RequestInit): RequestInit | undefined {
     if (!demoUserId) {
@@ -248,6 +267,70 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
       });
     },
 
+    async generatePracticeExamFromMaterials(
+      courseId: string,
+      materialIds: string[],
+      numQuestions: number,
+    ): Promise<PracticeExam> {
+      if (useFixtures) {
+        return getFixturePracticeExam(courseId, numQuestions);
+      }
+      return requestJson<PracticeExam>("/generate/practice-exam", {
+        method: "POST",
+        headers: {
+          "content-type": "text/plain",
+        },
+        body: JSON.stringify({ courseId, materialIds, numQuestions }),
+      });
+    },
+
+    async startPracticeExamGeneration(
+      courseId: string,
+      materialIds: string[],
+      numQuestions: number,
+    ): Promise<PracticeExamGenerationStartResponse> {
+      if (useFixtures) {
+        const jobId = `pracexam-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+        const exam = getFixturePracticeExam(courseId, numQuestions);
+        fixturePracticeExamJobs.set(jobId, exam);
+        return {
+          jobId,
+          status: "RUNNING",
+          createdAt: new Date().toISOString(),
+        };
+      }
+      return requestJson<PracticeExamGenerationStartResponse>("/generate/practice-exam/jobs", {
+        method: "POST",
+        headers: {
+          "content-type": "text/plain",
+        },
+        body: JSON.stringify({ courseId, materialIds, numQuestions }),
+      });
+    },
+
+    async getPracticeExamGenerationStatus(jobId: string): Promise<PracticeExamGenerationStatusResponse> {
+      if (useFixtures) {
+        const exam = fixturePracticeExamJobs.get(jobId);
+        if (!exam) {
+          return {
+            jobId,
+            status: "FAILED",
+            updatedAt: new Date().toISOString(),
+            error: "Practice exam generation job not found.",
+          };
+        }
+        return {
+          jobId,
+          status: "FINISHED",
+          updatedAt: new Date().toISOString(),
+          exam,
+        };
+      }
+      return requestJson<PracticeExamGenerationStatusResponse>(
+        `/generate/practice-exam/jobs/${encodeURIComponent(jobId)}`,
+      );
+    },
+
     async chat(courseId: string, question: string): Promise<ChatResponse> {
       if (useFixtures) {
         return getFixtureChatResponse(courseId, question);
@@ -323,6 +406,39 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
       return requestJson<CalendarTokenResponse>("/calendar/token", {
         method: "POST",
       });
+    },
+
+    async createUpload(request: UploadRequest): Promise<UploadResponse> {
+      if (useFixtures) {
+        return getFixtureUploadResponse(request);
+      }
+      return requestJson<UploadResponse>("/uploads", {
+        method: "POST",
+        headers: {
+          "content-type": "text/plain",
+        },
+        body: JSON.stringify(request),
+      });
+    },
+
+    async uploadFileToUrl(
+      uploadUrl: string,
+      file: Blob,
+      contentType: UploadRequest["contentType"],
+    ): Promise<void> {
+      if (useFixtures) {
+        return;
+      }
+      const response = await fetchImpl(uploadUrl, {
+        method: "PUT",
+        headers: {
+          "content-type": contentType,
+        },
+        body: file,
+      });
+      if (!response.ok) {
+        throw await parseError(response);
+      }
     },
 
     async listCourseMaterials(courseId: string): Promise<CourseMaterial[]> {

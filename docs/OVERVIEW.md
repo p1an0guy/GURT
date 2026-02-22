@@ -7,6 +7,7 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 ## Current architecture decisions (locked)
 
 - **Client:** Web app (no desktop app).
+- **Frontend hosting:** deployed behind Amazon CloudFront.
 - **Backend:** AWS **API Gateway + Lambda** (Lambda proxy integration).
 - **IaC scaffold:** AWS CDK (Python) under `infra/` with split stacks:
   - `GurtDataStack` for S3 + DynamoDB.
@@ -21,6 +22,12 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 - **Canvas materials sync reliability model:**
   - Primary path: `POST /canvas/sync` mirrors published/visible Canvas files through Canvas APIs.
   - Fallback path: when Canvas file API sync is partial or unreliable, the Chrome extension can scrape `/courses/{id}/modules` file links and push files through `POST /uploads` + `POST /docs/ingest` (same ingest pipeline, no extension-only ingest route).
+- **Chrome extension focus controls (MVP):**
+  - Extension-side website blocking engine runs in the MV3 service worker.
+  - Rules are user-configured in extension options and enforced via `webNavigation`/`tabs` redirects to an internal blocked page.
+  - Includes Pomodoro mode (enabled by default) with configurable focus/break durations; matched sites are blocked during focus phases.
+  - Pomodoro sessions are start-only from side panel and run until the focus+break cycle completes.
+  - Hard allowlist defaults include Canvas + GURT domains; the deployed CloudFront web app domain should remain on this allowlist.
 - **Text extraction:**
   - Fast path: PyMuPDF text extraction
   - Office path (`.pptx`, `.docx`, `.doc`): convert to PDF during ingest extraction, then run PyMuPDF extraction on converted PDF
@@ -28,12 +35,16 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 - **AI features:**
   - Model provider: **Amazon Bedrock**.
   - Default model id: `us.anthropic.claude-sonnet-4-6`.
+  - Guardrails: `GurtApiStack` provisions Bedrock guardrails by default and wires
+    `BEDROCK_GUARDRAIL_ID` + `BEDROCK_GUARDRAIL_VERSION` into runtime automatically.
+    If an existing guardrail is provided via CDK context, CDK reuses it and does not create a new one.
   - Retrieval source: Bedrock Knowledge Base (`KNOWLEDGE_BASE_ID`).
   - RAG index over uploaded sources (chunk + embeddings + retrieval).
   - Generate:
     - Flashcards (<=100 for demo)
     - Practice exam questions (MCQ + short answer, citations)
     - Chat Q&A grounded in sources (citations)
+  - Runtime safety behavior: guardrail-triggered blocks return deterministic safe fallback messaging.
 - **Spaced repetition:** Web-hosted **FSRS** (no Anki integration).
 - **Schedule truth sources:**
   - **Canvas** is source of truth for _dates/deadlines_.
@@ -70,6 +81,7 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
      - `POST /canvas/connect` may return `demoUserId`
      - clients pass `X-Gurt-Demo-User-Id` on subsequent user-scoped requests to keep per-user data isolated
    - extension fallback for Canvas files: scrape `/courses/{id}/modules` and ingest via `POST /uploads` + `POST /docs/ingest` when Canvas file API sync is unreliable
+   - extension focus blocking controls (local-only; no backend API surface)
    - per-course partial failure reporting (`failedCourseIds`)
 6. EventBridge runs periodic Canvas sync every 24 hours for all users with stored Canvas connections.
 

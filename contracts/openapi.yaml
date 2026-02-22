@@ -237,6 +237,60 @@
         }
       }
     },
+    "/generate/practice-exam/jobs": {
+      "post": {
+        "operationId": "postGeneratePracticeExamJobStart",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeneratePracticeExamRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Practice exam generation job started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PracticeExamGenerationStartResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/generate/practice-exam/jobs/{jobId}": {
+      "get": {
+        "operationId": "getGeneratePracticeExamJobStatus",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "jobId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Practice exam generation job status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PracticeExamGenerationStatusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/chat": {
       "post": {
         "operationId": "postChat",
@@ -252,7 +306,7 @@
         },
         "responses": {
           "200": {
-            "description": "Grounded answer response with citations",
+            "description": "Grounded answer response with legacy citations and structured citation details",
             "content": {
               "application/json": {
                 "schema": {
@@ -286,6 +340,36 @@
                   "type": "array",
                   "items": {
                     "$ref": "#/components/schemas/CanvasItem"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/courses/{courseId}/materials": {
+      "get": {
+        "operationId": "listCourseMaterials",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "courseId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List public material metadata by course",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CourseMaterial"
                   }
                 }
               }
@@ -450,6 +534,9 @@
       "CanvasItem": {
         "$ref": "./schemas/CanvasItem.json"
       },
+      "CourseMaterial": {
+        "$ref": "./schemas/CourseMaterial.json"
+      },
       "CanvasConnectRequest": {
         "$ref": "./schemas/CanvasConnectRequest.json"
       },
@@ -503,6 +590,12 @@
       },
       "GeneratePracticeExamRequest": {
         "$ref": "./schemas/GeneratePracticeExamRequest.json"
+      },
+      "PracticeExamGenerationStartResponse": {
+        "$ref": "./schemas/PracticeExamGenerationStartResponse.json"
+      },
+      "PracticeExamGenerationStatusResponse": {
+        "$ref": "./schemas/PracticeExamGenerationStatusResponse.json"
       },
       "ChatRequest": {
         "$ref": "./schemas/ChatRequest.json"

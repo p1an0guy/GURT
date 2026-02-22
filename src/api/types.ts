@@ -47,6 +47,13 @@ export interface CanvasSyncResponse {
 export interface ChatResponse {
   answer: string;
   citations: string[];
+  citationDetails?: ChatCitation[];
+}
+
+export interface ChatCitation {
+  source: string;
+  label: string;
+  url: string;
 }
 
 export interface Card {
@@ -74,6 +81,26 @@ export interface CalendarTokenResponse {
   createdAt: string;
 }
 
+export interface UploadRequest {
+  courseId: string;
+  filename: string;
+  contentType:
+    | "application/pdf"
+    | "text/plain"
+    | "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    | "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    | "application/msword";
+  contentLengthBytes?: number;
+}
+
+export interface UploadResponse {
+  docId: string;
+  key: string;
+  uploadUrl: string;
+  expiresInSeconds: number;
+  contentType: UploadRequest["contentType"];
+}
+
 export interface IngestStartRequest {
   docId: string;
   courseId: string;
@@ -95,6 +122,8 @@ export interface IngestStatusResponse {
   usedTextract: boolean;
   updatedAt: string;
   error: string;
+  kbIngestionJobId?: string;
+  kbIngestionError?: string;
 }
 
 export interface TopicMastery {
@@ -124,4 +153,20 @@ export interface PracticeExam {
   courseId: string;
   generatedAt: string;
   questions: PracticeExamQuestion[];
+}
+
+export type PracticeExamGenerationStatus = "RUNNING" | "FINISHED" | "FAILED";
+
+export interface PracticeExamGenerationStartResponse {
+  jobId: string;
+  status: "RUNNING";
+  createdAt: string;
+}
+
+export interface PracticeExamGenerationStatusResponse {
+  jobId: string;
+  status: PracticeExamGenerationStatus;
+  updatedAt: string;
+  exam?: PracticeExam;
+  error?: string;
 }

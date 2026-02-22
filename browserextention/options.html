@@ -3,72 +3,92 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GURT — Settings</title>
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      max-width: 480px;
-      margin: 40px auto;
-      padding: 0 20px;
-      color: #333;
-    }
-    h1 {
-      font-size: 22px;
-      margin-bottom: 4px;
-    }
-    .subtitle {
-      color: #666;
-      font-size: 14px;
-      margin-bottom: 24px;
-    }
-    label {
-      display: block;
-      font-weight: 600;
-      font-size: 14px;
-      margin-bottom: 6px;
-      margin-top: 16px;
-    }
-    input {
-      width: 100%;
-      padding: 10px 12px;
-      border: 1px solid #d1d5db;
-      border-radius: 6px;
-      font-size: 14px;
-      font-family: inherit;
-      outline: none;
-    }
-    input:focus {
-      border-color: #0374b5;
-      box-shadow: 0 0 0 2px rgba(3, 116, 181, 0.15);
-    }
-    button {
-      margin-top: 24px;
-      padding: 10px 24px;
-      background: #0374b5;
-      color: #fff;
-      border: none;
-      border-radius: 6px;
-      font-size: 14px;
-      cursor: pointer;
-    }
-    button:hover {
-      background: #025d91;
-    }
-    .status {
-      margin-top: 12px;
-      font-size: 14px;
-      color: #16a34a;
-      display: none;
-    }
-  </style>
+  <title>GURT Focus Blocking Settings</title>
+  <link rel="stylesheet" href="options.css">
 </head>
 <body>
-  <h1>🍦 GURT Settings</h1>
-  <p class="subtitle">Generative Uni Revision Tool</p>
+  <main class="options-shell">
+    <section class="options-panel">
+      <header class="panel-header">
+        <p class="eyebrow">GURT Extension</p>
+        <h1>Focus Blocking</h1>
+        <p class="subtitle">LeechBlock-style website blocking with schedule and time budget controls.</p>
+      </header>
 
-  <label>API Endpoint</label>
-  <input type="text" value="https://hpthlfk5ql.execute-api.us-west-2.amazonaws.com/dev" disabled>
-  <p style="margin-top: 8px; font-size: 13px; color: #666;">The API endpoint is preconfigured and cannot be changed.</p>
+      <div class="field toggle-row">
+        <label for="blockEnabled">Enable website blocking</label>
+        <input id="blockEnabled" type="checkbox">
+      </div>
+
+      <div class="field">
+        <label for="setName">Rule set name</label>
+        <input id="setName" type="text" maxlength="60">
+      </div>
+
+      <div class="field">
+        <label for="sites">Blocked sites (space/newline/comma separated)</label>
+        <textarea id="sites" rows="5" placeholder="youtube.com reddit.com +canvas.calpoly.edu"></textarea>
+        <p class="help-text">Use <code>+pattern</code> for allow exceptions. Example: <code>+mail.google.com</code>.</p>
+      </div>
+
+      <div class="field">
+        <label>Active days</label>
+        <div class="days-grid" id="daysGrid"></div>
+      </div>
+
+      <div class="field">
+        <label for="timeRanges">Time ranges (HHMM-HHMM, comma-separated)</label>
+        <input id="timeRanges" type="text" placeholder="0900-1700,1900-2200">
+      </div>
+
+      <div class="field split">
+        <div>
+          <label for="limitMinutes">Time limit (minutes)</label>
+          <input id="limitMinutes" type="number" min="1" step="1" placeholder="120">
+        </div>
+        <div>
+          <label for="limitPeriod">Limit period</label>
+          <select id="limitPeriod">
+            <option value="">None</option>
+            <option value="day">Per day</option>
+            <option value="week">Per week</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field pomodoro-box">
+        <div class="toggle-row">
+          <label for="pomodoroEnabled">Enable Pomodoro timer mode</label>
+          <input id="pomodoroEnabled" type="checkbox">
+        </div>
+        <div class="field split pomodoro-split">
+          <div>
+            <label for="pomodoroFocusMinutes">Focus minutes</label>
+            <input id="pomodoroFocusMinutes" type="number" min="1" step="1" placeholder="25">
+          </div>
+          <div>
+            <label for="pomodoroBreakMinutes">Break minutes</label>
+            <input id="pomodoroBreakMinutes" type="number" min="1" step="1" placeholder="5">
+          </div>
+        </div>
+        <p class="help-text">When enabled, matched sites are blocked during focus sessions and allowed during breaks.</p>
+      </div>
+
+      <div class="field readonly">
+        <label>Protected hard allowlist (read-only)</label>
+        <ul id="allowlist"></ul>
+        <p class="help-text">Deployment reminder: include the final CloudFront web app domain in this allowlist before production release.</p>
+      </div>
+
+      <div id="validationErrors" class="validation-errors hidden"></div>
+      <p id="saveStatus" class="save-status" aria-live="polite"></p>
+
+      <footer class="actions">
+        <button id="resetBtn" type="button" class="secondary">Reset to Saved</button>
+        <button id="saveBtn" type="button">Save Settings</button>
+      </footer>
+    </section>
+  </main>
 
   <script src="options.js"></script>
 </body>

@@ -187,28 +187,37 @@ export default function DeckStudyPage() {
 
   if (!deck) {
     return (
-      <main className="page">
-        <section className="hero">
-          <h1>Deck Not Found</h1>
-          <p>This deck may have been removed from local browser storage.</p>
-          <p>
-            <Link href="/">Back to dashboard</Link>
-          </p>
+      <main className="page deck-study-modern">
+        <section className="hero deck-study-modern-hero">
+          <div className="deck-study-hero-content">
+            <p className="deck-study-kicker">Study Lab</p>
+            <h1>Deck Not Found</h1>
+            <p>This deck may have been removed from local browser storage.</p>
+            <p>
+              <Link className="button-link" href="/">Back to dashboard</Link>
+            </p>
+          </div>
         </section>
       </main>
     );
   }
 
   return (
-    <main className="page">
-      <section className="hero">
-        <h1>{deck.title}</h1>
-        <p>
-          {deck.courseName} · {deck.cardCount} cards
-        </p>
-        <p>
-          <Link href="/">Back to dashboard</Link>
-        </p>
+    <main className="page deck-study-modern">
+      <section className="hero deck-study-modern-hero">
+        <div className="deck-study-hero-content">
+          <p className="deck-study-kicker">Study Lab</p>
+          <h1>{deck.title}</h1>
+          <div className="deck-study-hero-meta">
+            <span className="deck-study-chip">
+              <strong>{deck.cardCount}</strong> cards
+            </span>
+            <span className="deck-study-chip">{deck.courseName}</span>
+          </div>
+          <p>
+            <Link className="button-link" href="/">Back to dashboard</Link>
+          </p>
+        </div>
       </section>
 
       <section className="panel-grid">
