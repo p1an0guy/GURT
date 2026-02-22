@@ -317,6 +317,9 @@ class ApiStack(Stack):
         course_items.add_method("GET", app_integration)
         course_materials = course_id.add_resource("materials")
         course_materials.add_method("GET", app_integration)
+        course_files = course_id.add_resource("files")
+        course_files_count = course_files.add_resource("count")
+        course_files_count.add_method("GET", app_integration, authorization_type=apigateway.AuthorizationType.NONE)
 
         canvas = self.rest_api.root.add_resource("canvas")
         canvas_connect = canvas.add_resource("connect")
