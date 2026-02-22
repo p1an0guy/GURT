@@ -1855,9 +1855,204 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+.chat-page {
+  max-width: 1120px;
+}
+
+.chat-course-picker {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.chat-course-picker h2 {
+  margin: 0;
+}
+
+.chat-course-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.chat-course-card {
+  display: grid;
+  gap: 0.45rem;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 0.8rem;
+  padding: 0.85rem 0.9rem;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.chat-course-card:hover {
+  filter: none;
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+  background: color-mix(in srgb, var(--accent-soft) 35%, var(--surface));
+}
+
+.chat-course-swatch {
+  width: 100%;
+  height: 0.45rem;
+  border-radius: 999px;
+}
+
+.chat-course-title {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.chat-course-meta {
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+.chat-shell {
+  display: grid;
+  gap: 0.9rem;
+  min-height: min(78vh, 760px);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.chat-shell-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.chat-shell-course h2 {
+  margin: 0;
+}
+
+.chat-shell-course p {
+  margin: 0.2rem 0 0;
+}
+
+.chat-message-list {
+  border: 1px solid var(--line);
+  border-radius: 0.8rem;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  padding: 0.8rem;
+  overflow-y: auto;
+  min-height: 280px;
+  display: grid;
+  align-content: start;
+  gap: 0.65rem;
+}
+
+.chat-empty-state {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+}
+
+.chat-message {
+  display: flex;
+}
+
+.chat-message.user {
+  justify-content: flex-end;
+}
+
+.chat-message.assistant,
+.chat-message.error {
+  justify-content: flex-start;
+}
+
+.chat-message-bubble {
+  max-width: min(82%, 720px);
+  border-radius: 0.75rem;
+  border: 1px solid var(--line);
+  padding: 0.6rem 0.75rem;
+  background: var(--surface-soft);
+  display: grid;
+  gap: 0.45rem;
+}
+
+.chat-message.user .chat-message-bubble {
+  background: color-mix(in srgb, var(--accent) 24%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 46%, var(--line));
+}
+
+.chat-message.error .chat-message-bubble {
+  background: color-mix(in srgb, var(--error) 20%, var(--surface));
+  border-color: color-mix(in srgb, var(--error) 48%, var(--line));
+}
+
+.chat-message-bubble p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.chat-citations {
+  margin: 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.chat-citations li {
+  font-size: 0.8rem;
+}
+
+.chat-citations a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+}
+
+.chat-composer {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.chat-composer-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.6rem;
+  align-items: end;
+}
+
+.chat-composer textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  background: var(--input-bg);
+  color: var(--ink);
+  resize: vertical;
+  min-height: 3rem;
+  max-height: 11rem;
+}
+
+.chat-composer textarea:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 1px;
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+}
+
 @media (max-width: 620px) {
   .practice-report-grid {
     grid-template-columns: 1fr;
+  }
+
+  .chat-shell {
+    min-height: 68vh;
+  }
+
+  .chat-shell-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .chat-composer-row {
+    grid-template-columns: 1fr;
+  }
+
+  .chat-message-bubble {
+    max-width: 100%;
   }
 }
 
