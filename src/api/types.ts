@@ -154,3 +154,19 @@ export interface PracticeExam {
   generatedAt: string;
   questions: PracticeExamQuestion[];
 }
+
+export type PracticeExamGenerationStatus = "RUNNING" | "FINISHED" | "FAILED";
+
+export interface PracticeExamGenerationStartResponse {
+  jobId: string;
+  status: "RUNNING";
+  createdAt: string;
+}
+
+export interface PracticeExamGenerationStatusResponse {
+  jobId: string;
+  status: PracticeExamGenerationStatus;
+  updatedAt: string;
+  exam?: PracticeExam;
+  error?: string;
+}

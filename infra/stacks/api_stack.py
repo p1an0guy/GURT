@@ -354,6 +354,33 @@ class ApiStack(Stack):
                 "CARDS_TABLE": data_stack.cards_table.table_name,
             },
         )
+        practice_exam_gen_worker_handler = lambda_.Function(
+            self,
+            "PracticeExamGenWorkerHandler",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            code=lambda_code,
+            handler="backend.practice_exam_workflow.worker_handler",
+            timeout=Duration.seconds(300),
+            memory_size=1024,
+            environment={
+                "BEDROCK_MODEL_ID": bedrock_model_id,
+                "BEDROCK_GUARDRAIL_ID": configured_guardrail_id,
+                "BEDROCK_GUARDRAIL_VERSION": configured_guardrail_version,
+                "KNOWLEDGE_BASE_ID": knowledge_base_id,
+            },
+        )
+        practice_exam_gen_finalize_handler = lambda_.Function(
+            self,
+            "PracticeExamGenFinalizeHandler",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            code=lambda_code,
+            handler="backend.practice_exam_workflow.finalize_handler",
+            timeout=Duration.seconds(30),
+            memory_size=256,
+            environment={
+                "DOCS_TABLE": data_stack.docs_table.table_name,
+            },
+        )
 
         data_stack.uploads_bucket.grant_read_write(app_api_handler)
         data_stack.uploads_bucket.grant_put(uploads_handler)
@@ -392,6 +419,13 @@ class ApiStack(Stack):
         )
         data_stack.docs_table.grant_read_write_data(flashcard_gen_finalize_handler)
         data_stack.cards_table.grant_read_write_data(flashcard_gen_finalize_handler)
+        practice_exam_gen_worker_handler.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["bedrock:InvokeModel", "bedrock:Retrieve"],
+                resources=["*"],
+            )
+        )
+        data_stack.docs_table.grant_read_write_data(practice_exam_gen_finalize_handler)
 
         ingest_extract_step = sfn_tasks.LambdaInvoke(
             self,
@@ -483,6 +517,30 @@ class ApiStack(Stack):
         app_api_handler.add_environment(
             "FLASHCARD_GEN_STATE_MACHINE_ARN",
             flashcard_gen_state_machine.state_machine_arn,
+        )
+        practice_exam_gen_worker_step = sfn_tasks.LambdaInvoke(
+            self,
+            "PracticeExamGenWorkerStep",
+            lambda_function=practice_exam_gen_worker_handler,
+            payload_response_only=True,
+        )
+        practice_exam_gen_finalize_step = sfn_tasks.LambdaInvoke(
+            self,
+            "PracticeExamGenFinalizeStep",
+            lambda_function=practice_exam_gen_finalize_handler,
+            payload_response_only=True,
+        )
+        practice_exam_gen_definition = practice_exam_gen_worker_step.next(practice_exam_gen_finalize_step)
+        practice_exam_gen_state_machine = sfn.StateMachine(
+            self,
+            "PracticeExamGenStateMachine",
+            definition_body=sfn.DefinitionBody.from_chainable(practice_exam_gen_definition),
+            timeout=Duration.minutes(10),
+        )
+        practice_exam_gen_state_machine.grant_start_execution(app_api_handler)
+        app_api_handler.add_environment(
+            "PRACTICE_EXAM_GEN_STATE_MACHINE_ARN",
+            practice_exam_gen_state_machine.state_machine_arn,
         )
 
         app_api_handler.add_to_role_policy(
@@ -591,6 +649,18 @@ class ApiStack(Stack):
         generate_practice_exam = generate.add_resource("practice-exam")
         generate_practice_exam.add_method(
             "POST",
+            app_integration,
+            authorization_type=apigateway.AuthorizationType.NONE,
+        )
+        practice_exam_jobs = generate_practice_exam.add_resource("jobs")
+        practice_exam_jobs.add_method(
+            "POST",
+            app_integration,
+            authorization_type=apigateway.AuthorizationType.NONE,
+        )
+        practice_exam_job_id = practice_exam_jobs.add_resource("{jobId}")
+        practice_exam_job_id.add_method(
+            "GET",
             app_integration,
             authorization_type=apigateway.AuthorizationType.NONE,
         )

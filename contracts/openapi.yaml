@@ -237,6 +237,60 @@
         }
       }
     },
+    "/generate/practice-exam/jobs": {
+      "post": {
+        "operationId": "postGeneratePracticeExamJobStart",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeneratePracticeExamRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Practice exam generation job started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PracticeExamGenerationStartResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/generate/practice-exam/jobs/{jobId}": {
+      "get": {
+        "operationId": "getGeneratePracticeExamJobStatus",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "jobId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Practice exam generation job status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PracticeExamGenerationStatusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/chat": {
       "post": {
         "operationId": "postChat",
@@ -536,6 +590,12 @@
       },
       "GeneratePracticeExamRequest": {
         "$ref": "./schemas/GeneratePracticeExamRequest.json"
+      },
+      "PracticeExamGenerationStartResponse": {
+        "$ref": "./schemas/PracticeExamGenerationStartResponse.json"
+      },
+      "PracticeExamGenerationStatusResponse": {
+        "$ref": "./schemas/PracticeExamGenerationStatusResponse.json"
       },
       "ChatRequest": {
         "$ref": "./schemas/ChatRequest.json"
