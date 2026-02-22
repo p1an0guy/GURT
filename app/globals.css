@@ -656,6 +656,75 @@ button:disabled {
   text-align: center;
 }
 
+.material-list {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.material-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0 0.1rem;
+}
+
+.material-toggle-all {
+  font-size: 0.78rem;
+  padding: 0.3rem 0.6rem;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.material-toggle-all:hover {
+  background: var(--button-muted);
+  filter: none;
+}
+
+.material-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  padding: 0.5rem 0.65rem;
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+  font-size: 0.88rem;
+  font-weight: 400;
+  color: var(--ink);
+}
+
+.material-row:hover {
+  border-color: var(--accent-soft);
+}
+
+.material-row.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.material-checkbox {
+  width: auto;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+
+.material-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.material-size {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .deck-actions {
   margin-top: 0.65rem;
 }

@@ -315,6 +315,8 @@ class ApiStack(Stack):
         course_id = courses.add_resource("{courseId}")
         course_items = course_id.add_resource("items")
         course_items.add_method("GET", app_integration)
+        course_materials = course_id.add_resource("materials")
+        course_materials.add_method("GET", app_integration)
 
         canvas = self.rest_api.root.add_resource("canvas")
         canvas_connect = canvas.add_resource("connect")
@@ -334,6 +336,12 @@ class ApiStack(Stack):
         generate = self.rest_api.root.add_resource("generate")
         generate_flashcards = generate.add_resource("flashcards")
         generate_flashcards.add_method("POST", app_integration, authorization_type=apigateway.AuthorizationType.NONE)
+        generate_flashcards_from_materials = generate.add_resource("flashcards-from-materials")
+        generate_flashcards_from_materials.add_method(
+            "POST",
+            app_integration,
+            authorization_type=apigateway.AuthorizationType.NONE,
+        )
         generate_practice_exam = generate.add_resource("practice-exam")
         generate_practice_exam.add_method(
             "POST",

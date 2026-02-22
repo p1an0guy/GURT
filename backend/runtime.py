@@ -22,7 +22,7 @@ from backend.canvas_client import (
     fetch_course_files,
     fetch_file_bytes,
 )
-from backend.generation import GenerationError, chat_answer, format_canvas_items, generate_flashcards, generate_practice_exam
+from backend.generation import GenerationError, chat_answer, format_canvas_items, generate_flashcards, generate_flashcards_from_materials, generate_practice_exam
 from backend import uploads
 from gurt.calendar_tokens.minting import (
     CalendarTokenMintingError,
@@ -1042,6 +1042,64 @@ def _handle_generate_flashcards(event: Mapping[str, Any]) -> Dict[str, Any]:
     return _text_response(200, json.dumps(cards), content_type="application/json")
 
 
+def _handle_generate_flashcards_from_materials(event: Mapping[str, Any]) -> Dict[str, Any]:
+    user_id, auth_error = _require_authenticated_user_id(event)
+    if auth_error is not None or user_id is None:
+        return auth_error or _json_response(401, {"error": "authenticated principal is required"})
+
+    payload, parse_error = _parse_json_body(event)
+    if parse_error is not None or payload is None:
+        return _json_response(400, {"error": parse_error or "request body must be valid JSON"})
+
+    try:
+        course_id = _require_non_empty_string(payload, "courseId")
+        material_ids_raw = payload.get("materialIds")
+        if not isinstance(material_ids_raw, list) or not material_ids_raw:
+            return _json_response(400, {"error": "materialIds is required and must be a non-empty array"})
+        if len(material_ids_raw) > 10:
+            return _json_response(400, {"error": "materialIds must contain at most 10 items"})
+        material_ids = [str(mid).strip() for mid in material_ids_raw if isinstance(mid, str) and mid.strip()]
+        if not material_ids:
+            return _json_response(400, {"error": "materialIds must contain non-empty strings"})
+
+        num_cards_raw = payload.get("numCards", 20)
+        num_cards = int(num_cards_raw)
+        if num_cards < 1:
+            return _json_response(400, {"error": "numCards must be >= 1"})
+        num_cards = min(num_cards, 100)
+
+        # Look up each material to get its S3 key, verifying it belongs to the user's course
+        table = _canvas_data_table()
+        from studybuddy.models.canvas import item_partition_key, material_sort_key
+        pk = item_partition_key(user_id, course_id)
+        material_s3_keys: list[str] = []
+        for mid in material_ids:
+            sk = material_sort_key(mid)
+            result = table.get_item(Key={"pk": pk, "sk": sk})
+            item = result.get("Item")
+            if not item or item.get("entityType") != "CanvasMaterial":
+                return _json_response(404, {"error": f"material {mid} not found for this course"})
+            s3_key = item.get("s3Key", "")
+            if not s3_key:
+                return _json_response(404, {"error": f"material {mid} has no associated file"})
+            material_s3_keys.append(str(s3_key))
+
+        cards = generate_flashcards_from_materials(
+            course_id=course_id,
+            material_s3_keys=material_s3_keys,
+            num_cards=num_cards,
+        )
+        _persist_generated_cards(cards)
+    except ValueError as exc:
+        return _json_response(400, {"error": str(exc)})
+    except GenerationError as exc:
+        return _json_response(502, {"error": str(exc)})
+    except RuntimeError as exc:
+        return _json_response(502, {"error": str(exc)})
+
+    return _text_response(200, json.dumps(cards), content_type="application/json")
+
+
 def _handle_generate_practice_exam(event: Mapping[str, Any]) -> Dict[str, Any]:
     payload, parse_error = _parse_json_body(event)
     if parse_error is not None or payload is None:
@@ -1350,7 +1408,9 @@ def _runtime_study_today(
     if user_id is not None:
         try:
             items = _query_canvas_course_items_for_user(user_id=user_id, course_id=course_id)
-        except RuntimeError:
+        except Exception:
+            # Canvas context is a best-effort enhancement for study selection.
+            # Fail open so read-path errors in Canvas storage do not break /study/today.
             items = []
 
     exam_due_at = _resolve_exam_due_at(items=items, exam_id=exam_id, now=now)
@@ -1617,6 +1677,40 @@ def _query_canvas_courses_for_user(user_id: str) -> list[dict[str, Any]]:
     return courses
 
 
+def _query_canvas_course_materials_for_user(*, user_id: str, course_id: str) -> list[dict[str, Any]]:
+    table_name = os.getenv("CANVAS_DATA_TABLE", "").strip()
+    if not table_name:
+        return []
+
+    table = _dynamodb_table(table_name)
+    rows = _query_canvas_partition_rows(
+        table=table,
+        pk_value=f"USER#{user_id}#COURSE#{course_id}",
+        sk_prefix="MATERIAL#",
+    )
+
+    materials: list[dict[str, Any]] = []
+    for row in rows:
+        if row.get("entityType") != "CanvasMaterial":
+            continue
+        try:
+            material = CanvasMaterial.from_dynamodb_item(
+                row,
+                expected_user_id=user_id,
+                expected_course_id=course_id,
+            )
+        except ModelValidationError:
+            continue
+        api_dict = material.to_api_dict()
+        # Exclude internal fields from public API response
+        api_dict.pop("downloadUrl", None)
+        api_dict.pop("s3Key", None)
+        materials.append(api_dict)
+
+    materials.sort(key=lambda m: str(m.get("displayName", "")).lower())
+    return materials
+
+
 def _query_canvas_course_items_for_user(*, user_id: str, course_id: str) -> list[dict[str, Any]]:
     table_name = os.getenv("CANVAS_DATA_TABLE", "").strip()
     if not table_name:
@@ -1694,6 +1788,19 @@ def _handle_courses(event: Mapping[str, Any]) -> Dict[str, Any]:
     if _is_demo_mode():
         return _text_response(200, json.dumps(_load_fixtures()["courses"]), content_type="application/json")
     return _text_response(200, "[]", content_type="application/json")
+
+
+def _handle_course_materials(event: Mapping[str, Any], course_id: str) -> Dict[str, Any]:
+    user_id, auth_error = _require_authenticated_user_id(event)
+    if auth_error is not None or user_id is None:
+        return auth_error or _json_response(401, {"error": "authenticated principal is required"})
+
+    try:
+        runtime_materials = _query_canvas_course_materials_for_user(user_id=user_id, course_id=course_id)
+    except RuntimeError as exc:
+        return _json_response(500, {"error": str(exc)})
+
+    return _text_response(200, json.dumps(runtime_materials), content_type="application/json")
 
 
 def _handle_course_items(event: Mapping[str, Any], course_id: str) -> Dict[str, Any]:
@@ -1806,6 +1913,11 @@ def lambda_handler(event: Mapping[str, Any], context: Any) -> Dict[str, Any]:
         return _handle_courses(event)
 
     if method == "GET":
+        materials_match = re.fullmatch(r"/courses/([^/]+)/materials", path)
+        if materials_match:
+            return _handle_course_materials(event, materials_match.group(1))
+
+    if method == "GET":
         course_id = _extract_course_id_from_path(path, path_params)
         if course_id is not None:
             return _handle_course_items(event, course_id)
@@ -1829,6 +1941,9 @@ def lambda_handler(event: Mapping[str, Any], context: Any) -> Dict[str, Any]:
 
     if method == "POST" and path == "/generate/flashcards":
         return _handle_generate_flashcards(event)
+
+    if method == "POST" and path == "/generate/flashcards-from-materials":
+        return _handle_generate_flashcards_from_materials(event)
 
     if method == "POST" and path == "/generate/practice-exam":
         return _handle_generate_practice_exam(event)
