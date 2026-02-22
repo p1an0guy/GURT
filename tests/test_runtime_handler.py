@@ -1091,13 +1091,19 @@ class RuntimeHandlerTests(unittest.TestCase):
             ),
         }
 
-        with patch(
-            "backend.runtime.chat_answer",
-            return_value={
-                "answer": "Working memory temporarily stores and manipulates information.",
-                "citations": ["s3://bucket/doc.pdf#chunk-3"],
-            },
-        ) as chat_answer:
+        with (
+            patch(
+                "backend.runtime.chat_answer",
+                return_value={
+                    "answer": "Working memory temporarily stores and manipulates information.",
+                    "citations": ["s3://bucket/doc.pdf#chunk-3"],
+                },
+            ) as chat_answer,
+            patch("backend.runtime._s3_client") as s3_client_factory,
+        ):
+            s3_client_factory.return_value.generate_presigned_url.return_value = (
+                "https://signed.example/doc.pdf?X-Amz-Signature=test"
+            )
             response = self._invoke(event, env={"DEMO_MODE": "false"})
 
         self.assertEqual(response["statusCode"], 200)
@@ -1110,9 +1116,14 @@ class RuntimeHandlerTests(unittest.TestCase):
                 {
                     "source": "s3://bucket/doc.pdf#chunk-3",
                     "label": "doc.pdf (chunk-3)",
-                    "url": "https://s3.console.aws.amazon.com/s3/object/bucket?prefix=doc.pdf",
+                    "url": "https://signed.example/doc.pdf?X-Amz-Signature=test",
                 }
             ],
+        )
+        s3_client_factory.return_value.generate_presigned_url.assert_called_once_with(
+            "get_object",
+            Params={"Bucket": "bucket", "Key": "doc.pdf"},
+            ExpiresIn=3600,
         )
         chat_answer.assert_called_once_with(
             course_id="course-psych-101",

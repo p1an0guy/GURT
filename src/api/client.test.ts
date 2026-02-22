@@ -206,7 +206,7 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
           {
             source: "s3://bucket/path#chunk-1",
             label: "path (chunk-1)",
-            url: "https://s3.console.aws.amazon.com/s3/object/bucket?prefix=path",
+            url: "https://bucket.s3.us-west-2.amazonaws.com/path?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=example",
           },
         ],
       });
@@ -308,7 +308,10 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
   const ingestStatus = await client.getDocsIngestStatus(ingestStarted.jobId);
 
   assert.match(ics, /BEGIN:VCALENDAR/);
-  assert.equal(chat.citationDetails?.[0]?.url, "https://s3.console.aws.amazon.com/s3/object/bucket?prefix=path");
+  assert.equal(
+    chat.citationDetails?.[0]?.url,
+    "https://bucket.s3.us-west-2.amazonaws.com/path?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=example",
+  );
   assert.equal(tokenResponse.token, "minted-token");
   assert.equal(ingestStatus.status, "FINISHED");
   assert.equal(calls.length, 15);

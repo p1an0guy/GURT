@@ -11,7 +11,7 @@ test("prefers structured citationDetails when present", () => {
       {
         source: "s3://bucket/uploads/course/doc.pdf#chunk-1",
         label: "doc.pdf (chunk-1)",
-        url: "https://s3.console.aws.amazon.com/s3/object/bucket?prefix=uploads/course/doc.pdf",
+        url: "https://bucket.s3.us-west-2.amazonaws.com/uploads/course/doc.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=example",
       },
     ],
   });
@@ -20,7 +20,7 @@ test("prefers structured citationDetails when present", () => {
     {
       source: "s3://bucket/uploads/course/doc.pdf#chunk-1",
       label: "doc.pdf (chunk-1)",
-      url: "https://s3.console.aws.amazon.com/s3/object/bucket?prefix=uploads/course/doc.pdf",
+      url: "https://bucket.s3.us-west-2.amazonaws.com/uploads/course/doc.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=example",
     },
   ]);
 });

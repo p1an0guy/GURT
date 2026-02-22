@@ -201,7 +201,7 @@ class FixtureMockHandler(BaseHTTPRequestHandler):
                         {
                             "source": "s3://bucket/uploads/170880/doc-a/ch1.pdf#chunk-2",
                             "label": "ch1.pdf (chunk-2)",
-                            "url": "https://s3.console.aws.amazon.com/s3/object/bucket?prefix=uploads/170880/doc-a/ch1.pdf",
+                            "url": "https://bucket.s3.us-west-2.amazonaws.com/uploads/170880/doc-a/ch1.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=example",
                         }
                     ],
                 }

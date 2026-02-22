@@ -8,12 +8,12 @@
     {
       "source": "s3://studybuddy-dev-uploads/course-psych-101/syllabus.pdf#chunk-14",
       "label": "syllabus.pdf (chunk-14)",
-      "url": "https://s3.console.aws.amazon.com/s3/object/studybuddy-dev-uploads?prefix=course-psych-101/syllabus.pdf"
+      "url": "https://studybuddy-dev-uploads.s3.us-west-2.amazonaws.com/course-psych-101/syllabus.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=EXAMPLE%2F20260222%2Fus-west-2%2Fs3%2Faws4_request&X-Amz-Date=20260222T080000Z&X-Amz-Expires=3600&X-Amz-SignedHeaders=host&X-Amz-Signature=example"
     },
     {
       "source": "s3://studybuddy-dev-uploads/course-psych-101/chapter-3-notes.pdf#chunk-6",
       "label": "chapter-3-notes.pdf (chunk-6)",
-      "url": "https://s3.console.aws.amazon.com/s3/object/studybuddy-dev-uploads?prefix=course-psych-101/chapter-3-notes.pdf"
+      "url": "https://studybuddy-dev-uploads.s3.us-west-2.amazonaws.com/course-psych-101/chapter-3-notes.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=EXAMPLE%2F20260222%2Fus-west-2%2Fs3%2Faws4_request&X-Amz-Date=20260222T080000Z&X-Amz-Expires=3600&X-Amz-SignedHeaders=host&X-Amz-Signature=example"
     }
   ]
 }

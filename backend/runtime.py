@@ -10,7 +10,7 @@ from decimal import Decimal
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
-from urllib.parse import quote, urlparse
+from urllib.parse import urlparse
 from uuid import uuid4
 from typing import Any, Dict, Mapping
 
@@ -46,6 +46,9 @@ _STUDY_TODAY_DEFAULT_COUNT = 5
 _STUDY_TODAY_MAX_COUNT = 50
 _STUDY_TODAY_NEAR_EXAM_DAYS = 7
 _STUDY_TODAY_LOW_MASTERY_THRESHOLD = 0.5
+_CHAT_CITATION_URL_TTL_DEFAULT_SECONDS = 3600
+_CHAT_CITATION_URL_TTL_MIN_SECONDS = 60
+_CHAT_CITATION_URL_TTL_MAX_SECONDS = 604800
 
 
 @lru_cache(maxsize=1)
@@ -257,6 +260,21 @@ def _normalize_chat_citations(raw: Any) -> list[str]:
     return citations
 
 
+def _chat_citation_url_ttl_seconds() -> int:
+    raw = os.getenv(
+        "CHAT_CITATION_URL_TTL_SECONDS",
+        str(_CHAT_CITATION_URL_TTL_DEFAULT_SECONDS),
+    ).strip()
+    try:
+        parsed = int(raw)
+    except ValueError:
+        parsed = _CHAT_CITATION_URL_TTL_DEFAULT_SECONDS
+    return max(
+        _CHAT_CITATION_URL_TTL_MIN_SECONDS,
+        min(parsed, _CHAT_CITATION_URL_TTL_MAX_SECONDS),
+    )
+
+
 def _chat_citation_https_url(source: str) -> str | None:
     parsed = urlparse(source)
     if parsed.scheme == "https" and parsed.netloc:
@@ -269,8 +287,16 @@ def _chat_citation_https_url(source: str) -> str | None:
         key = parsed.path.lstrip("/")
         if not key:
             return None
-        encoded_key = quote(key, safe="/")
-        return f"https://s3.console.aws.amazon.com/s3/object/{parsed.netloc}?prefix={encoded_key}"
+        try:
+            return str(
+                _s3_client().generate_presigned_url(
+                    "get_object",
+                    Params={"Bucket": parsed.netloc, "Key": key},
+                    ExpiresIn=_chat_citation_url_ttl_seconds(),
+                )
+            )
+        except Exception:
+            return None
 
     return None
 

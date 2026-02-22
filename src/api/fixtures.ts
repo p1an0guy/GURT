@@ -108,7 +108,7 @@ export function getFixtureChatResponse(courseId: string, question: string): Chat
       {
         source: "s3://fixture/uploads/course-psych-101/syllabus.pdf#chunk-1",
         label: "syllabus.pdf (chunk-1)",
-        url: "https://s3.console.aws.amazon.com/s3/object/fixture?prefix=uploads/course-psych-101/syllabus.pdf",
+        url: "https://fixture.s3.us-west-2.amazonaws.com/uploads/course-psych-101/syllabus.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=fixture",
       },
     ],
   };
