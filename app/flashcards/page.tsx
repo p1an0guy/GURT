@@ -30,7 +30,7 @@ function fileTypeLabel(contentType: string): string {
 export default function FlashcardsPage() {
   const [settings] = useState(getDefaultRuntimeSettings);
   const [courses, setCourses] = useState<Course[]>([]);
-  const [courseId, setCourseId] = useState("course-psych-101");
+  const [courseId, setCourseId] = useState("");
   const [deckTitle, setDeckTitle] = useState("");
   const [numCards, setNumCards] = useState("12");
   const [recentDecks, setRecentDecks] = useState<DeckSummary[]>([]);
@@ -66,10 +66,26 @@ export default function FlashcardsPage() {
     setIsLoadingCourses(true);
     setCourseLoadError("");
     try {
-      const rows = await client.listCourses();
+      const allCourses = await client.listCourses();
+
+      // Check which courses have synced materials (in parallel)
+      const materialChecks = await Promise.all(
+        allCourses.map(async (course) => {
+          try {
+            const mats = await client.listCourseMaterials(course.id);
+            return { course, hasMaterials: mats.length > 0 };
+          } catch {
+            return { course, hasMaterials: false };
+          }
+        }),
+      );
+      const rows = materialChecks
+        .filter((check) => check.hasMaterials)
+        .map((check) => check.course);
+
       setCourses(rows);
       setCoursesLoaded(true);
-      if (!rows.some((row) => row.id === courseId) && rows.length > 0) {
+      if (rows.length > 0 && !rows.some((row) => row.id === courseId)) {
         setCourseId(rows[0].id);
       }
     } catch (loadError) {

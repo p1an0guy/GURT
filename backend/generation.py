@@ -381,7 +381,11 @@ def generate_flashcards_from_materials(
             "You are an expert study assistant. Your task is to create high-quality flashcards "
             "from the provided course materials. Each flashcard should test a single concept. "
             "Use clear, concise language. The prompt should be a question and the answer should "
-            "be a direct, complete response."
+            "be a direct, complete response.\n\n"
+            "IMPORTANT: For ALL mathematical expressions, equations, symbols, and notation, "
+            "use LaTeX wrapped in dollar signs: $...$ for inline math, $$...$$ for display math. "
+            "Examples: $\\vec{F} = m\\vec{a}$, $\\int_0^1 f(x)\\,dx$, $\\alpha + \\beta$. "
+            "NEVER use Unicode math symbols or combining characters. Always use LaTeX."
         )
 
     content_blocks.append({

@@ -70,6 +70,7 @@ class ApiStack(Stack):
             "DOCS_TABLE": data_stack.docs_table.table_name,
             "CARDS_TABLE": data_stack.cards_table.table_name,
             "UPLOADS_BUCKET": data_stack.uploads_bucket.bucket_name,
+            "FLASHCARD_MODEL_ID": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
             "CALENDAR_TOKEN": calendar_token,
             "CALENDAR_TOKEN_USER_ID": calendar_token_user_id,
             "CALENDAR_FIXTURE_FALLBACK": calendar_fixture_fallback,
@@ -82,7 +83,7 @@ class ApiStack(Stack):
             code=lambda_code,
             handler="backend.runtime.lambda_handler",
             timeout=Duration.seconds(29),
-            memory_size=256,
+            memory_size=512,
             environment=env,
         )
 

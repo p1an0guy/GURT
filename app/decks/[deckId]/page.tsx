@@ -4,7 +4,10 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
+import "katex/dist/katex.min.css";
+
 import { createApiClient } from "../../../src/api/client.ts";
+import { MathText } from "../../../src/components/MathText.tsx";
 import { getDeckById, markDeckStudied, type DeckRecord } from "../../../src/decks/store.ts";
 import { readRuntimeSettings } from "../../../src/runtime-settings.ts";
 
@@ -219,11 +222,11 @@ export default function DeckStudyPage() {
                 <div className={`flashcard-flip-inner${revealed ? " is-revealed" : ""}`}>
                   <div className="flashcard-face flashcard-front">
                     <p className="flashcard-side-label">Prompt</p>
-                    <p className="flashcard-side-text">{activeCard.prompt}</p>
+                    <p className="flashcard-side-text"><MathText text={activeCard.prompt} /></p>
                   </div>
                   <div className="flashcard-face flashcard-back">
                     <p className="flashcard-side-label">Answer</p>
-                    <p className="flashcard-side-text">{activeCard.answer}</p>
+                    <p className="flashcard-side-text"><MathText text={activeCard.answer} /></p>
                   </div>
                 </div>
               </button>
