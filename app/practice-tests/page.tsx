@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { createApiClient } from "../../src/api/client.ts";
@@ -28,10 +27,9 @@ function AiStarsIcon() {
 }
 
 export default function PracticeTestsPage() {
-  const searchParams = useSearchParams();
   const [settings] = useState(getDefaultRuntimeSettings);
   const [courses, setCourses] = useState<Course[]>([]);
-  const [courseId, setCourseId] = useState(searchParams.get("courseId") ?? "course-psych-101");
+  const [courseId, setCourseId] = useState("course-psych-101");
   const [numQuestions, setNumQuestions] = useState("10");
   const [exam, setExam] = useState<PracticeExam | null>(null);
   const [answers, setAnswers] = useState<Record<string, number>>({});
@@ -131,6 +129,14 @@ export default function PracticeTestsPage() {
     void loadCourses();
     setSavedTests(listRecentPracticeTests());
   }, [client]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const paramCourseId = params.get("courseId");
+    if (paramCourseId) {
+      setCourseId(paramCourseId);
+    }
+  }, []);
 
   useEffect(() => {
     if (!exam || exam.questions.length === 0) {
