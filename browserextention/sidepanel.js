@@ -613,6 +613,20 @@ function firstString(values) {
   return "";
 }
 
+async function getRecentHistory(courseId, limit = 5) {
+  if (!courseId) return [];
+  const key = `chatHistory_${courseId}`;
+  const result = await chrome.storage.local.get(key);
+  const history = result[key] || [];
+  return history
+    .filter(msg => msg.role === "user" || msg.role === "bot")
+    .slice(-limit)
+    .map(msg => ({
+      role: msg.role === "bot" ? "assistant" : msg.role,
+      content: msg.text
+    }));
+}
+
 async function sendMessage() {
   const text = userInput.value.trim();
   if (!text) return;
@@ -635,19 +649,26 @@ async function sendMessage() {
     // Content script may not be available — that's fine
   }
 
+  // Retrieve recent chat history for context
+  const chatHistory = await getRecentHistory(currentCourseId);
+
   // Send query to background service worker with explicit courseId
   try {
     const response = await chrome.runtime.sendMessage({
       type: "CHAT_QUERY",
       query: text,
       courseId: currentCourseId,
-      context: pageContext
+      context: pageContext,
+      history: chatHistory
     });
 
     typingEl.remove();
 
     if (response && response.success) {
       appendMessage("bot", response.answer);
+      if (response.action) {
+        renderActionCard(response.action);
+      }
     } else {
       const errMsg = (response && response.error) || "Something went wrong.";
       appendMessage("error", errMsg);
@@ -747,6 +768,64 @@ function renderMarkdown(text) {
   html = html.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, "<em>$1</em>");
 
   return html;
+}
+
+function renderActionCard(action) {
+  const card = document.createElement("div");
+  card.className = "action-card";
+
+  const isFlashcards = action.type === "flashcards";
+  const typeLabel = isFlashcards ? "Flashcard Deck" : "Practice Exam";
+  const count = action.count || (isFlashcards ? 12 : 10);
+  const countUnit = isFlashcards ? "cards" : "questions";
+  const materialNames = action.materialNames || [];
+
+  let html = `<div class="action-card-title">🍦 Ready to generate!</div>`;
+  html += `<div class="action-card-type">${typeLabel} (${count} ${countUnit})</div>`;
+
+  if (materialNames.length > 0) {
+    html += `<div class="action-card-materials"><strong>Materials:</strong><ul>`;
+    for (const name of materialNames) {
+      html += `<li>${name.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</li>`;
+    }
+    html += `</ul></div>`;
+  }
+
+  html += `<button class="action-card-btn" id="generateBtn">Generate &amp; Study</button>`;
+  card.innerHTML = html;
+
+  messagesContainer.appendChild(card);
+  scrollToBottom();
+
+  // Wire up button
+  const btn = card.querySelector("#generateBtn");
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    btn.textContent = "Generating...";
+
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: "GENERATE_STUDY_TOOL",
+        action: action,
+        courseId: currentCourseId,
+        courseName: currentCourseName
+      });
+
+      if (response && response.success) {
+        btn.textContent = "Opening...";
+        appendMessage("bot", `Your ${typeLabel.toLowerCase()} is ready! Opening in a new tab... 🍦`);
+      } else {
+        btn.textContent = "Generate & Study";
+        btn.disabled = false;
+        const errMsg = (response && response.error) || "Generation failed.";
+        appendMessage("error", errMsg);
+      }
+    } catch (err) {
+      btn.textContent = "Generate & Study";
+      btn.disabled = false;
+      appendMessage("error", "Failed to generate: " + err.message);
+    }
+  });
 }
 
 function appendMessage(role, text, save = true) {
