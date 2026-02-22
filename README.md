@@ -3,10 +3,33 @@ CPSLO Poly Prompt 2026
 
 # AI-Powered Study buddy
 
-AWS-powered...
+AWS-powered study platform for Canvas-synced revision planning, AI generation, FSRS study loops, and calendar subscription.
 
 ## Core Features
 
+- Canvas integration
+  - Connect and sync course deadlines/material metadata.
+  - Runtime-backed `GET /courses` and `GET /courses/{courseId}/items`.
+
+- Ingestion pipeline for study materials
+  - Upload files through `POST /uploads`.
+  - Start/poll ingest with `POST /docs/ingest` and `GET /docs/ingest/{jobId}`.
+  - Step Functions orchestrates extract + Textract fallback.
+
+- RAG-powered generation on Amazon Bedrock
+  - Flashcards: `POST /generate/flashcards`
+  - Practice exams: `POST /generate/practice-exam`
+  - Chat with citations: `POST /chat`
+
+- FSRS study loop
+  - Today queue: `GET /study/today`
+  - Review updates: `POST /study/review`
+  - Mastery tracking: `GET /study/mastery`
+
+- Calendar subscription
+  - Mint token: `POST /calendar/token`
+  - Private feed: `GET /calendar/{token}.ics`
+  - Works with Google Calendar via ICS URL subscription.
 
 
 # Disclaimers
@@ -39,12 +62,17 @@ AWS-powered...
 
 - Node.js `>= 18.18.0` (recommended: Node 20 LTS)
 - npm
-- Python 3.10+ (for backend/test scripts)
+- Python 3.10+ (backend scripts/tests)
+- AWS credentials/profile for deployed API/CDK workflows
 
 ### Installation
 
 ```bash
 npm install
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements-dev.txt
 ```
 
 ## Frontend Local Development
@@ -84,6 +112,14 @@ export NEXT_PUBLIC_USE_FIXTURES="false"
 npm run dev
 ```
 
+### Backend/API validation workflow
+
+```bash
+source .venv/bin/activate
+python scripts/validate_contracts.py
+SMOKE_MOCK_MODE=1 python scripts/run_smoke_tests.py
+```
+
 ### Common issue
 
 If you see:
@@ -105,10 +141,39 @@ For broader testing and contract/smoke workflows, see `docs/TESTING.md`.
 
 ### AWS Services Used
 
+- Amazon CloudFront (frontend delivery)
+- Amazon API Gateway
+- AWS Lambda
+- Amazon DynamoDB
+- Amazon S3
+- AWS Step Functions
+- Amazon EventBridge
+- Amazon Textract
+- Amazon Bedrock
+- Amazon Bedrock Knowledge Base
+- Amazon OpenSearch Serverless
 
 ### System Components
 
+- Frontend
+  - Next.js app deployed behind CloudFront.
+  - Calls API via `NEXT_PUBLIC_API_BASE_URL`.
 
+- Backend runtime
+  - Lambda handlers serve Canvas, docs, generation, study, and calendar endpoints.
+  - API Gateway is the public API surface.
+
+- Data and workflow layer
+  - DynamoDB tables for canvas data, cards, docs, and calendar tokens.
+  - S3 bucket for uploads and KB source data.
+  - Step Functions for document extraction/OCR orchestration.
+  - EventBridge rule for periodic Canvas sync.
+
+- AI and retrieval
+  - Bedrock model inference for generation/chat.
+  - Bedrock Knowledge Base over OpenSearch Serverless vectors with S3 data source.
+
+For full architecture details and diagram, see `/Users/jonahchan/dev/GURT/docs/ARCHITECTURE.md`.
 
 
 ## Support
