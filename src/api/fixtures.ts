@@ -104,6 +104,13 @@ export function getFixtureChatResponse(courseId: string, question: string): Chat
   return {
     answer: `Fixture answer for ${courseId}: ${question}`,
     citations: ["s3://fixture/uploads/course-psych-101/syllabus.pdf#chunk-1"],
+    citationDetails: [
+      {
+        source: "s3://fixture/uploads/course-psych-101/syllabus.pdf#chunk-1",
+        label: "syllabus.pdf (chunk-1)",
+        url: "https://s3.console.aws.amazon.com/s3/object/fixture?prefix=uploads/course-psych-101/syllabus.pdf",
+      },
+    ],
   };
 }
 

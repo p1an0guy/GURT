@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { createApiClient } from "../src/api/client.ts";
+import { getRenderableChatCitations } from "../src/chat/citations.ts";
 import type {
   CanvasItem,
   CanvasSyncResponse,
@@ -95,6 +96,7 @@ export function DevConsolePage() {
       }),
     [baseUrl, useFixtures, demoUserId],
   );
+  const renderableChatCitations = chatResponse ? getRenderableChatCitations(chatResponse) : [];
 
   async function handleLoadOverview(): Promise<void> {
     setMessage("");
@@ -607,7 +609,24 @@ export function DevConsolePage() {
             {chatResponse ? (
               <>
                 <p className="small">{chatResponse.answer}</p>
-                <p className="small mono">{chatResponse.citations.join(", ") || "No citations"}</p>
+                {renderableChatCitations.length > 0 ? (
+                  <ul className="list">
+                    {renderableChatCitations.map((citation) => (
+                      <li key={`${citation.source}-${citation.url}`}>
+                        <a
+                          className="small mono"
+                          href={citation.url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {citation.label}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="small mono">{chatResponse.citations.join(", ") || "No citations"}</p>
+                )}
               </>
             ) : (
               <p className="small">No chat response yet.</p>
