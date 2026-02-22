@@ -245,6 +245,22 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertEqual(by_topic["topic-memory"]["dueCards"], 3)
         self.assertEqual(by_topic["topic-conditioning"]["dueCards"], 3)
 
+    def test_study_mastery_returns_fixtures_when_runtime_selection_throws(self) -> None:
+        with patch("backend.runtime._runtime_study_mastery", side_effect=Exception("simulated runtime failure")):
+            response = self._invoke(
+                {
+                    "httpMethod": "GET",
+                    "path": "/study/mastery",
+                    "queryStringParameters": {"courseId": "course-psych-101"},
+                },
+                env={"DEMO_MODE": "false"},
+            )
+
+        self.assertEqual(response["statusCode"], 200)
+        rows = json.loads(response["body"])
+        self.assertGreaterEqual(len(rows), 1)
+        self.assertTrue(all(row["courseId"] == "course-psych-101" for row in rows))
+
     def test_study_today_uses_runtime_cards_when_present(self) -> None:
         cards_table = _MemoryCardsTable()
         cards_table.put_item(
