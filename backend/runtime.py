@@ -1072,17 +1072,31 @@ def _handle_generate_flashcards_from_materials(event: Mapping[str, Any]) -> Dict
         table = _canvas_data_table()
         from studybuddy.models.canvas import item_partition_key, material_sort_key
         pk = item_partition_key(user_id, course_id)
+        bucket = os.getenv("UPLOADS_BUCKET", "").strip()
         material_s3_keys: list[str] = []
         for mid in material_ids:
+            # Try CanvasMaterial record first
             sk = material_sort_key(mid)
             result = table.get_item(Key={"pk": pk, "sk": sk})
             item = result.get("Item")
-            if not item or item.get("entityType") != "CanvasMaterial":
+            if item and item.get("entityType") == "CanvasMaterial":
+                s3_key = item.get("s3Key", "")
+                if s3_key:
+                    material_s3_keys.append(str(s3_key))
+                    continue
+
+            # Fall back to manually uploaded doc: uploads/{courseId}/{docId}/{filename}
+            if not bucket:
                 return _json_response(404, {"error": f"material {mid} not found for this course"})
-            s3_key = item.get("s3Key", "")
-            if not s3_key:
-                return _json_response(404, {"error": f"material {mid} has no associated file"})
-            material_s3_keys.append(str(s3_key))
+            s3_prefix = f"uploads/{course_id}/{mid}/"
+            try:
+                listing = _s3_client().list_objects_v2(Bucket=bucket, Prefix=s3_prefix, MaxKeys=1)
+                objects = listing.get("Contents", [])
+                if not objects:
+                    return _json_response(404, {"error": f"material {mid} not found for this course"})
+                material_s3_keys.append(objects[0]["Key"])
+            except Exception as exc:
+                return _json_response(502, {"error": f"failed to look up material {mid}: {exc}"})
 
         cards = generate_flashcards_from_materials(
             course_id=course_id,
@@ -1682,34 +1696,65 @@ def _query_canvas_courses_for_user(user_id: str) -> list[dict[str, Any]]:
 
 
 def _query_canvas_course_materials_for_user(*, user_id: str, course_id: str) -> list[dict[str, Any]]:
-    table_name = os.getenv("CANVAS_DATA_TABLE", "").strip()
-    if not table_name:
-        return []
-
-    table = _dynamodb_table(table_name)
-    rows = _query_canvas_partition_rows(
-        table=table,
-        pk_value=f"USER#{user_id}#COURSE#{course_id}",
-        sk_prefix="MATERIAL#",
-    )
-
     materials: list[dict[str, Any]] = []
-    for row in rows:
-        if row.get("entityType") != "CanvasMaterial":
-            continue
+    seen_s3_keys: set[str] = set()
+
+    # 1. CanvasMaterial records from DynamoDB (Canvas-synced files)
+    table_name = os.getenv("CANVAS_DATA_TABLE", "").strip()
+    if table_name:
+        table = _dynamodb_table(table_name)
+        rows = _query_canvas_partition_rows(
+            table=table,
+            pk_value=f"USER#{user_id}#COURSE#{course_id}",
+            sk_prefix="MATERIAL#",
+        )
+        for row in rows:
+            if row.get("entityType") != "CanvasMaterial":
+                continue
+            try:
+                material = CanvasMaterial.from_dynamodb_item(
+                    row,
+                    expected_user_id=user_id,
+                    expected_course_id=course_id,
+                )
+            except ModelValidationError:
+                continue
+            api_dict = material.to_api_dict()
+            seen_s3_keys.add(api_dict.get("s3Key", ""))
+            api_dict.pop("downloadUrl", None)
+            api_dict.pop("s3Key", None)
+            materials.append(api_dict)
+
+    # 2. Manually uploaded docs from S3 (uploads/{courseId}/{docId}/{filename})
+    bucket = os.getenv("UPLOADS_BUCKET", "").strip()
+    if bucket:
+        prefix = f"uploads/{course_id}/"
         try:
-            material = CanvasMaterial.from_dynamodb_item(
-                row,
-                expected_user_id=user_id,
-                expected_course_id=course_id,
-            )
-        except ModelValidationError:
-            continue
-        api_dict = material.to_api_dict()
-        # Exclude internal fields from public API response
-        api_dict.pop("downloadUrl", None)
-        api_dict.pop("s3Key", None)
-        materials.append(api_dict)
+            s3 = _s3_client()
+            paginator = s3.get_paginator("list_objects_v2")
+            for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+                for obj in page.get("Contents", []):
+                    key = obj.get("Key", "")
+                    if key in seen_s3_keys or not key:
+                        continue
+                    # Parse: uploads/{courseId}/{docId}/{filename}
+                    parts = key.split("/")
+                    if len(parts) < 4:
+                        continue
+                    doc_id = parts[2]
+                    filename = parts[-1]
+                    content_type = "application/pdf" if filename.lower().endswith(".pdf") else "application/octet-stream"
+                    materials.append({
+                        "canvasFileId": doc_id,
+                        "courseId": course_id,
+                        "displayName": filename,
+                        "contentType": content_type,
+                        "sizeBytes": int(obj.get("Size", 0)),
+                        "updatedAt": obj.get("LastModified", "").strftime("%Y-%m-%dT%H:%M:%SZ") if hasattr(obj.get("LastModified", ""), "strftime") else "",
+                    })
+                    seen_s3_keys.add(key)
+        except Exception:
+            pass  # S3 listing is best-effort; Canvas materials still returned
 
     materials.sort(key=lambda m: str(m.get("displayName", "")).lower())
     return materials
