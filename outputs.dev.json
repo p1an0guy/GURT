@@ -17,12 +17,19 @@
     "CardsTableName": "GurtDataStack-CardsTable99B0A449-Q1ERVMA5KEIY"
   },
   "GurtApiStack": {
+    "BedrockGuardrailMode": "cdk-managed",
     "ApiBaseUrl": "https://hpthlfk5ql.execute-api.us-west-2.amazonaws.com/dev",
     "SuggestedSmokeCourseIdSecret": "course-psych-101",
+    "BedrockGuardrailVersion": "1",
+    "BedrockGuardrailId": "0dd9iz79ji4t",
     "SuggestedSmokeCalendarTokenSecret": "mint-via-POST-/calendar/token",
     "CanvasSyncScheduleHours": "24",
     "SuggestedSmokeBaseUrlSecret": "https://hpthlfk5ql.execute-api.us-west-2.amazonaws.com/dev",
     "StudyBuddyApiEndpointCEC27CFD": "https://hpthlfk5ql.execute-api.us-west-2.amazonaws.com/dev/",
     "CalendarTokenMintEndpoint": "https://hpthlfk5ql.execute-api.us-west-2.amazonaws.com/dev/calendar/token"
+  },
+  "GurtFrontendStack": {
+    "FrontendCloudFrontDomainName": "d2ffy8wtp214n4.cloudfront.net",
+    "FrontendCloudFrontUrl": "https://d2ffy8wtp214n4.cloudfront.net"
   }
 }

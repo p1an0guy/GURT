@@ -73,7 +73,7 @@ function handler(event) {
             "FrontendDistribution",
             default_root_object="index.html",
             default_behavior=cloudfront.BehaviorOptions(
-                origin=origins.S3BucketOrigin(site_bucket),
+                origin=origins.S3BucketOrigin.with_origin_access_control(site_bucket),
                 viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
                 function_associations=[
                     cloudfront.FunctionAssociation(
