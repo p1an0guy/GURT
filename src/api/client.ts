@@ -57,6 +57,11 @@ export interface ApiClient {
   syncCanvas(): Promise<CanvasSyncResponse>;
   generateFlashcards(courseId: string, numCards: number): Promise<Card[]>;
   generatePracticeExam(courseId: string, numQuestions: number): Promise<PracticeExam>;
+  generatePracticeExamFromMaterials(
+    courseId: string,
+    materialIds: string[],
+    numQuestions: number,
+  ): Promise<PracticeExam>;
   startPracticeExamGeneration(
     courseId: string,
     materialIds: string[],
@@ -259,6 +264,23 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
           "content-type": "text/plain",
         },
         body: JSON.stringify({ courseId, numQuestions }),
+      });
+    },
+
+    async generatePracticeExamFromMaterials(
+      courseId: string,
+      materialIds: string[],
+      numQuestions: number,
+    ): Promise<PracticeExam> {
+      if (useFixtures) {
+        return getFixturePracticeExam(courseId, numQuestions);
+      }
+      return requestJson<PracticeExam>("/generate/practice-exam", {
+        method: "POST",
+        headers: {
+          "content-type": "text/plain",
+        },
+        body: JSON.stringify({ courseId, materialIds, numQuestions }),
       });
     },
 

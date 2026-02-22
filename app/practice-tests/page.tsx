@@ -28,7 +28,6 @@ import {
   listRecentPracticeTests,
   type PracticeTestSummary,
 } from "../../src/practice-tests/store.ts";
-import { pollPracticeExamJob } from "../../src/practice-tests/polling.ts";
 
 const NOTE_UPLOAD_ACCEPT_LABEL = "PDF, TXT, PPTX, DOCX, DOC";
 const DROPZONE_ACCEPT: Record<UploadRequest["contentType"], string[]> = {
@@ -612,21 +611,11 @@ export default function PracticeTestsPage() {
       const requested = Number.parseInt(numQuestions, 10);
       const requestedCount = Number.isNaN(requested) ? 10 : requested;
       const materialIds = selectedSources.map((source) => source.materialId);
-      const started = await client.startPracticeExamGeneration(
+      const generated = await client.generatePracticeExamFromMaterials(
         courseId,
         materialIds,
         requestedCount,
       );
-      const generated = await pollPracticeExamJob({
-        jobId: started.jobId,
-        maxAttempts: 60,
-        waitMs: 4000,
-        getStatus: (jobId: string) => client.getPracticeExamGenerationStatus(jobId),
-        wait: (ms: number) =>
-          new Promise((resolve) => {
-            window.setTimeout(resolve, ms);
-          }),
-      });
       const courseName = selectedCourse?.name ?? courseId;
       const created = createPracticeTestRecord({
         courseId,

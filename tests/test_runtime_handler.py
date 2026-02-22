@@ -1121,45 +1121,77 @@ class RuntimeHandlerTests(unittest.TestCase):
         )
 
     def test_generate_practice_exam_returns_generated_exam(self) -> None:
+        canvas_table = MagicMock()
+        canvas_table.get_item.return_value = {
+            "Item": {"entityType": "CanvasMaterial", "s3Key": "uploads/course-psych-101/material-1/file.pdf"}
+        }
         event = {
             "httpMethod": "POST",
             "path": "/generate/practice-exam",
-            "body": json.dumps({"courseId": "course-psych-101", "numQuestions": 10}),
+            "body": json.dumps(
+                {
+                    "courseId": "course-psych-101",
+                    "materialIds": ["material-1"],
+                    "numQuestions": 10,
+                }
+            ),
+            "requestContext": {"authorizer": {"principalId": "demo-user"}},
         }
 
-        with patch(
-            "backend.runtime.generate_practice_exam",
-            return_value={
-                "courseId": "course-psych-101",
-                "generatedAt": "2026-09-02T08:30:00Z",
-                "questions": [
-                    {
-                        "id": "q-1",
-                        "prompt": "Which process transfers information to long-term memory?",
-                        "choices": ["Encoding", "Recognition"],
-                        "answerIndex": 0,
-                    }
-                ],
-            },
-        ) as generate_exam:
+        with (
+            patch("backend.runtime._canvas_data_table", return_value=canvas_table),
+            patch(
+                "backend.runtime.generate_practice_exam_from_materials",
+                return_value={
+                    "courseId": "course-psych-101",
+                    "generatedAt": "2026-09-02T08:30:00Z",
+                    "questions": [
+                        {
+                            "id": "q-1",
+                            "prompt": "Which process transfers information to long-term memory?",
+                            "choices": ["Encoding", "Recognition"],
+                            "answerIndex": 0,
+                        }
+                    ],
+                },
+            ) as generate_exam,
+        ):
             response = self._invoke(event, env={"DEMO_MODE": "false"})
 
         self.assertEqual(response["statusCode"], 200)
         body = json.loads(response["body"])
         self.assertEqual(body["courseId"], "course-psych-101")
         self.assertEqual(len(body["questions"]), 1)
-        generate_exam.assert_called_once_with(course_id="course-psych-101", num_questions=10)
+        generate_exam.assert_called_once_with(
+            course_id="course-psych-101",
+            material_s3_keys=["uploads/course-psych-101/material-1/file.pdf"],
+            num_questions=10,
+        )
 
     def test_generate_practice_exam_returns_400_when_guardrail_blocks(self) -> None:
+        canvas_table = MagicMock()
+        canvas_table.get_item.return_value = {
+            "Item": {"entityType": "CanvasMaterial", "s3Key": "uploads/course-psych-101/material-1/file.pdf"}
+        }
         event = {
             "httpMethod": "POST",
             "path": "/generate/practice-exam",
-            "body": json.dumps({"courseId": "course-psych-101", "numQuestions": 10}),
+            "body": json.dumps(
+                {
+                    "courseId": "course-psych-101",
+                    "materialIds": ["material-1"],
+                    "numQuestions": 10,
+                }
+            ),
+            "requestContext": {"authorizer": {"principalId": "demo-user"}},
         }
 
-        with patch(
-            "backend.runtime.generate_practice_exam",
-            side_effect=generation.GuardrailBlockedError("blocked"),
+        with (
+            patch("backend.runtime._canvas_data_table", return_value=canvas_table),
+            patch(
+                "backend.runtime.generate_practice_exam_from_materials",
+                side_effect=generation.GuardrailBlockedError("blocked"),
+            ),
         ):
             response = self._invoke(event, env={"DEMO_MODE": "false"})
 
