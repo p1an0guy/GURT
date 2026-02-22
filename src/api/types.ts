@@ -27,6 +27,7 @@ export interface CanvasConnectRequest {
 
 export interface CanvasConnectResponse {
   connected: boolean;
+  demoUserId?: string;
   updatedAt: string;
 }
 

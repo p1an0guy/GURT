@@ -109,6 +109,7 @@ export function getFixtureChatResponse(courseId: string, question: string): Chat
 export function getFixtureCanvasConnect(_request: CanvasConnectRequest): CanvasConnectResponse {
   return {
     connected: true,
+    demoUserId: "canvas-user-fixture",
     updatedAt: "2026-09-02T09:00:00Z",
   };
 }

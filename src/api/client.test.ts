@@ -375,3 +375,22 @@ test("preserves stage path when baseUrl includes a stage segment", async () => {
   assert.ok(calls.includes("https://api.example.dev/dev/canvas/sync"));
   assert.equal(calls.some((url) => url === "https://api.example.dev/health"), false);
 });
+
+test("sends x-gurt-demo-user-id header when demoUserId option is provided", async () => {
+  const seenHeaders: string[] = [];
+  const fetchImpl: typeof fetch = async (_input, init) => {
+    const headers = new Headers(init?.headers);
+    seenHeaders.push(headers.get("x-gurt-demo-user-id") ?? "");
+    return jsonResponse({ status: "ok" });
+  };
+
+  const client = createApiClient({
+    baseUrl: "https://api.example.dev",
+    fetchImpl,
+    useFixtures: false,
+    demoUserId: "canvas-user-12345",
+  });
+
+  await client.getHealth();
+  assert.deepEqual(seenHeaders, ["canvas-user-12345"]);
+});

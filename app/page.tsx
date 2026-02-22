@@ -53,6 +53,7 @@ export function DevConsolePage() {
   const [calendarToken, setCalendarToken] = useState(DEFAULT_CALENDAR_TOKEN);
   const [canvasBaseUrl, setCanvasBaseUrl] = useState("https://canvas.calpoly.edu/");
   const [canvasAccessToken, setCanvasAccessToken] = useState("");
+  const [demoUserId, setDemoUserId] = useState("");
   const [lastCanvasSync, setLastCanvasSync] = useState<CanvasSyncResponse | null>(null);
   const [canvasSyncLoading, setCanvasSyncLoading] = useState(false);
   const [canvasSyncError, setCanvasSyncError] = useState("");
@@ -91,8 +92,9 @@ export function DevConsolePage() {
       createApiClient({
         baseUrl,
         useFixtures,
+        demoUserId,
       }),
-    [baseUrl, useFixtures],
+    [baseUrl, useFixtures, demoUserId],
   );
 
   async function handleLoadOverview(): Promise<void> {
@@ -154,7 +156,15 @@ export function DevConsolePage() {
         canvasBaseUrl,
         accessToken: canvasAccessToken,
       });
-      setMessage(`Canvas connected at ${response.updatedAt}.`);
+      const scopedUser = response.demoUserId?.trim() ?? "";
+      if (scopedUser) {
+        setDemoUserId(scopedUser);
+      }
+      setMessage(
+        scopedUser
+          ? `Canvas connected at ${response.updatedAt}. Scoped demo user: ${scopedUser}.`
+          : `Canvas connected at ${response.updatedAt}.`,
+      );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unknown error");
     }
