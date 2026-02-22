@@ -15,5 +15,14 @@
     "CalendarTokensTableName": "GurtDataStack-CalendarTokensTableC7E91822-M2E2YP3X6PVO",
     "ExportsOutputFnGetAttCalendarTokensTableC7E91822Arn420D1B85": "arn:aws:dynamodb:us-west-2:253896052470:table/GurtDataStack-CalendarTokensTableC7E91822-M2E2YP3X6PVO",
     "CardsTableName": "GurtDataStack-CardsTable99B0A449-Q1ERVMA5KEIY"
+  },
+  "GurtApiStack": {
+    "ApiBaseUrl": "https://hpthlfk5ql.execute-api.us-west-2.amazonaws.com/dev",
+    "SuggestedSmokeCourseIdSecret": "course-psych-101",
+    "SuggestedSmokeCalendarTokenSecret": "mint-via-POST-/calendar/token",
+    "CanvasSyncScheduleHours": "24",
+    "SuggestedSmokeBaseUrlSecret": "https://hpthlfk5ql.execute-api.us-west-2.amazonaws.com/dev",
+    "StudyBuddyApiEndpointCEC27CFD": "https://hpthlfk5ql.execute-api.us-west-2.amazonaws.com/dev/",
+    "CalendarTokenMintEndpoint": "https://hpthlfk5ql.execute-api.us-west-2.amazonaws.com/dev/calendar/token"
   }
 }
