@@ -102,7 +102,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
       <aside id="sidebarNav" className={`app-sidebar ${isOpen ? "open" : ""}`}>
         <Link href="/" className="sidebar-brand" onClick={() => setIsOpen(false)}>
-          <span className="sidebar-avatar" aria-hidden="true" />
+          <span className="sidebar-avatar" aria-hidden="true">
+            <span className="sidebar-logo" />
+          </span>
           <span className="sidebar-title">GURT</span>
         </Link>
         <button

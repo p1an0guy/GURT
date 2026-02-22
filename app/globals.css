@@ -109,7 +109,21 @@ body {
   width: 78px;
   height: 78px;
   border-radius: 999px;
-  background: var(--sidebar-avatar-bg);
+  background: #ffffff;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.sidebar-logo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background-image: url("/images/logo.png");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+  padding: 0.22rem;
 }
 
 .sidebar-title {
