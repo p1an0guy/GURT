@@ -210,19 +210,23 @@ export default function DeckStudyPage() {
               <p className="small">
                 Card {activeIndex + 1} of {deck.cards.length}
               </p>
-              <div className="status-block">
-                <p>
-                  <strong>Prompt</strong>
-                </p>
-                <p>{activeCard.prompt}</p>
-              </div>
-
-              <div className={`status-block answer-block${revealed ? "" : " answer-block-hidden"}`}>
-                <p>
-                  <strong>Answer</strong>
-                </p>
-                <p>{revealed ? activeCard.answer : "Answer hidden. Press Space or click Reveal Answer."}</p>
-              </div>
+              <button
+                type="button"
+                className="flashcard-flip"
+                onClick={() => setRevealed((prev) => !prev)}
+                aria-label={revealed ? "Show prompt side of card" : "Show answer side of card"}
+              >
+                <span className={`flashcard-flip-inner${revealed ? " is-revealed" : ""}`}>
+                  <span className="flashcard-face flashcard-front">
+                    <strong>Prompt</strong>
+                    <span>{activeCard.prompt}</span>
+                  </span>
+                  <span className="flashcard-face flashcard-back">
+                    <strong>Answer</strong>
+                    <span>{activeCard.answer}</span>
+                  </span>
+                </span>
+              </button>
 
               <button
                 type="button"
@@ -230,7 +234,7 @@ export default function DeckStudyPage() {
                   setRevealed((prev) => !prev);
                 }}
               >
-                {revealed ? "Hide Answer" : "Reveal Answer"}
+                {revealed ? "Show Prompt" : "Reveal Answer"}
               </button>
 
               <div>
