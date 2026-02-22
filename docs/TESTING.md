@@ -62,6 +62,12 @@ source .venv/bin/activate
 SMOKE_MOCK_MODE=1 python scripts/run_smoke_tests.py
 ```
 
+Mock smoke assertions now include `GET /courses/{courseId}/materials` and validate:
+- every row matches `CourseMaterial.json`
+- rows are course-scoped and sorted by `displayName` (case-insensitive)
+- response does not expose private fields like `downloadUrl` or `s3Key`
+- deterministic fixture IDs for the selected course match exactly
+
 To also exercise `POST /calendar/token` in mock smoke mode, enable token minting:
 
 ```bash
@@ -92,6 +98,8 @@ export CALENDAR_TOKEN="<calendar-token>"
 export COURSE_ID="course-psych-101"  # optional
 python scripts/run_smoke_tests.py
 ```
+
+Deployed smoke runs perform the same `/courses/{courseId}/materials` schema and metadata safety checks (without enforcing fixture-specific IDs).
 
 ## Smoke tests against dev stage (GitHub Actions)
 

@@ -1,0 +1,26 @@
+[
+  {
+    "canvasFileId": "canvas-file-1001",
+    "courseId": "course-psych-101",
+    "displayName": "Chapter 1 Notes.pdf",
+    "contentType": "application/pdf",
+    "sizeBytes": 421337,
+    "updatedAt": "2026-09-02T12:00:00Z"
+  },
+  {
+    "canvasFileId": "canvas-file-1002",
+    "courseId": "course-psych-101",
+    "displayName": "Week 1 Lecture Slides.pdf",
+    "contentType": "application/pdf",
+    "sizeBytes": 1258291,
+    "updatedAt": "2026-09-01T10:15:00Z"
+  },
+  {
+    "canvasFileId": "canvas-file-2001",
+    "courseId": "course-bio-220",
+    "displayName": "Cell Structure Handout.pdf",
+    "contentType": "application/pdf",
+    "sizeBytes": 99312,
+    "updatedAt": "2026-09-03T09:45:00Z"
+  }
+]
