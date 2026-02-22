@@ -13,6 +13,18 @@
         <h1>GURT</h1>
         <span class="subtitle">Generative Uni Revision Tool</span>
       </div>
+      <button
+        id="themeToggle"
+        class="theme-toggle"
+        type="button"
+        aria-pressed="false"
+        aria-label="Switch to light mode"
+      >
+        <span class="theme-toggle-track" aria-hidden="true">
+          <span class="theme-toggle-thumb"></span>
+        </span>
+        <span id="themeToggleLabel" class="theme-toggle-label">Dark mode</span>
+      </button>
       <span id="filesLoadedBadge" class="files-loaded-badge hidden"><strong id="filesLoadedCount">0</strong> Files Loaded From Canvas</span>
     </header>
     <nav id="courseTabs" class="course-tabs" aria-label="Course tabs"></nav>
