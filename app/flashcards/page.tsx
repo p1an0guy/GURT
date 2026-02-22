@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDropzone, type FileRejection } from "react-dropzone";
 
 import { createApiClient } from "../../src/api/client.ts";
@@ -127,6 +127,7 @@ export default function FlashcardsPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [courseLoadError, setCourseLoadError] = useState("");
+  const [isCourseMenuOpen, setIsCourseMenuOpen] = useState(false);
 
   // Material selection state
   const [materials, setMaterials] = useState<CourseMaterial[]>([]);
@@ -142,6 +143,7 @@ export default function FlashcardsPage() {
   const [uploadProgress, setUploadProgress] = useState("");
   const [uploadError, setUploadError] = useState("");
   const [uploadSummary, setUploadSummary] = useState<BatchUploadSummary | null>(null);
+  const courseMenuRef = useRef<HTMLDivElement | null>(null);
 
   const client = useMemo(
     () =>
@@ -161,6 +163,30 @@ export default function FlashcardsPage() {
 
   useEffect(() => {
     setRecentDecks(listRecentDecks());
+  }, []);
+
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent): void {
+      if (
+        courseMenuRef.current &&
+        !courseMenuRef.current.contains(event.target as Node)
+      ) {
+        setIsCourseMenuOpen(false);
+      }
+    }
+
+    function handleEscape(event: KeyboardEvent): void {
+      if (event.key === "Escape") {
+        setIsCourseMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
   }, []);
 
   async function loadCourses(): Promise<void> {
@@ -247,6 +273,7 @@ export default function FlashcardsPage() {
 
   function handleCourseChange(newCourseId: string): void {
     setCourseId(newCourseId);
+    setIsCourseMenuOpen(false);
     setMessage("");
     setError("");
     setUploadQueueMessage("");
@@ -562,6 +589,11 @@ export default function FlashcardsPage() {
 
   const selectedCourseName =
     courses.find((course) => course.id === courseId)?.name ?? "No course selected";
+  const selectedCourse =
+    courses.find((course) => course.id === courseId) ?? null;
+  const selectedCourseLabel = selectedCourse
+    ? `${selectedCourse.name} (${selectedCourse.term})`
+    : "Select a course";
 
   return (
     <main className="page flashcards-modern">
@@ -597,22 +629,51 @@ export default function FlashcardsPage() {
         <article className="panel flashcards-generate-panel">
           <div className="flashcards-panel-head">
             <h2>Generate New Deck</h2>
-            <p className="small">Pick your course, sources, and deck size.</p>
           </div>
           <div className="controls flashcards-modern-controls">
             <label htmlFor="courseSelect">Course</label>
             {coursesLoaded && courses.length > 0 ? (
-              <select
-                id="courseSelect"
-                value={courseId}
-                onChange={(event) => handleCourseChange(event.target.value)}
-              >
-                {courses.map((course) => (
-                  <option key={course.id} value={course.id}>
-                    {course.name} ({course.term})
-                  </option>
-                ))}
-              </select>
+              <div className="flashcards-course-select-wrap" ref={courseMenuRef}>
+                <button
+                  id="courseSelect"
+                  type="button"
+                  className={`flashcards-course-trigger${isCourseMenuOpen ? " is-open" : ""}`}
+                  onClick={() => setIsCourseMenuOpen((open) => !open)}
+                  aria-haspopup="listbox"
+                  aria-expanded={isCourseMenuOpen}
+                  aria-controls="courseSelectListbox"
+                >
+                  <span className="flashcards-course-select-text">{selectedCourseLabel}</span>
+                </button>
+
+                {isCourseMenuOpen ? (
+                  <ul
+                    id="courseSelectListbox"
+                    className="flashcards-course-menu"
+                    role="listbox"
+                    aria-label="Course options"
+                  >
+                    {courses.map((course) => {
+                      const isSelected = course.id === courseId;
+                      return (
+                        <li key={course.id} role="none">
+                          <button
+                            type="button"
+                            role="option"
+                            aria-selected={isSelected}
+                            className={`flashcards-course-option${isSelected ? " is-selected" : ""}`}
+                            onClick={() => handleCourseChange(course.id)}
+                          >
+                            <span className="flashcards-course-option-name">
+                              {course.name}
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : null}
+              </div>
             ) : isLoadingCourses || !hasAttemptedCourseLoad ? (
               <div className="status-block">
                 <p className="small">Loading courses...</p>
@@ -665,7 +726,7 @@ export default function FlashcardsPage() {
                       : "Drag files here, or click to choose"}
                   </p>
                   <p className="small flashcards-upload-dropzone-meta">
-                    Supports {NOTE_UPLOAD_ACCEPT_LABEL}. Duplicate files are skipped.
+                    Supports {NOTE_UPLOAD_ACCEPT_LABEL}.
                   </p>
                   {isDropzoneDisabled ? (
                     <p className="small flashcards-upload-dropzone-meta">
@@ -729,7 +790,7 @@ export default function FlashcardsPage() {
                   >
                     {isUploadingFiles
                       ? "Uploading..."
-                      : `Upload ${queuedUploadFiles.length === 0 ? "Queued Files" : `${queuedUploadFiles.length} Queued File${queuedUploadFiles.length === 1 ? "" : "s"}`}`}
+                      : "Upload Files"}
                   </button>
                 </div>
 
@@ -817,9 +878,7 @@ export default function FlashcardsPage() {
                 ) : materialsLoaded && materials.length === 0 ? (
                   <div className="status-block">
                     <p className="small">
-                      No materials yet for this course. Upload notes above or sync Canvas from{" "}
-                      <Link href="/dev-tools">dev tools</Link>.
-                    </p>
+                      No materials yet for this course.</p>
                   </div>
                 ) : materialsLoaded ? (
                   <div className="material-list">
@@ -920,10 +979,6 @@ export default function FlashcardsPage() {
                 <p className="small mono">{error}</p>
               </div>
             ) : null}
-
-            <p className="small flashcards-footer-note">
-              Need raw API/debug actions? <Link href="/dev-tools">Open dev tools</Link>.
-            </p>
           </div>
         </article>
 
