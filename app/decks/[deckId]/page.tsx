@@ -216,30 +216,21 @@ export default function DeckStudyPage() {
                 onClick={() => setRevealed((prev) => !prev)}
                 aria-label={revealed ? "Show prompt side of card" : "Show answer side of card"}
               >
-                <span className={`flashcard-flip-inner${revealed ? " is-revealed" : ""}`}>
-                  <span className="flashcard-face flashcard-front">
-                    <strong>Prompt</strong>
-                    <span>{activeCard.prompt}</span>
-                  </span>
-                  <span className="flashcard-face flashcard-back">
-                    <strong>Answer</strong>
-                    <span>{activeCard.answer}</span>
-                  </span>
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setRevealed((prev) => !prev);
-                }}
-              >
-                {revealed ? "Show Prompt" : "Reveal Answer"}
+                <div className={`flashcard-flip-inner${revealed ? " is-revealed" : ""}`}>
+                  <div className="flashcard-face flashcard-front">
+                    <p className="flashcard-side-label">Prompt</p>
+                    <p className="flashcard-side-text">{activeCard.prompt}</p>
+                  </div>
+                  <div className="flashcard-face flashcard-back">
+                    <p className="flashcard-side-label">Answer</p>
+                    <p className="flashcard-side-text">{activeCard.answer}</p>
+                  </div>
+                </div>
               </button>
 
               <div>
                 <p className="small">Rate recall quality:</p>
-                <p className="small">Space: Reveal / Hide answer</p>
+                <p className="small">Click card or press Space to flip</p>
                 <p className="small">1: Forgot, 2: Hard, 3: Good, 4: Easy</p>
                 <div className="rating-row">
                   <button type="button" onClick={() => void handleRate(1)} disabled={isSubmittingReview}>
