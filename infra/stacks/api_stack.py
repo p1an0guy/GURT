@@ -593,8 +593,8 @@ class ApiStack(Stack):
             },
         )
 
-        app_integration = apigateway.LambdaIntegration(app_api_handler)
-        uploads_integration = apigateway.LambdaIntegration(uploads_handler)
+        app_integration = apigateway.LambdaIntegration(app_api_handler, allow_test_invoke=False)
+        uploads_integration = apigateway.LambdaIntegration(uploads_handler, allow_test_invoke=False)
 
         health = self.rest_api.root.add_resource("health")
         health.add_method("GET", app_integration)
