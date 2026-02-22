@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { createApiClient } from "../../src/api/client.ts";
 import { getDefaultRuntimeSettings } from "../../src/runtime-settings.ts";
@@ -12,15 +12,7 @@ import {
   listRecentPracticeTests,
   type PracticeTestSummary,
 } from "../../src/practice-tests/store.ts";
-
-const PRACTICE_EXAM_POLL_WAIT_MS = 4000;
-const PRACTICE_EXAM_POLL_MAX_ATTEMPTS = 60;
-
-function waitMs(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
-}
+import { pollPracticeExamJob } from "../../src/practice-tests/polling.ts";
 
 function AiStarsIcon() {
   return (
@@ -155,23 +147,6 @@ export default function PracticeTestsPage() {
     setActiveQuestionId(exam.questions[0].id);
   }, [exam]);
 
-  const pollPracticeExamJob = useCallback(
-    async (jobId: string): Promise<PracticeExam> => {
-      for (let attempt = 0; attempt < PRACTICE_EXAM_POLL_MAX_ATTEMPTS; attempt += 1) {
-        const status = await client.getPracticeExamGenerationStatus(jobId);
-        if (status.status === "FINISHED" && status.exam) {
-          return status.exam;
-        }
-        if (status.status === "FAILED") {
-          throw new Error(status.error || "Practice exam generation failed.");
-        }
-        await waitMs(PRACTICE_EXAM_POLL_WAIT_MS);
-      }
-      throw new Error("Practice exam generation timed out. Try again.");
-    },
-    [client],
-  );
-
   function selectChoice(questionId: string, choiceIndex: number): void {
     if (isSubmitted) {
       return;
@@ -194,7 +169,16 @@ export default function PracticeTestsPage() {
         courseId,
         requestedCount,
       );
-      const generated = await pollPracticeExamJob(started.jobId);
+      const generated = await pollPracticeExamJob({
+        jobId: started.jobId,
+        maxAttempts: 60,
+        waitMs: 4000,
+        getStatus: (jobId: string) => client.getPracticeExamGenerationStatus(jobId),
+        wait: (ms: number) =>
+          new Promise((resolve) => {
+            window.setTimeout(resolve, ms);
+          }),
+      });
       const courseName = selectedCourse?.name ?? courseId;
       const created = createPracticeTestRecord({
         courseId,
