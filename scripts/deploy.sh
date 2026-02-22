@@ -56,7 +56,26 @@ export CREATE_KB_STACK
 python -m pip install --upgrade pip
 pip install -r "$INFRA_DIR/requirements.txt"
 
-"$ROOT_DIR/scripts/build-frontend.sh"
+if [ ! -d "$FRONTEND_ASSET_PATH" ]; then
+  echo "Frontend asset path missing at $FRONTEND_ASSET_PATH; running bootstrap frontend build."
+  STAGE_NAME="$STAGE_NAME" OUTPUTS_FILE="$OUTPUTS_FILE" "$ROOT_DIR/scripts/build-frontend.sh"
+fi
+
+STAGE_NAME="$STAGE_NAME" \
+DEMO_MODE="$DEMO_MODE" \
+BEDROCK_MODEL_ID="$BEDROCK_MODEL_ID" \
+BEDROCK_GUARDRAIL_ID="$BEDROCK_GUARDRAIL_ID" \
+BEDROCK_GUARDRAIL_VERSION="$BEDROCK_GUARDRAIL_VERSION" \
+EMBEDDING_MODEL_ID="$EMBEDDING_MODEL_ID" \
+KNOWLEDGE_BASE_ID="$KNOWLEDGE_BASE_ID" \
+KNOWLEDGE_BASE_DATA_SOURCE_ID="$KNOWLEDGE_BASE_DATA_SOURCE_ID" \
+CREATE_KB_STACK="$CREATE_KB_STACK" \
+CALENDAR_TOKEN_MINTING_PATH="$CALENDAR_TOKEN_MINTING_PATH" \
+CALENDAR_TOKEN="$CALENDAR_TOKEN" \
+CALENDAR_TOKEN_USER_ID="$CALENDAR_TOKEN_USER_ID" \
+FRONTEND_ASSET_PATH="$FRONTEND_ASSET_PATH" \
+OUTPUTS_FILE="$OUTPUTS_FILE" \
+CDK_CLI_PACKAGE="$CDK_CLI_PACKAGE" \
 "$ROOT_DIR/scripts/check-cdk.sh"
 
 pushd "$INFRA_DIR" > /dev/null
@@ -102,12 +121,13 @@ if [ -n "$KNOWLEDGE_BASE_ID" ] && echo "$STACK_LIST" | grep -q '^GurtKnowledgeBa
   exit 1
 fi
 
-DEPLOY_STACKS="GurtDataStack GurtApiStack GurtFrontendStack"
+API_DEPLOY_STACKS="GurtDataStack GurtApiStack"
 if [ "$CREATE_KB_STACK" = "1" ] && [ -z "$KNOWLEDGE_BASE_ID" ]; then
-  DEPLOY_STACKS="GurtDataStack GurtKnowledgeBaseStack GurtApiStack GurtFrontendStack"
+  API_DEPLOY_STACKS="GurtDataStack GurtKnowledgeBaseStack GurtApiStack"
 fi
 
-npx --yes "$CDK_CLI_PACKAGE" deploy $DEPLOY_STACKS \
+echo "Phase A: deploying API infrastructure stacks: $API_DEPLOY_STACKS"
+npx --yes "$CDK_CLI_PACKAGE" deploy $API_DEPLOY_STACKS \
   --exclusively \
   --profile "$AWS_PROFILE" \
   --require-approval never \
@@ -126,6 +146,55 @@ npx --yes "$CDK_CLI_PACKAGE" deploy $DEPLOY_STACKS \
   --context "calendarToken=$CALENDAR_TOKEN" \
   --context "calendarTokenUserId=$CALENDAR_TOKEN_USER_ID" \
   --context "frontendAssetPath=$FRONTEND_ASSET_PATH"
+
+echo "Phase B: rebuilding frontend with freshly deployed ApiBaseUrl."
+STAGE_NAME="$STAGE_NAME" \
+OUTPUTS_FILE="$OUTPUTS_FILE" \
+REQUIRE_API_BASE_URL=true \
+"$ROOT_DIR/scripts/build-frontend.sh"
+
+echo "Phase C: deploying frontend stack."
+FRONTEND_OUTPUTS_FILE="$OUTPUTS_FILE.frontend.tmp"
+npx --yes "$CDK_CLI_PACKAGE" deploy GurtFrontendStack \
+  --exclusively \
+  --profile "$AWS_PROFILE" \
+  --require-approval never \
+  --outputs-file "$FRONTEND_OUTPUTS_FILE" \
+  --context "stageName=$STAGE_NAME" \
+  --context "demoMode=$DEMO_MODE" \
+  --context "bedrockModelId=$BEDROCK_MODEL_ID" \
+  --context "bedrockModelArn=$BEDROCK_MODEL_ARN" \
+  --context "bedrockGuardrailId=$BEDROCK_GUARDRAIL_ID" \
+  --context "bedrockGuardrailVersion=$BEDROCK_GUARDRAIL_VERSION" \
+  --context "embeddingModelId=$EMBEDDING_MODEL_ID" \
+  --context "knowledgeBaseId=$KNOWLEDGE_BASE_ID" \
+  --context "knowledgeBaseDataSourceId=$KNOWLEDGE_BASE_DATA_SOURCE_ID" \
+  --context "createKnowledgeBaseStack=$CREATE_KB_STACK" \
+  --context "calendarTokenMintingPath=$CALENDAR_TOKEN_MINTING_PATH" \
+  --context "calendarToken=$CALENDAR_TOKEN" \
+  --context "calendarTokenUserId=$CALENDAR_TOKEN_USER_ID" \
+  --context "frontendAssetPath=$FRONTEND_ASSET_PATH"
+
+python3 - "$OUTPUTS_FILE" "$FRONTEND_OUTPUTS_FILE" <<'PY'
+import json
+import pathlib
+import sys
+
+primary_path = pathlib.Path(sys.argv[1]).resolve()
+frontend_path = pathlib.Path(sys.argv[2]).resolve()
+
+primary_data = {}
+if primary_path.exists():
+    primary_data = json.loads(primary_path.read_text(encoding="utf-8"))
+
+frontend_data = {}
+if frontend_path.exists():
+    frontend_data = json.loads(frontend_path.read_text(encoding="utf-8"))
+
+primary_data.update(frontend_data)
+primary_path.write_text(json.dumps(primary_data, indent=2) + "\n", encoding="utf-8")
+frontend_path.unlink(missing_ok=True)
+PY
 popd > /dev/null
 
 echo "Verifying CloudFormation stack status..."
