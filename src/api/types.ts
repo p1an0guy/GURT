@@ -104,6 +104,15 @@ export interface TopicMastery {
   dueCards: number;
 }
 
+export interface CourseMaterial {
+  canvasFileId: string;
+  courseId: string;
+  displayName: string;
+  contentType: string;
+  sizeBytes: number;
+  updatedAt: string;
+}
+
 export interface PracticeExamQuestion {
   id: string;
   prompt: string;
