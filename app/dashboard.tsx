@@ -32,6 +32,10 @@ export default function DashboardPage() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [calendarFeedUrl, setCalendarFeedUrl] = useState("");
+  const [calendarStatus, setCalendarStatus] = useState("");
+  const [calendarError, setCalendarError] = useState("");
+  const [isMintingCalendar, setIsMintingCalendar] = useState(false);
 
   const userName = "Student";
 
@@ -65,6 +69,38 @@ export default function DashboardPage() {
     void loadCourses();
   }, [client]);
 
+  async function handleMintCalendarFeed(): Promise<void> {
+    setCalendarStatus("");
+    setCalendarError("");
+    setIsMintingCalendar(true);
+    try {
+      const minted = await client.createCalendarToken();
+      setCalendarFeedUrl(minted.feedUrl);
+      setCalendarStatus(`Calendar feed minted at ${minted.createdAt}.`);
+    } catch (mintError) {
+      setCalendarError(
+        mintError instanceof Error
+          ? mintError.message
+          : "We could not mint a calendar feed right now.",
+      );
+    } finally {
+      setIsMintingCalendar(false);
+    }
+  }
+
+  async function handleCopyCalendarUrl(): Promise<void> {
+    if (!calendarFeedUrl) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(calendarFeedUrl);
+      setCalendarStatus("Calendar feed URL copied to clipboard.");
+      setCalendarError("");
+    } catch {
+      setCalendarError("Clipboard copy failed. Copy the URL manually.");
+    }
+  }
+
   return (
     <main className="page dashboard-page">
       <section className="hero">
@@ -72,6 +108,34 @@ export default function DashboardPage() {
       </section>
 
       <section className="stack">
+        <article className="panel calendar-feed-panel">
+          <h2>Calendar Feed</h2>
+          <p className="small">
+            Generate a private ICS URL for this user, then subscribe from Google Calendar.
+          </p>
+          <div className="calendar-feed-actions">
+            <button type="button" onClick={handleMintCalendarFeed} disabled={isMintingCalendar}>
+              {isMintingCalendar ? "Generating..." : "Generate ICS URL"}
+            </button>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={handleCopyCalendarUrl}
+              disabled={!calendarFeedUrl}
+            >
+              Copy URL
+            </button>
+            {calendarFeedUrl ? (
+              <a className="dashboard-cta-button" href={calendarFeedUrl} target="_blank" rel="noreferrer">
+                Open Feed
+              </a>
+            ) : null}
+          </div>
+          <p className="mono">{calendarFeedUrl || "(Generate a URL to display it here.)"}</p>
+          {calendarStatus ? <p className="small">{calendarStatus}</p> : null}
+          {calendarError ? <p className="error-text">{calendarError}</p> : null}
+        </article>
+
         <h2>Your Courses</h2>
         {isLoading ? <p className="small">Loading courses...</p> : null}
         {error ? <p className="error-text">{error}</p> : null}
