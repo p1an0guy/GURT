@@ -1,10 +1,12 @@
 "use client";
 
 import katex from "katex";
+import "katex/contrib/mhchem";
 import { useMemo } from "react";
 
 /**
- * Renders text with inline LaTeX math ($...$) and display math ($$...$$).
+ * Renders text with inline LaTeX math ($...$ or \(...\))
+ * and display math ($$...$$ or \[...\]).
  * Non-math text is escaped as HTML. Invalid LaTeX is shown as-is.
  */
 export function MathText({ text }: { text: string }) {
@@ -21,41 +23,54 @@ function escapeHtml(str: string): string {
 }
 
 function renderMathInText(text: string): string {
-  // Match $$...$$ (display) and $...$ (inline), but not escaped \$
+  // Match $$...$$ or \[...\] (display) and $...$ or \(...\) (inline).
+  // $...$ is treated as inline only when not part of $$...$$.
   const parts: string[] = [];
   let remaining = text;
 
   while (remaining.length > 0) {
-    // Try display math first: $$...$$
-    const displayMatch = remaining.match(/\$\$([\s\S]+?)\$\$/);
-    // Try inline math: $...$  (not preceded or followed by $)
-    const inlineMatch = remaining.match(/(?<!\$)\$(?!\$)((?:[^$\\]|\\.)+)\$(?!\$)/);
-
-    let match: RegExpMatchArray | null = null;
-    let isDisplay = false;
-
-    if (displayMatch && inlineMatch) {
-      if ((displayMatch.index ?? Infinity) <= (inlineMatch.index ?? Infinity)) {
-        match = displayMatch;
-        isDisplay = true;
-      } else {
-        match = inlineMatch;
-      }
-    } else if (displayMatch) {
-      match = displayMatch;
-      isDisplay = true;
-    } else if (inlineMatch) {
-      match = inlineMatch;
+    const matches: Array<{ match: RegExpMatchArray; isDisplay: boolean }> = [];
+    const displayDollarMatch = remaining.match(/\$\$([\s\S]+?)\$\$/);
+    if (displayDollarMatch) {
+      matches.push({ match: displayDollarMatch, isDisplay: true });
     }
 
-    if (!match || match.index === undefined) {
+    const displayBracketMatch = remaining.match(/\\\[([\s\S]+?)\\\]/);
+    if (displayBracketMatch) {
+      matches.push({ match: displayBracketMatch, isDisplay: true });
+    }
+
+    const inlineDollarMatch = remaining.match(/(?<!\$)\$(?!\$)((?:[^$\\]|\\.)+)\$(?!\$)/);
+    if (inlineDollarMatch) {
+      matches.push({ match: inlineDollarMatch, isDisplay: false });
+    }
+
+    const inlineParenMatch = remaining.match(/\\\(([\s\S]+?)\\\)/);
+    if (inlineParenMatch) {
+      matches.push({ match: inlineParenMatch, isDisplay: false });
+    }
+
+    if (matches.length === 0) {
       parts.push(escapeHtml(remaining));
       break;
     }
 
+    let next = matches[0];
+    for (const candidate of matches.slice(1)) {
+      const nextIndex = next.match.index ?? Infinity;
+      const candidateIndex = candidate.match.index ?? Infinity;
+      if (candidateIndex < nextIndex) {
+        next = candidate;
+      }
+    }
+
+    const match = next.match;
+    const isDisplay = next.isDisplay;
+    const matchIndex = match.index ?? 0;
+
     // Add text before the match
-    if (match.index > 0) {
-      parts.push(escapeHtml(remaining.slice(0, match.index)));
+    if (matchIndex > 0) {
+      parts.push(escapeHtml(remaining.slice(0, matchIndex)));
     }
 
     // Render the LaTeX
@@ -72,7 +87,7 @@ function renderMathInText(text: string): string {
       parts.push(escapeHtml(match[0]));
     }
 
-    remaining = remaining.slice(match.index + match[0].length);
+    remaining = remaining.slice(matchIndex + match[0].length);
   }
 
   return parts.join("");
