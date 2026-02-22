@@ -190,6 +190,49 @@ class GenerationCitationTests(unittest.TestCase):
             ["s3://bucket/uploads/170880/doc-a/ch1.pdf#chunk-9"],
         )
 
+    @patch.dict("os.environ", {"UPLOADS_BUCKET": "uploads-bucket"}, clear=False)
+    def test_generate_practice_exam_from_materials_requires_materials(self) -> None:
+        with self.assertRaises(generation.GenerationError):
+            generation.generate_practice_exam_from_materials(
+                course_id="170880",
+                material_s3_keys=[],
+                num_questions=1,
+            )
+
+    @patch.dict("os.environ", {"UPLOADS_BUCKET": "uploads-bucket"}, clear=False)
+    def test_generate_practice_exam_from_materials_uses_multimodal_model(self) -> None:
+        s3_client = MagicMock()
+        s3_client.get_object.return_value = {
+            "Body": MagicMock(read=MagicMock(return_value=b"Lecture summary")),
+            "ContentType": "text/plain",
+        }
+        with (
+            patch.dict("sys.modules", {"boto3": MagicMock(client=MagicMock(return_value=s3_client))}),
+            patch(
+                "backend.generation._invoke_model_multimodal_json",
+                return_value={
+                    "courseId": "170880",
+                    "generatedAt": "2026-09-02T08:30:00Z",
+                    "questions": [
+                        {
+                            "id": "q-1",
+                            "prompt": "Which branch interprets laws?",
+                            "choices": ["Judicial", "Executive"],
+                            "answerIndex": 0,
+                        }
+                    ],
+                },
+            ),
+        ):
+            exam = generation.generate_practice_exam_from_materials(
+                course_id="170880",
+                material_s3_keys=["uploads/170880/file-1/notes.txt"],
+                num_questions=1,
+            )
+
+        self.assertEqual(exam["courseId"], "170880")
+        self.assertEqual(len(exam["questions"]), 1)
+
 
 class FormatCanvasItemsTests(unittest.TestCase):
     def test_format_canvas_items_returns_none_for_empty_list(self) -> None:

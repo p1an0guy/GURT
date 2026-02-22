@@ -416,6 +416,22 @@ a {
   gap: 0.6rem;
 }
 
+.calendar-feed-panel .mono {
+  margin: 0;
+  padding: 0.72rem 0.82rem;
+  border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--surface-soft) 70%, transparent);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+:root[data-theme="light"] .calendar-feed-panel .mono {
+  color: #1f2937;
+  border-color: rgba(17, 27, 42, 0.2);
+  background: rgba(255, 255, 255, 0.86);
+}
+
 .panel-grid {
   display: grid;
   gap: 0.85rem;
@@ -889,6 +905,21 @@ body:has(.dashboard-modern),
 .dashboard-modern .course-icon-button:hover {
   background: color-mix(in srgb, var(--surface-soft) 88%, transparent);
   border-color: color-mix(in srgb, var(--accent) 36%, var(--line));
+}
+
+.dashboard-modern button:not(.secondary-button) {
+  border-radius: 999px;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--flashcards-accent) 84%, #e9edf8),
+    color-mix(in srgb, var(--flashcards-accent-strong) 80%, #bd738f)
+  );
+  box-shadow: var(--flashcards-button-elevation);
+}
+
+.dashboard-modern button:not(.secondary-button):hover:not(:disabled) {
+  box-shadow: var(--flashcards-button-hover-elevation);
+  filter: brightness(1.02);
 }
 
 .list {
@@ -1942,6 +1973,18 @@ body:has(.flashcards-modern),
   margin: 0;
 }
 
+.practice-test-page.flashcards-modern .practice-tests-list-header {
+  margin-bottom: 0.35rem;
+}
+
+.practice-test-page.flashcards-modern .flashcards-hero-meta {
+  align-items: center;
+}
+
+.practice-test-page.flashcards-modern .panel-grid {
+  align-items: start;
+}
+
 .compact-button {
   border-radius: 999px;
   padding: 0.62rem 1.55rem;
@@ -2188,6 +2231,16 @@ body:has(.flashcards-modern),
 
 .practice-generate-modal h3 {
   margin: 0;
+}
+
+.practice-generate-modal .material-list {
+  max-height: 220px;
+  overflow: auto;
+}
+
+.practice-generate-modal .flashcards-upload-chip-list {
+  max-height: 160px;
+  overflow: auto;
 }
 
 .practice-generate-actions {
@@ -2533,16 +2586,28 @@ body:has(.practice-tests-modern),
   padding: 0 0 2rem;
 }
 
+.practice-tests-modern.practice-test-page.in-session .practice-test-session {
+  gap: 0.9rem;
+  padding: 0 1rem 1rem;
+}
+
 .practice-tests-modern.practice-test-page.in-session .practice-test-hud {
+  top: 0.65rem;
+  margin: 0.7rem 0 0;
+  padding: 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  border-radius: 1rem;
   border-bottom: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
   background:
     linear-gradient(165deg, color-mix(in srgb, var(--surface) 93%, transparent), color-mix(in srgb, var(--card) 93%, transparent)),
     radial-gradient(circle at top right, color-mix(in srgb, var(--flashcards-hero-accent-soft) 18%, transparent), transparent 38%);
+  box-shadow: var(--flashcards-panel-elevation);
 }
 
 .practice-tests-modern.practice-test-page.in-session .panel {
-  border: 0;
-  border-radius: 0;
+  border: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
+  border-radius: 1.14rem;
+  padding: 1.15rem;
   background:
     linear-gradient(165deg, color-mix(in srgb, var(--surface) 94%, transparent), color-mix(in srgb, var(--card) 94%, transparent)),
     radial-gradient(circle at top right, color-mix(in srgb, var(--flashcards-hero-accent-strong) 14%, transparent), transparent 40%);
@@ -2863,7 +2928,7 @@ body:has(.practice-tests-modern),
 /* Practice generate modal flashcards-theme overrides */
 .practice-tests-modern .practice-generate-modal {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   box-shadow: var(--flashcards-panel-elevation);
 }
 
@@ -2909,13 +2974,14 @@ body:has(.practice-tests-modern),
 
 .practice-tests-modern .practice-generate-modal input:hover,
 .practice-tests-modern .practice-generate-modal select:hover {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-color: color-mix(in srgb, var(--flashcards-hero-accent-soft) 64%, var(--line));
 }
 
 .practice-tests-modern .practice-generate-modal input:focus,
 .practice-tests-modern .practice-generate-modal select:focus {
   transform: translateY(-1px);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 24%, transparent);
+  border-color: color-mix(in srgb, var(--flashcards-hero-accent-strong) 66%, var(--line));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--flashcards-hero-accent-strong) 26%, transparent);
 }
 
 .practice-tests-modern .practice-generate-actions button {
@@ -2947,8 +3013,121 @@ body:has(.practice-tests-modern),
   filter: brightness(1.02);
 }
 
-/* ── Chat Modern ────────────────────────────────────────────────── */
+.practice-tests-modern .practice-nav-chip {
+  border-color: color-mix(in srgb, var(--line) 72%, transparent);
+  background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
+}
 
+.practice-tests-modern .practice-nav-chip.active {
+  border-color: color-mix(in srgb, var(--flashcards-hero-accent-strong) 60%, var(--line));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--flashcards-hero-accent-strong) 24%, transparent);
+}
+
+.practice-tests-modern .practice-choice.selected {
+  border-color: color-mix(in srgb, var(--flashcards-hero-accent-strong) 70%, var(--line));
+  background: color-mix(in srgb, var(--flashcards-hero-accent-strong) 20%, var(--surface-soft));
+}
+
+.practice-course-select-wrap {
+  position: relative;
+}
+
+.practice-tests-modern .practice-course-trigger {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+  border-radius: 0.8rem;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  background: color-mix(in srgb, var(--input-bg) 92%, transparent);
+  color: var(--ink);
+  font-size: 1.08rem;
+  line-height: 1.35;
+  padding: 0.62rem 0.8rem;
+  padding-right: 2.35rem;
+  box-shadow: none;
+}
+
+.practice-tests-modern .practice-course-trigger::after {
+  content: "";
+  position: absolute;
+  right: 0.86rem;
+  top: 50%;
+  width: 0.54rem;
+  height: 0.54rem;
+  border-right: 3px solid color-mix(in srgb, var(--flashcards-hero-accent-strong) 90%, var(--ink-soft));
+  border-bottom: 3px solid color-mix(in srgb, var(--flashcards-hero-accent-strong) 90%, var(--ink-soft));
+  transform: translateY(-64%) rotate(45deg);
+  transition: transform 0.2s ease;
+}
+
+.practice-tests-modern .practice-course-trigger.is-open::after {
+  transform: translateY(-36%) rotate(-135deg);
+}
+
+.practice-tests-modern .practice-course-trigger:hover {
+  border-color: color-mix(in srgb, var(--flashcards-hero-accent-soft) 64%, var(--line));
+}
+
+.practice-tests-modern .practice-course-trigger:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--flashcards-hero-accent-strong) 66%, var(--line));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--flashcards-hero-accent-strong) 26%, transparent);
+}
+
+.practice-course-menu {
+  position: absolute;
+  top: calc(100% + 0.45rem);
+  left: 0;
+  right: 0;
+  z-index: 1250;
+  max-height: 17rem;
+  overflow: auto;
+  border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  border-radius: 0.85rem;
+  background:
+    linear-gradient(165deg, color-mix(in srgb, var(--surface) 94%, transparent), color-mix(in srgb, var(--card) 94%, transparent)),
+    radial-gradient(circle at top right, color-mix(in srgb, var(--flashcards-hero-accent-soft) 16%, transparent), transparent 42%);
+  box-shadow: var(--flashcards-panel-elevation);
+  padding: 0.3rem;
+}
+
+.practice-tests-modern .practice-course-option {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+  border-radius: 0.7rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink);
+  padding: 0.52rem 0.6rem;
+  font-size: 1.02rem;
+  line-height: 1.3;
+  box-shadow: none;
+}
+
+.practice-tests-modern .practice-course-option:hover {
+  background: color-mix(in srgb, var(--flashcards-hero-accent-soft) 20%, transparent);
+  border-color: color-mix(in srgb, var(--line) 65%, transparent);
+}
+
+.practice-tests-modern .practice-course-option.is-selected {
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--flashcards-hero-accent-strong) 22%, transparent),
+      color-mix(in srgb, var(--flashcards-hero-accent-soft) 18%, transparent)
+    );
+  border-color: color-mix(in srgb, var(--flashcards-hero-accent-strong) 54%, var(--line));
+}
+
+.practice-course-option-name {
+  display: inline-block;
+}
+
+/* ── Chat Modern ────────────────────────────────────────────────── */
 .chat-modern {
   position: relative;
   isolation: isolate;
@@ -2980,17 +3159,17 @@ body:has(.chat-modern),
   width: min(72vw, 760px);
   height: min(72vw, 760px);
   top: -360px;
-  right: -250px;
+  right: -260px;
   background:
     conic-gradient(
-      from 160deg at 50% 50%,
+      from 162deg at 50% 50%,
       color-mix(in srgb, #cb6f8e 30%, transparent) 0deg,
-      color-mix(in srgb, #d57fa1 20%, transparent) 120deg,
-      color-mix(in srgb, #62a8df 20%, transparent) 255deg,
+      color-mix(in srgb, #d57fa1 18%, transparent) 120deg,
+      color-mix(in srgb, #62a8df 22%, transparent) 260deg,
       color-mix(in srgb, #cb6f8e 30%, transparent) 360deg
     );
   filter: blur(24px);
-  opacity: 0.7;
+  opacity: 0.72;
 }
 
 .chat-modern::after {
@@ -3000,8 +3179,8 @@ body:has(.chat-modern),
   left: 0;
   transform: translate(-26%, 0);
   background:
-    radial-gradient(circle at 32% 30%, color-mix(in srgb, #cb6f8e 20%, transparent), transparent 49%),
-    radial-gradient(circle at 44% 44%, color-mix(in srgb, #62a8df 18%, transparent), transparent 66%);
+    radial-gradient(circle at 34% 30%, color-mix(in srgb, #cb6f8e 20%, transparent), transparent 49%),
+    radial-gradient(circle at 45% 45%, color-mix(in srgb, #62a8df 18%, transparent), transparent 66%);
   filter: blur(14px);
 }
 
@@ -3068,7 +3247,8 @@ body:has(.chat-modern),
   color: color-mix(in srgb, var(--ink-soft) 84%, var(--ink));
 }
 
-.chat-modern .panel {
+.chat-modern .panel,
+.chat-modern-panel {
   position: relative;
   border-radius: 1.14rem;
   border: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
@@ -3079,7 +3259,8 @@ body:has(.chat-modern),
   overflow: hidden;
 }
 
-.chat-modern .panel::before {
+.chat-modern .panel::before,
+.chat-modern-panel::before {
   content: "";
   position: absolute;
   left: 0.9rem;
@@ -3095,91 +3276,148 @@ body:has(.chat-modern),
   opacity: 0.82;
 }
 
-.chat-modern .panel h2 {
+.chat-modern .panel h2,
+.chat-modern-panel h2 {
   color: var(--flashcards-subheading-ink);
 }
 
 .chat-modern .chat-course-card {
-  border-radius: 0.95rem;
-  border-color: color-mix(in srgb, var(--line) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  border-radius: 1rem;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--surface) 86%, transparent), color-mix(in srgb, var(--card) 86%, transparent)),
     radial-gradient(circle at left center, color-mix(in srgb, var(--flashcards-hero-accent-strong) 16%, transparent), transparent 42%);
-  transition: transform 0.22s ease, border-color 0.22s ease;
 }
 
 .chat-modern .chat-course-card:hover {
-  transform: translateY(-1px);
   border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--surface) 90%, transparent), color-mix(in srgb, var(--card) 90%, transparent)),
-    radial-gradient(circle at left center, color-mix(in srgb, var(--flashcards-hero-accent-strong) 24%, transparent), transparent 42%);
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 88%, transparent), color-mix(in srgb, var(--card) 88%, transparent)),
+    radial-gradient(circle at left center, color-mix(in srgb, var(--flashcards-hero-accent-soft) 22%, transparent), transparent 42%);
 }
 
 .chat-modern .chat-message-list {
-  border-color: color-mix(in srgb, var(--line) 70%, transparent);
-  border-radius: 1rem;
-  background: color-mix(in srgb, var(--surface) 70%, transparent);
-}
-
-.chat-modern .chat-message.user .chat-message-bubble {
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--flashcards-hero-accent-strong) 48%, var(--surface)),
-    color-mix(in srgb, var(--accent) 32%, var(--surface))
-  );
-  border-color: color-mix(in srgb, var(--flashcards-hero-accent-strong) 52%, var(--line));
+  border-color: color-mix(in srgb, var(--line) 72%, transparent);
+  border-radius: 0.95rem;
+  background:
+    linear-gradient(165deg, color-mix(in srgb, var(--surface) 90%, transparent), color-mix(in srgb, var(--card) 90%, transparent)),
+    radial-gradient(circle at top right, color-mix(in srgb, var(--flashcards-hero-accent-soft) 16%, transparent), transparent 44%);
 }
 
 .chat-modern .chat-message-bubble {
-  border-color: color-mix(in srgb, var(--line) 68%, transparent);
   border-radius: 0.85rem;
-  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  border-color: color-mix(in srgb, var(--line) 72%, transparent);
+  background: color-mix(in srgb, var(--surface-soft) 78%, transparent);
+}
+
+.chat-modern .chat-message.user .chat-message-bubble {
+  background: color-mix(in srgb, var(--flashcards-hero-accent-strong) 24%, var(--surface));
+  border-color: color-mix(in srgb, var(--flashcards-hero-accent-strong) 44%, var(--line));
 }
 
 .chat-modern .chat-composer textarea {
+  border-radius: 0.8rem;
   border-color: color-mix(in srgb, var(--line) 70%, transparent);
-  border-radius: 0.85rem;
   background: color-mix(in srgb, var(--input-bg) 92%, transparent);
 }
 
 .chat-modern .chat-composer textarea:focus {
-  outline: 2px solid color-mix(in srgb, var(--flashcards-hero-accent-strong) 45%, transparent);
-  outline-offset: 1px;
-  border-color: color-mix(in srgb, var(--flashcards-hero-accent-strong) 55%, var(--line));
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--line));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 24%, transparent);
 }
 
-.chat-modern button {
+.chat-modern .chat-shell button,
+.chat-modern .chat-course-picker button:not(.chat-course-card),
+.chat-modern .chat-composer button {
   border-radius: 999px;
+}
+
+.chat-modern .chat-shell button:not(.secondary-button),
+.chat-modern .chat-composer button:not(.secondary-button) {
   background: linear-gradient(
     135deg,
-    color-mix(in srgb, #9e8ac6 84%, #e5e9f7),
-    color-mix(in srgb, #ba6d8c 80%, #b96f8d)
+    color-mix(in srgb, var(--flashcards-accent) 84%, #e9edf8),
+    color-mix(in srgb, var(--flashcards-accent-strong) 80%, #bd738f)
   );
   box-shadow: var(--flashcards-button-elevation);
-  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
 }
 
-.chat-modern button:hover:not(:disabled) {
-  transform: translateY(-1px);
+.chat-modern .chat-shell button:not(.secondary-button):hover:not(:disabled),
+.chat-modern .chat-composer button:not(.secondary-button):hover:not(:disabled) {
   box-shadow: var(--flashcards-button-hover-elevation);
+  filter: brightness(1.02);
 }
 
 .chat-modern .secondary-button {
-  background: color-mix(in srgb, var(--surface-soft) 80%, transparent);
-  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
-  color: var(--ink);
-  box-shadow: none;
-}
-
-.chat-modern .secondary-button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--surface) 80%, transparent);
-  transform: none;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--surface-soft) 92%, transparent),
+    color-mix(in srgb, var(--button-muted) 88%, transparent)
+  );
+  border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  color: color-mix(in srgb, var(--ink-soft) 85%, var(--ink));
 }
 
 .chat-modern .panel,
+.chat-modern-panel,
 .chat-modern-hero {
   animation: flashcards-enter 340ms ease both;
+}
+
+/* Sidebar theme overrides */
+:root:not([data-theme="light"]) .sidebar-nav-item:hover {
+  border-color: color-mix(in srgb, #9d81df 55%, var(--line));
+}
+
+:root:not([data-theme="light"]) .sidebar-nav-item.active {
+  border-color: color-mix(in srgb, #a987ff 64%, var(--line));
+  background:
+    linear-gradient(
+      140deg,
+      color-mix(in srgb, #8f6fe0 34%, transparent),
+      color-mix(in srgb, #69a8df 28%, transparent)
+    ),
+    linear-gradient(
+      165deg,
+      color-mix(in srgb, var(--surface) 95%, transparent),
+      color-mix(in srgb, var(--card) 92%, transparent)
+    );
+}
+
+:root[data-theme="light"] .app-sidebar {
+  background: linear-gradient(180deg, #f7f8fb 0%, #eff1f6 100%);
+  border-right-color: rgba(17, 27, 42, 0.12);
+}
+
+:root[data-theme="light"] .sidebar-brand {
+  border-bottom-color: rgba(17, 27, 42, 0.12);
+}
+
+:root[data-theme="light"] .theme-toggle {
+  background: #ffffff;
+  border-color: rgba(17, 27, 42, 0.14);
+}
+
+:root[data-theme="light"] .theme-toggle-track {
+  background: rgba(17, 27, 42, 0.24);
+}
+
+:root[data-theme="light"] .sidebar-nav-item {
+  border-color: rgba(17, 27, 42, 0.14);
+  background: #ffffff;
+  box-shadow: none;
+}
+
+:root[data-theme="light"] .sidebar-nav-item.active {
+  border-color: color-mix(in srgb, #8f6fe0 44%, rgba(17, 27, 42, 0.18));
+  background:
+    linear-gradient(
+      140deg,
+      color-mix(in srgb, #8f6fe0 12%, #ffffff),
+      color-mix(in srgb, #69a8df 10%, #ffffff)
+    ),
+    #ffffff;
 }
 
 @media (max-width: 720px) {
