@@ -17,6 +17,7 @@ OPENAPI_PATH = CONTRACTS_DIR / "openapi.yaml"
 EXAMPLE_SCHEMA_MAP = {
     "Course.example.json": "Course.json",
     "CanvasItem.example.json": "CanvasItem.json",
+    "CourseMaterial.example.json": "CourseMaterial.json",
     "Topic.example.json": "Topic.json",
     "Card.example.json": "Card.json",
     "ReviewEvent.example.json": "ReviewEvent.json",
