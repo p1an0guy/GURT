@@ -1,0 +1,42 @@
+:root {
+  color-scheme: dark;
+  font-family: "Segoe UI", "SF Pro Text", Arial, sans-serif;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(circle at top, #1d2a40 0%, #0f1724 45%, #080d14 100%);
+  color: #f0f5ff;
+}
+
+.blocked-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  text-align: center;
+}
+
+.logo {
+  width: min(360px, 62vw);
+  height: auto;
+  filter: drop-shadow(0 14px 26px rgba(0, 0, 0, 0.45));
+}
+
+.timer-label {
+  margin: 8px 0 0;
+  font-size: 1rem;
+  color: #c7d8f6;
+}
+
+.countdown {
+  margin: 0;
+  font-size: clamp(2rem, 6vw, 3.25rem);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #ffffff;
+}

@@ -14,15 +14,6 @@ import {
 } from "../../src/practice-tests/store.ts";
 import { pollPracticeExamJob } from "../../src/practice-tests/polling.ts";
 
-const PRACTICE_EXAM_POLL_WAIT_MS = 4000;
-const PRACTICE_EXAM_POLL_MAX_ATTEMPTS = 60;
-
-function waitMs(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
-}
-
 function AiStarsIcon() {
   return (
     <svg viewBox="0 0 37 38" fill="none" aria-hidden="true">
@@ -180,10 +171,13 @@ export default function PracticeTestsPage() {
       );
       const generated = await pollPracticeExamJob({
         jobId: started.jobId,
-        maxAttempts: PRACTICE_EXAM_POLL_MAX_ATTEMPTS,
-        waitMs: PRACTICE_EXAM_POLL_WAIT_MS,
-        getStatus: (jobId) => client.getPracticeExamGenerationStatus(jobId),
-        wait: waitMs,
+        maxAttempts: 60,
+        waitMs: 4000,
+        getStatus: (jobId: string) => client.getPracticeExamGenerationStatus(jobId),
+        wait: (ms: number) =>
+          new Promise((resolve) => {
+            window.setTimeout(resolve, ms);
+          }),
       });
       const courseName = selectedCourse?.name ?? courseId;
       const created = createPracticeTestRecord({

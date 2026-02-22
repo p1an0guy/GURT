@@ -59,7 +59,591 @@ const CHAT_API_URL = "https://hpthlfk5ql.execute-api.us-west-2.amazonaws.com/dev
 const API_BASE_URL = CHAT_API_URL.replace(/\/chat\/?$/, "");
 const WEBAPP_BASE_URL = "http://localhost:3000"; // TODO: update with CloudFront URL for production
 
+const BLOCK_CONFIG_KEY = "gurtBlockConfigV1";
+const BLOCK_RUNTIME_KEY = "gurtBlockRuntimeV1";
+const BLOCK_TICK_ALARM = "GURT_BLOCK_TICK";
+const BLOCK_DEBUG_KEY = "gurtBlockDebug";
+const BLOCKED_PAGE = "blocked.html";
+const BLOCKED_PAGE_URL = chrome.runtime.getURL(BLOCKED_PAGE);
+const BLOCKING_ENGINE_CANDIDATES = ["blocking_engine.js", "/blocking_engine.js"];
+const POMODORO_NOTIFICATION_ICON = "logo.png";
+
+let blockEngineLoadError = null;
+let blockConfig = null;
+let blockRuntime = null;
+let blockCompiled = null;
+let blockRanges = { ranges: [], errors: [] };
+let blockInitialized = false;
+let activeTabIdForBlocking = null;
+let isBrowserWindowFocused = true;
+
 let activeScrapeRun = null;
+
+void ensureBlockingStateLoaded().catch((error) => {
+  console.error("[Gurt][Block] Failed to initialize blocking state", error);
+});
+
+chrome.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
+  if (tabs && tabs[0] && Number.isInteger(tabs[0].id)) {
+    activeTabIdForBlocking = tabs[0].id;
+  }
+}).catch(() => {
+  // Ignore initial tab lookup failures.
+});
+
+function logBlock(message, details) {
+  if (!blockConfig || !blockConfig[BLOCK_DEBUG_KEY]) {
+    return;
+  }
+  if (details !== undefined) {
+    console.log(`[Gurt][Block] ${message}`, details);
+    return;
+  }
+  console.log(`[Gurt][Block] ${message}`);
+}
+
+function defaultHardAllowlist() {
+  const hosts = new Set([
+    "canvas.calpoly.edu",
+    "*.canvas-user-content.com"
+  ]);
+
+  const parseHost = (value) => {
+    try {
+      const parsed = new URL(value);
+      return parsed.hostname.toLowerCase();
+    } catch {
+      return "";
+    }
+  };
+
+  const apiHost = parseHost(CHAT_API_URL);
+  const webHost = parseHost(WEBAPP_BASE_URL);
+  if (apiHost) hosts.add(apiHost);
+  if (webHost) hosts.add(webHost);
+
+  return Array.from(hosts);
+}
+
+function ensureBlockingEngineLoaded() {
+  if (globalThis.GurtBlockingEngine && typeof globalThis.GurtBlockingEngine.evaluateBlockingDecision === "function") {
+    return globalThis.GurtBlockingEngine;
+  }
+
+  const attempts = [];
+  const candidates = [...BLOCKING_ENGINE_CANDIDATES];
+  try {
+    const runtimeUrl = chrome.runtime.getURL("blocking_engine.js");
+    if (!candidates.includes(runtimeUrl)) {
+      candidates.push(runtimeUrl);
+    }
+  } catch {
+    // Ignore URL build errors and rely on fallback candidates.
+  }
+
+  for (const candidate of candidates) {
+    try {
+      importScripts(candidate);
+      if (globalThis.GurtBlockingEngine && typeof globalThis.GurtBlockingEngine.evaluateBlockingDecision === "function") {
+        blockEngineLoadError = null;
+        return globalThis.GurtBlockingEngine;
+      }
+      attempts.push(`${candidate}: loaded but GurtBlockingEngine API missing`);
+    } catch (error) {
+      attempts.push(`${candidate}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  const details = attempts.length > 0 ? attempts.join(" | ") : "unknown error";
+  const error = new Error(`Unable to load blocking_engine.js (${details})`);
+  blockEngineLoadError = error;
+  throw error;
+}
+
+function nowEpochSec() {
+  return Math.floor(Date.now() / 1000);
+}
+
+function getStorageLocal(keys) {
+  return new Promise((resolve) => chrome.storage.local.get(keys, resolve));
+}
+
+function setStorageLocal(items) {
+  return new Promise((resolve) => chrome.storage.local.set(items, resolve));
+}
+
+async function persistBlockConfig() {
+  if (!blockConfig) return;
+  await setStorageLocal({ [BLOCK_CONFIG_KEY]: blockConfig });
+}
+
+async function persistBlockRuntime() {
+  if (!blockRuntime) return;
+  await setStorageLocal({ [BLOCK_RUNTIME_KEY]: blockRuntime });
+}
+
+function refreshCompiledBlockers() {
+  const engine = ensureBlockingEngineLoaded();
+  blockCompiled = engine.compileSiteMatchers(blockConfig.sites);
+  blockRanges = engine.parseTimeRanges(blockConfig.timeRanges);
+}
+
+function getPomodoroSnapshot(now = nowEpochSec()) {
+  const engine = ensureBlockingEngineLoaded();
+  return engine.getPomodoroState(blockRuntime, blockConfig, now);
+}
+
+function snapshotPomodoroRuntime(runtime) {
+  const source = runtime && typeof runtime === "object" ? runtime : {};
+  return {
+    active: Boolean(source.pomodoroActive),
+    phase: source.pomodoroPhase || null,
+    paused: Boolean(source.pomodoroPaused),
+    pendingPhase: source.pomodoroPendingPhase || null
+  };
+}
+
+async function notifyPomodoroBoundary(completedPhase, pendingPhase) {
+  if (!chrome.notifications || typeof chrome.notifications.create !== "function") {
+    return;
+  }
+
+  const completedLabel = completedPhase === "focus" ? "Focus session complete" : "Break complete";
+  const pendingLabel = pendingPhase === "focus" ? "Focus" : "Break";
+  const message = `Click Start ${pendingLabel} when you're ready for the next cycle.`;
+
+  await new Promise((resolve) => {
+    chrome.notifications.create(
+      `gurt-pomodoro-${Date.now()}`,
+      {
+        type: "basic",
+        iconUrl: chrome.runtime.getURL(POMODORO_NOTIFICATION_ICON),
+        title: completedLabel,
+        message
+      },
+      () => {
+        // Best-effort notification; swallow runtime errors to avoid blocking state updates.
+        void chrome.runtime.lastError;
+        resolve();
+      }
+    );
+  });
+}
+
+async function handlePomodoroTransitionEffects(previousRuntime, source) {
+  const previous = snapshotPomodoroRuntime(previousRuntime);
+  const current = snapshotPomodoroRuntime(blockRuntime);
+
+  const completedBoundary = previous.active
+    && Boolean(previous.phase)
+    && !current.active
+    && current.paused
+    && Boolean(current.pendingPhase)
+    && current.pendingPhase !== previous.phase;
+
+  if (completedBoundary) {
+    await notifyPomodoroBoundary(previous.phase, current.pendingPhase);
+    logBlock(`Pomodoro phase completed from ${source}`, {
+      completedPhase: previous.phase,
+      pendingPhase: current.pendingPhase
+    });
+  }
+
+  const pomodoroChanged = previous.active !== current.active
+    || previous.phase !== current.phase
+    || previous.paused !== current.paused
+    || previous.pendingPhase !== current.pendingPhase;
+
+  if (!pomodoroChanged) {
+    return;
+  }
+
+  if (!current.active || current.phase === "break") {
+    await restoreBlockedTabsIfPossible();
+    return;
+  }
+
+  if (current.phase === "focus") {
+    const activeTab = await getActiveTabForBlockStatus();
+    if (activeTab && Number.isInteger(activeTab.id) && typeof activeTab.url === "string") {
+      await enforceBlockingForTab(activeTab.id, activeTab.url, "pomodoro-transition-focus");
+    }
+  }
+}
+
+async function syncPomodoroState(now = nowEpochSec(), source = "sync") {
+  const engine = ensureBlockingEngineLoaded();
+  const previousRuntime = blockRuntime;
+  blockRuntime = engine.advancePomodoroState(blockRuntime, blockConfig, now);
+  await handlePomodoroTransitionEffects(previousRuntime, source);
+  return engine.getPomodoroState(blockRuntime, blockConfig, now);
+}
+
+function sanitizeDecisionForRuntime(decision) {
+  const pomodoro = decision && decision.pomodoro ? decision.pomodoro : null;
+  return {
+    blocked: Boolean(decision && decision.blocked),
+    reason: (decision && decision.reason) || "unknown",
+    activeRuleSummary: (decision && decision.activeRuleSummary) || "No decision",
+    matchedPattern: (decision && decision.matchedPattern) || null,
+    nextUnblockAt: (decision && decision.nextUnblockAtEpochSec) || 0,
+    pomodoroPhase: pomodoro ? pomodoro.phase : null,
+    pomodoroPhaseEndEpochSec: pomodoro ? pomodoro.phaseEndEpochSec : 0,
+    evaluatedAt: new Date().toISOString()
+  };
+}
+
+function updateBlockedTabIds(tabId, blocked) {
+  if (!Number.isInteger(tabId)) return;
+  const current = new Set(Array.isArray(blockRuntime.blockedTabIds) ? blockRuntime.blockedTabIds : []);
+  if (blocked) {
+    current.add(tabId);
+  } else {
+    current.delete(tabId);
+  }
+  blockRuntime.blockedTabIds = Array.from(current);
+}
+
+function buildBlockedPageUrl(originalUrl, decision) {
+  const params = new URLSearchParams();
+  params.set("u", originalUrl);
+  params.set("r", decision.reason || "blocked");
+  params.set("nu", String(decision.nextUnblockAtEpochSec || 0));
+  return `${BLOCKED_PAGE_URL}?${params.toString()}`;
+}
+
+function isBlockedPageUrl(url) {
+  return typeof url === "string" && url.startsWith(BLOCKED_PAGE_URL);
+}
+
+function decodeOriginalUrlFromBlockedPage(url) {
+  if (!isBlockedPageUrl(url)) {
+    return "";
+  }
+  try {
+    const parsed = new URL(url);
+    const original = parsed.searchParams.get("u");
+    return original ? original.trim() : "";
+  } catch {
+    return "";
+  }
+}
+
+async function ensureBlockingStateLoaded() {
+  if (blockInitialized) {
+    return;
+  }
+
+  const engine = ensureBlockingEngineLoaded();
+  const stored = await getStorageLocal([BLOCK_CONFIG_KEY, BLOCK_RUNTIME_KEY]);
+  const storedConfig = stored[BLOCK_CONFIG_KEY] && typeof stored[BLOCK_CONFIG_KEY] === "object"
+    ? stored[BLOCK_CONFIG_KEY]
+    : {};
+  const hardAllowlist = defaultHardAllowlist();
+
+  blockConfig = engine.normalizeConfig(storedConfig, hardAllowlist);
+  blockRuntime = engine.normalizeRuntime(stored[BLOCK_RUNTIME_KEY]);
+
+  const mergedAllowlist = new Set([...(blockConfig.allowlistHard || []), ...hardAllowlist]);
+  blockConfig.allowlistHard = Array.from(mergedAllowlist);
+  if (!storedConfig.version || Number(storedConfig.version) < 2) {
+    blockConfig.pomodoroEnabled = true;
+  }
+  blockConfig.version = 2;
+  blockConfig[BLOCK_DEBUG_KEY] = Boolean(blockConfig[BLOCK_DEBUG_KEY]);
+
+  const now = nowEpochSec();
+  blockRuntime = engine.updateRuntimeForPeriod(blockRuntime, blockConfig, now);
+  blockRuntime = engine.advancePomodoroState(blockRuntime, blockConfig, now);
+  blockRuntime.lastTickEpochSec = blockRuntime.lastTickEpochSec || now;
+
+  refreshCompiledBlockers();
+  await persistBlockConfig();
+  await persistBlockRuntime();
+  blockInitialized = true;
+}
+
+function evaluateUrlAgainstBlockRules(url, now = nowEpochSec()) {
+  const engine = ensureBlockingEngineLoaded();
+  const decision = engine.evaluateBlockingDecision({
+    config: blockConfig,
+    runtime: blockRuntime,
+    compiled: blockCompiled,
+    parsedRanges: blockRanges,
+    url,
+    now,
+    extensionOrigin: chrome.runtime.getURL("")
+  });
+  blockRuntime = decision.runtime;
+  return decision;
+}
+
+async function enforceBlockingForTab(tabId, url, source) {
+  if (!Number.isInteger(tabId) || typeof url !== "string" || !url) {
+    return;
+  }
+  if (blockEngineLoadError) {
+    return;
+  }
+
+  await ensureBlockingStateLoaded();
+  const previousRuntime = blockRuntime;
+  const decision = evaluateUrlAgainstBlockRules(url);
+  await handlePomodoroTransitionEffects(previousRuntime, `enforce:${source}`);
+
+  blockRuntime.lastDecisionByTab = blockRuntime.lastDecisionByTab || {};
+  blockRuntime.lastDecisionByTab[String(tabId)] = sanitizeDecisionForRuntime(decision);
+  updateBlockedTabIds(tabId, decision.blocked);
+  await persistBlockRuntime();
+
+  if (!decision.blocked || isBlockedPageUrl(url)) {
+    return;
+  }
+
+  try {
+    const redirectUrl = buildBlockedPageUrl(url, decision);
+    logBlock(`Blocking tab ${tabId} from ${source}`, { url, reason: decision.reason, redirectUrl });
+    await chrome.tabs.update(tabId, { url: redirectUrl });
+  } catch (error) {
+    console.warn("[Gurt][Block] Failed to redirect blocked tab", error);
+  }
+}
+
+async function restoreBlockedTabsIfPossible() {
+  await ensureBlockingStateLoaded();
+  const tabIds = Array.isArray(blockRuntime.blockedTabIds) ? [...blockRuntime.blockedTabIds] : [];
+  for (const tabId of tabIds) {
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      if (!tab || !tab.url || !isBlockedPageUrl(tab.url)) {
+        updateBlockedTabIds(tabId, false);
+        continue;
+      }
+      const originalUrl = decodeOriginalUrlFromBlockedPage(tab.url);
+      if (!originalUrl) {
+        updateBlockedTabIds(tabId, false);
+        continue;
+      }
+      await chrome.tabs.update(tabId, { url: originalUrl });
+      updateBlockedTabIds(tabId, false);
+    } catch {
+      updateBlockedTabIds(tabId, false);
+    }
+  }
+  await persistBlockRuntime();
+}
+
+async function accrueUsageTime(now = nowEpochSec()) {
+  await ensureBlockingStateLoaded();
+  const engine = ensureBlockingEngineLoaded();
+
+  const previousRuntime = blockRuntime;
+  blockRuntime = engine.updateRuntimeForPeriod(blockRuntime, blockConfig, now);
+  blockRuntime = engine.advancePomodoroState(blockRuntime, blockConfig, now);
+  await handlePomodoroTransitionEffects(previousRuntime, "alarm-tick");
+  const lastTick = Number(blockRuntime.lastTickEpochSec) || now;
+  const delta = Math.max(0, now - lastTick);
+  blockRuntime.lastTickEpochSec = now;
+
+  const shouldTrackLimitUsage = blockConfig.enabled
+    && Boolean(blockConfig.limitMinutes && blockConfig.limitPeriod)
+    && isBrowserWindowFocused
+    && Number.isInteger(activeTabIdForBlocking)
+    && delta > 0;
+
+  if (!shouldTrackLimitUsage) {
+    await persistBlockRuntime();
+    return;
+  }
+
+  try {
+    const tab = await chrome.tabs.get(activeTabIdForBlocking);
+    if (!tab || !tab.url || isBlockedPageUrl(tab.url)) {
+      await persistBlockRuntime();
+      return;
+    }
+    const decision = evaluateUrlAgainstBlockRules(tab.url, now);
+    if (decision.trackable) {
+      blockRuntime.usageSecondsCurrentPeriod += delta;
+      logBlock("Accrued usage seconds", {
+        tabId: activeTabIdForBlocking,
+        delta,
+        usageSecondsCurrentPeriod: blockRuntime.usageSecondsCurrentPeriod
+      });
+    }
+  } catch {
+    // Ignore transient tab lookup failures.
+  }
+
+  await persistBlockRuntime();
+}
+
+async function getActiveTabForBlockStatus() {
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tabs || tabs.length === 0) {
+    return null;
+  }
+  return tabs[0];
+}
+
+async function handleGetBlockStatus() {
+  await ensureBlockingStateLoaded();
+  const now = nowEpochSec();
+  const pomodoro = await syncPomodoroState(now, "status-check");
+  const tab = await getActiveTabForBlockStatus();
+  const tabId = tab && Number.isInteger(tab.id) ? tab.id : null;
+  let decision = null;
+
+  if (tab && typeof tab.url === "string" && tab.url) {
+    if (isBlockedPageUrl(tab.url)) {
+      decision = {
+        blocked: true,
+        reason: "blocked_page",
+        activeRuleSummary: "Current page is the blocking notice",
+        nextUnblockAtEpochSec: (() => {
+          try {
+            const parsed = new URL(tab.url);
+            return Number(parsed.searchParams.get("nu")) || 0;
+          } catch {
+            return 0;
+          }
+        })()
+      };
+    } else {
+      decision = evaluateUrlAgainstBlockRules(tab.url);
+      if (tabId !== null) {
+        blockRuntime.lastDecisionByTab[String(tabId)] = sanitizeDecisionForRuntime(decision);
+      }
+    }
+  }
+
+  await persistBlockRuntime();
+
+  return {
+    success: true,
+    enabled: Boolean(blockConfig.enabled),
+    currentlyBlocked: Boolean(decision && decision.blocked),
+    reason: decision ? decision.reason : "no_active_tab",
+    activeRuleSummary: decision ? decision.activeRuleSummary : "No active tab",
+    nextUnblockAt: decision ? (decision.nextUnblockAtEpochSec || 0) : 0,
+    tabId,
+    tabUrl: tab && tab.url ? tab.url : "",
+    usageSecondsCurrentPeriod: blockRuntime.usageSecondsCurrentPeriod,
+    limitMinutes: blockConfig.limitMinutes,
+    limitPeriod: blockConfig.limitPeriod,
+    pomodoro
+  };
+}
+
+async function handleGetBlockConfig() {
+  await ensureBlockingStateLoaded();
+  return {
+    success: true,
+    config: { ...blockConfig }
+  };
+}
+
+async function handleSetBlockEnabled(enabled) {
+  await ensureBlockingStateLoaded();
+  const engine = ensureBlockingEngineLoaded();
+  blockConfig.enabled = Boolean(enabled);
+  blockConfig.updatedAt = new Date().toISOString();
+  if (!blockConfig.enabled) {
+    blockRuntime = engine.stopPomodoroSession(blockRuntime);
+  }
+  await persistBlockConfig();
+  await persistBlockRuntime();
+  if (!blockConfig.enabled) {
+    await restoreBlockedTabsIfPossible();
+  }
+  return { success: true, enabled: blockConfig.enabled };
+}
+
+async function handleSetPomodoroActive(active) {
+  await ensureBlockingStateLoaded();
+  const engine = ensureBlockingEngineLoaded();
+  const shouldActivate = Boolean(active);
+
+  if (!blockConfig.enabled) {
+    return {
+      success: false,
+      error: "Enable focus blocking before starting Pomodoro."
+    };
+  }
+
+  if (!blockConfig.pomodoroEnabled) {
+    return {
+      success: false,
+      error: "Pomodoro is disabled in settings."
+    };
+  }
+
+  if (!shouldActivate) {
+    if (blockRuntime.pomodoroActive) {
+      return {
+        success: false,
+        error: "Pomodoro session cannot be stopped manually before it ends."
+      };
+    }
+    return {
+      success: true,
+      pomodoro: getPomodoroSnapshot()
+    };
+  }
+
+  if (!blockRuntime.pomodoroActive) {
+    blockRuntime = engine.startPomodoroSession(blockRuntime, blockConfig, nowEpochSec());
+  }
+
+  await persistBlockRuntime();
+
+  const activeTab = await getActiveTabForBlockStatus();
+  if (activeTab && Number.isInteger(activeTab.id) && typeof activeTab.url === "string") {
+    await enforceBlockingForTab(activeTab.id, activeTab.url, "pomodoro-start");
+  }
+
+  return {
+    success: true,
+    pomodoro: getPomodoroSnapshot()
+  };
+}
+
+async function handleSaveBlockConfig(payload) {
+  await ensureBlockingStateLoaded();
+  const engine = ensureBlockingEngineLoaded();
+  const incoming = payload && typeof payload === "object" ? payload : {};
+  const candidate = {
+    ...blockConfig,
+    ...incoming,
+    allowlistHard: Array.from(new Set([...(incoming.allowlistHard || []), ...defaultHardAllowlist()])),
+    updatedAt: new Date().toISOString()
+  };
+
+  const validation = engine.validateConfig(candidate);
+  if (!validation.valid) {
+    return { success: false, validationErrors: validation.errors };
+  }
+
+  blockConfig = engine.normalizeConfig(validation.normalized, defaultHardAllowlist());
+  blockConfig[BLOCK_DEBUG_KEY] = Boolean(candidate[BLOCK_DEBUG_KEY]);
+  const previousRuntime = blockRuntime;
+  blockRuntime = engine.updateRuntimeForPeriod(blockRuntime, blockConfig, nowEpochSec());
+  blockRuntime = engine.advancePomodoroState(blockRuntime, blockConfig, nowEpochSec());
+  if (!blockConfig.pomodoroEnabled) {
+    blockRuntime = engine.stopPomodoroSession(blockRuntime);
+  }
+  await handlePomodoroTransitionEffects(previousRuntime, "save-config");
+  refreshCompiledBlockers();
+
+  await persistBlockConfig();
+  await persistBlockRuntime();
+
+  return {
+    success: true,
+    validationErrors: [],
+    config: { ...blockConfig }
+  };
+}
 
 // --- Course change detection ---
 // Notify side panel when the user navigates to a different Canvas course
@@ -88,17 +672,52 @@ function notifyCourseChange(tabId, url) {
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.url) {
     notifyCourseChange(tabId, changeInfo.url);
+    void enforceBlockingForTab(tabId, changeInfo.url, "tabs.onUpdated:url");
+  }
+
+  if (changeInfo.status === "complete" && tab && typeof tab.url === "string") {
+    void enforceBlockingForTab(tabId, tab.url, "tabs.onUpdated:complete");
   }
 });
 
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
+  activeTabIdForBlocking = activeInfo.tabId;
   try {
     const tab = await chrome.tabs.get(activeInfo.tabId);
     if (tab && tab.url) {
       notifyCourseChange(tab.id, tab.url);
+      await enforceBlockingForTab(tab.id, tab.url, "tabs.onActivated");
     }
   } catch { /* tab may not be accessible */ }
 });
+
+if (chrome.webNavigation && chrome.webNavigation.onBeforeNavigate) {
+  chrome.webNavigation.onBeforeNavigate.addListener((details) => {
+    if (!details || details.frameId !== 0 || typeof details.tabId !== "number") {
+      return;
+    }
+    if (typeof details.url !== "string" || !details.url) {
+      return;
+    }
+    void enforceBlockingForTab(details.tabId, details.url, "webNavigation.onBeforeNavigate");
+  });
+}
+
+if (chrome.windows && chrome.windows.onFocusChanged) {
+  chrome.windows.onFocusChanged.addListener((windowId) => {
+    isBrowserWindowFocused = windowId !== chrome.windows.WINDOW_ID_NONE;
+  });
+}
+
+if (chrome.alarms) {
+  chrome.alarms.create(BLOCK_TICK_ALARM, { periodInMinutes: 0.5 });
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (!alarm || alarm.name !== BLOCK_TICK_ALARM) {
+      return;
+    }
+    void accrueUsageTime();
+  });
+}
 
 // Handle messages from the side panel
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -133,6 +752,41 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === "GET_FILE_COUNT") {
     fetchFileCount(message.courseId).then(sendResponse);
+    return true;
+  }
+
+  if (message.type === "GET_BLOCK_STATUS") {
+    handleGetBlockStatus().then(sendResponse).catch((error) => {
+      sendResponse({ success: false, error: error instanceof Error ? error.message : String(error) });
+    });
+    return true;
+  }
+
+  if (message.type === "GET_BLOCK_CONFIG") {
+    handleGetBlockConfig().then(sendResponse).catch((error) => {
+      sendResponse({ success: false, error: error instanceof Error ? error.message : String(error) });
+    });
+    return true;
+  }
+
+  if (message.type === "SET_BLOCK_ENABLED") {
+    handleSetBlockEnabled(Boolean(message.enabled)).then(sendResponse).catch((error) => {
+      sendResponse({ success: false, error: error instanceof Error ? error.message : String(error) });
+    });
+    return true;
+  }
+
+  if (message.type === "SET_POMODORO_ACTIVE") {
+    handleSetPomodoroActive(Boolean(message.active)).then(sendResponse).catch((error) => {
+      sendResponse({ success: false, error: error instanceof Error ? error.message : String(error) });
+    });
+    return true;
+  }
+
+  if (message.type === "SAVE_BLOCK_CONFIG") {
+    handleSaveBlockConfig(message.config || {}).then(sendResponse).catch((error) => {
+      sendResponse({ success: false, error: error instanceof Error ? error.message : String(error) });
+    });
     return true;
   }
 
