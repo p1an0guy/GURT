@@ -1,10 +1,11 @@
+import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 import AppShell from "./app-shell.tsx";
 import "./globals.css";
 
-export const metadata = {
-  title: "GURT StudyBuddy Demo",
+export const metadata: Metadata = {
+  title: "GURT Dashboard",
   description: "Hackathon demo shell for Canvas + Study + Calendar APIs",
 };
 
