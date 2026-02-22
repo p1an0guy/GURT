@@ -74,6 +74,26 @@ export interface CalendarTokenResponse {
   createdAt: string;
 }
 
+export interface UploadRequest {
+  courseId: string;
+  filename: string;
+  contentType:
+    | "application/pdf"
+    | "text/plain"
+    | "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    | "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    | "application/msword";
+  contentLengthBytes?: number;
+}
+
+export interface UploadResponse {
+  docId: string;
+  key: string;
+  uploadUrl: string;
+  expiresInSeconds: number;
+  contentType: UploadRequest["contentType"];
+}
+
 export interface IngestStartRequest {
   docId: string;
   courseId: string;
