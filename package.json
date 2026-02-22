@@ -8,7 +8,7 @@
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit",
     "lint": "npm run typecheck",
-    "test": "tsx --test src/api/client.test.ts"
+    "test": "tsx --test src/**/*.test.ts"
   },
   "dependencies": {
     "katex": "^0.16.28",

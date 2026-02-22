@@ -19,6 +19,8 @@ import type {
   PracticeExam,
   StudyReviewAck,
   TopicMastery,
+  UploadRequest,
+  UploadResponse,
 } from "./types.ts";
 
 interface TopicFixture {
@@ -33,6 +35,7 @@ const canvasItems = canvasItemsRaw as CanvasItem[];
 const cards = cardsRaw as Card[];
 const topics = topicsRaw as TopicFixture[];
 const ingestPollCountByJobId: Record<string, number> = {};
+let fixtureUploadCounter = 0;
 
 function clone<T>(value: T): T {
   return structuredClone(value);
@@ -170,6 +173,20 @@ export function getFixtureCalendarTokenResponse(baseUrl: string): CalendarTokenR
     token,
     feedUrl,
     createdAt: "2026-09-02T09:00:00Z",
+  };
+}
+
+export function getFixtureUploadResponse(request: UploadRequest): UploadResponse {
+  fixtureUploadCounter += 1;
+  const docId = `doc-fixture-${fixtureUploadCounter}`;
+  const safeFilename = request.filename.replace(/[^A-Za-z0-9._-]/g, "-");
+
+  return {
+    docId,
+    key: `uploads/${request.courseId}/${docId}/${safeFilename}`,
+    uploadUrl: `https://uploads.fixture.local/${docId}`,
+    expiresInSeconds: 900,
+    contentType: request.contentType,
   };
 }
 
