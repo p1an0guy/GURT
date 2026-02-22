@@ -22,7 +22,7 @@ from backend.canvas_client import (
     fetch_course_files,
     fetch_file_bytes,
 )
-from backend.generation import GenerationError, chat_answer, format_canvas_items, generate_flashcards, generate_flashcards_from_materials, generate_practice_exam
+from backend.generation import GenerationError, chat_answer, chat_answer_with_actions, format_canvas_items, generate_flashcards, generate_flashcards_from_materials, generate_practice_exam
 from backend import uploads
 from gurt.calendar_tokens.minting import (
     CalendarTokenMintingError,
@@ -1143,7 +1143,22 @@ def _handle_chat(event: Mapping[str, Any]) -> Dict[str, Any]:
         course_id = _require_non_empty_string(payload, "courseId")
         question = _require_non_empty_string(payload, "question")
 
+        # Parse optional conversation history
+        raw_history = payload.get("history")
+        history: list[dict[str, str]] | None = None
+        if isinstance(raw_history, list):
+            history = []
+            for entry in raw_history[:10]:  # Cap at 10
+                if isinstance(entry, dict):
+                    role = str(entry.get("role", ""))
+                    content = str(entry.get("content", ""))
+                    if role in ("user", "assistant") and content.strip():
+                        history.append({"role": role, "content": content})
+            if not history:
+                history = None
+
         canvas_context: str | None = None
+        user_id: str | None = None
         try:
             user_id = _extract_authenticated_user_id(event)
             if user_id is None and _is_demo_mode():
@@ -1154,7 +1169,27 @@ def _handle_chat(event: Mapping[str, Any]) -> Dict[str, Any]:
         except Exception:
             pass
 
-        answer = chat_answer(course_id=course_id, question=question, canvas_context=canvas_context)
+        # Fetch available materials for study tool suggestions
+        materials: list[dict[str, Any]] | None = None
+        if user_id is not None:
+            try:
+                materials = _query_canvas_course_materials_for_user(
+                    user_id=user_id, course_id=course_id
+                )
+            except Exception:
+                pass  # Materials are optional; chat still works without them
+
+        # Use actions-aware chat when we have history or materials
+        if history or materials:
+            answer = chat_answer_with_actions(
+                course_id=course_id,
+                question=question,
+                history=history,
+                canvas_context=canvas_context,
+                materials=materials,
+            )
+        else:
+            answer = chat_answer(course_id=course_id, question=question, canvas_context=canvas_context)
     except ValueError as exc:
         return _json_response(400, {"error": str(exc)})
     except GenerationError as exc:

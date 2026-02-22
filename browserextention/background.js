@@ -57,6 +57,7 @@ chrome.action.onClicked.addListener((tab) => {
 
 const CHAT_API_URL = "https://hpthlfk5ql.execute-api.us-west-2.amazonaws.com/dev/chat";
 const API_BASE_URL = CHAT_API_URL.replace(/\/chat\/?$/, "");
+const WEBAPP_BASE_URL = "http://localhost:3000"; // TODO: update with CloudFront URL for production
 
 let activeScrapeRun = null;
 
@@ -111,8 +112,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === "CHAT_QUERY") {
-    handleChatQuery(message.query, message.context, message.courseId).then(sendResponse);
+    handleChatQuery(message.query, message.context, message.courseId, message.history).then(sendResponse);
     return true; // Keep the message channel open for async response
+  }
+
+  if (message.type === "GENERATE_STUDY_TOOL") {
+    handleGenerateStudyTool(message.action, message.courseId, message.courseName).then(sendResponse);
+    return true;
   }
 
   if (message.type === "SCRAPE_MODULES_START") {
@@ -780,7 +786,7 @@ async function handleScrapeModulesStart(message) {
   }
 }
 
-async function handleChatQuery(query, pageContext, explicitCourseId) {
+async function handleChatQuery(query, pageContext, explicitCourseId, history) {
   try {
     const body = { question: query };
 
@@ -811,6 +817,9 @@ async function handleChatQuery(query, pageContext, explicitCourseId) {
     if (pageContext) {
       body.context = pageContext;
     }
+    if (Array.isArray(history) && history.length > 0) {
+      body.history = history;
+    }
 
     const response = await fetch(CHAT_API_URL, {
       method: "POST",
@@ -827,7 +836,76 @@ async function handleChatQuery(query, pageContext, explicitCourseId) {
       throw new Error(`API ${response.status}: ${detail}`);
     }
 
-    return { success: true, answer: data.answer || data.message || JSON.stringify(data) };
+    return { success: true, answer: data.answer || data.message || JSON.stringify(data), action: data.action || null };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+async function handleGenerateStudyTool(action, courseId, courseName) {
+  try {
+    let data;
+
+    if (action.type === "flashcards") {
+      const response = await fetch(`${API_BASE_URL}/generate/flashcards-from-materials`, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({
+          courseId: courseId,
+          materialIds: action.materialIds || [],
+          numCards: action.count || 12
+        })
+      });
+      if (!response.ok) {
+        const detail = await response.text().catch(() => response.statusText);
+        throw new Error(`Generation failed (${response.status}): ${detail}`);
+      }
+      data = await response.json();
+
+      // Build import payload
+      const payload = {
+        type: "deck",
+        title: `${courseName || courseId} Flashcards`,
+        courseId: courseId,
+        courseName: courseName || courseId,
+        resourceLabels: action.materialNames || [],
+        cards: data
+      };
+      const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+      const url = `${WEBAPP_BASE_URL}/import#${encoded}`;
+      chrome.tabs.create({ url });
+      return { success: true };
+
+    } else if (action.type === "practice_exam") {
+      const response = await fetch(`${API_BASE_URL}/generate/practice-exam`, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({
+          courseId: courseId,
+          numQuestions: action.count || 10
+        })
+      });
+      if (!response.ok) {
+        const detail = await response.text().catch(() => response.statusText);
+        throw new Error(`Generation failed (${response.status}): ${detail}`);
+      }
+      data = await response.json();
+
+      const payload = {
+        type: "practiceTest",
+        title: `${courseName || courseId} Practice Exam`,
+        courseId: courseId,
+        courseName: courseName || courseId,
+        exam: data
+      };
+      const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+      const url = `${WEBAPP_BASE_URL}/import#${encoded}`;
+      chrome.tabs.create({ url });
+      return { success: true };
+
+    } else {
+      return { success: false, error: `Unknown action type: ${action.type}` };
+    }
   } catch (err) {
     return { success: false, error: err.message };
   }

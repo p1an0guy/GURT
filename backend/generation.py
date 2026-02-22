@@ -636,15 +636,9 @@ def _retrieve_and_generate(*, kb_id: str, model_arn: str, query: str, system_pro
         raise GenerationError(f"retrieve_and_generate failed: {exc}") from exc
 
 
-def chat_answer(*, course_id: str, question: str, canvas_context: str | None = None) -> dict[str, Any]:
-    kb_id = _require_env("KNOWLEDGE_BASE_ID")
-    model_arn = _require_env("BEDROCK_MODEL_ARN")
-
-    canvas_section = ""
-    if canvas_context:
-        canvas_section = f"\nCanvas assignment data:\n{canvas_context}\n"
-
-    system_prompt = (
+def _build_gurt_system_prompt(course_id: str) -> str:
+    """Return the standard GURT personality/rules system prompt."""
+    return (
         "You are GURT — the Generative Uni Revision Tool! Think of yourself as a creamy, "
         "cool study buddy who's always ready to serve up the freshest knowledge. "
         "You're a friendly frozen-yogurt-themed AI assistant helping a Cal Poly "
@@ -675,6 +669,17 @@ def chat_answer(*, course_id: str, question: str, canvas_context: str | None = N
         "ONLY use search results and context that belong to this course. "
         "Ignore any results from other courses.\n"
     )
+
+
+def chat_answer(*, course_id: str, question: str, canvas_context: str | None = None) -> dict[str, Any]:
+    kb_id = _require_env("KNOWLEDGE_BASE_ID")
+    model_arn = _require_env("BEDROCK_MODEL_ARN")
+
+    canvas_section = ""
+    if canvas_context:
+        canvas_section = f"\nCanvas assignment data:\n{canvas_context}\n"
+
+    system_prompt = _build_gurt_system_prompt(course_id)
 
     query = f"{question}{canvas_section}"
 
@@ -753,3 +758,156 @@ def _chat_answer_manual(*, course_id: str, question: str, system_prompt: str, ca
 
     print(f"[RAG-DEBUG] manual fallback answer_length={len(answer)} citations={len(citations)} for course_id={course_id}")
     return {"answer": answer, "citations": citations}
+
+
+# ---------------------------------------------------------------------------
+# Action-aware chat
+# ---------------------------------------------------------------------------
+
+_ACTION_START = "<<<ACTION>>>"
+_ACTION_END = "<<<END_ACTION>>>"
+
+
+def _parse_action_block(text: str) -> tuple[str, dict[str, Any] | None]:
+    """Extract and remove an ACTION block from model output.
+
+    Returns (clean_text, action_dict_or_None).
+    """
+    start = text.find(_ACTION_START)
+    if start == -1:
+        return text, None
+    end = text.find(_ACTION_END, start)
+    if end == -1:
+        return text, None
+    block = text[start + len(_ACTION_START):end].strip()
+    clean = (text[:start] + text[end + len(_ACTION_END):]).strip()
+    try:
+        action = json.loads(block)
+        if not isinstance(action, dict) or "type" not in action:
+            return clean, None
+        return clean, action
+    except json.JSONDecodeError:
+        return clean, None
+
+
+def chat_answer_with_actions(
+    *,
+    course_id: str,
+    question: str,
+    history: list[dict[str, str]] | None = None,
+    canvas_context: str | None = None,
+    materials: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Chat with RAG context, conversation history, and study tool action support."""
+
+    # 1. Retrieve KB context
+    context = _retrieve_context(course_id=course_id, query=question, k=8)
+    context_block = "\n\n".join(row["text"] for row in context) if context else ""
+
+    # 2. Build system prompt
+    system_prompt = _build_gurt_system_prompt(course_id)
+
+    # Add materials list if available
+    if materials:
+        materials_section = "\n\nSTUDY TOOL CAPABILITIES:\n"
+        materials_section += "You can help students create flashcard decks and practice exams from their course materials.\n\n"
+        materials_section += "Available materials for this course:\n"
+        for mat in materials:
+            materials_section += f"- {mat.get('displayName', 'Unknown')} (ID: {mat.get('canvasFileId', '')})\n"
+        materials_section += (
+            "\nWhen a student asks about flashcards or practice exams/tests:\n"
+            "1. If they're vague (e.g., \"make me flashcards\"), ask what topic or material they want to study.\n"
+            "2. If they specify a topic, match it to the available materials above and suggest the best matches.\n"
+            "3. When you have enough info to suggest materials, include an ACTION block at the END of your response "
+            "(after your friendly message to the student):\n\n"
+            "<<<ACTION>>>\n"
+            "{\"type\": \"flashcards\", \"materialIds\": [\"id1\", \"id2\"], \"materialNames\": [\"name1\", \"name2\"], \"count\": 12}\n"
+            "<<<END_ACTION>>>\n\n"
+            "- For flashcards: set \"type\": \"flashcards\", include materialIds and count (default 12)\n"
+            "- For practice exams: set \"type\": \"practice_exam\", include count (default 10), materialIds is optional\n"
+            "- Only include the ACTION block when you have identified specific materials to suggest\n"
+            "- The ACTION block will be hidden from the student and replaced with a confirmation UI\n"
+        )
+        system_prompt += materials_section
+
+    # 3. Build messages array
+    messages: list[dict[str, Any]] = []
+
+    # Add conversation history
+    if history:
+        for msg in history[-10:]:  # Cap at 10 messages
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            if role in ("user", "assistant") and content.strip():
+                messages.append({"role": role, "content": [{"type": "text", "text": content}]})
+
+    # Build current user message with context
+    canvas_section = ""
+    if canvas_context:
+        canvas_section = f"\nCanvas assignment data:\n{canvas_context}\n"
+
+    user_content = ""
+    if context_block:
+        user_content += f"Course context:\n{context_block}\n\n"
+    if canvas_section:
+        user_content += f"{canvas_section}\n"
+    user_content += f"Student question: {question}"
+
+    messages.append({"role": "user", "content": [{"type": "text", "text": user_content}]})
+
+    # 4. Invoke model
+    model_id = _require_env("BEDROCK_MODEL_ID")
+    client = _bedrock_runtime()
+    body: dict[str, Any] = {
+        "anthropic_version": "bedrock-2023-05-31",
+        "max_tokens": 4096,
+        "temperature": 0.2,
+        "messages": messages,
+        "system": [{"type": "text", "text": system_prompt}],
+    }
+    try:
+        response = client.invoke_model(
+            modelId=model_id,
+            contentType="application/json",
+            accept="application/json",
+            body=json.dumps(body).encode("utf-8"),
+        )
+    except Exception as exc:
+        raise GenerationError(f"chat model invocation failed: {exc}") from exc
+
+    try:
+        payload = json.loads(response["body"].read().decode("utf-8"))
+    except (json.JSONDecodeError, KeyError, AttributeError) as exc:
+        raise GenerationError("model returned unreadable response") from exc
+
+    chunks = payload.get("content", [])
+    if not isinstance(chunks, list) or not chunks:
+        raise GenerationError("model returned empty response")
+
+    text = None
+    for chunk in chunks:
+        if isinstance(chunk, dict) and chunk.get("type") == "text":
+            text = chunk.get("text")
+            break
+    if text is None:
+        text = chunks[0].get("text") if isinstance(chunks[0], dict) else None
+    if not isinstance(text, str) or not text.strip():
+        raise GenerationError("model returned non-text response")
+
+    # 5. Parse action block
+    answer, action = _parse_action_block(text.strip())
+
+    if not answer:
+        raise GenerationError("chat model returned empty answer")
+
+    # 6. Build citations from context
+    default_citations = [
+        row.get("source", "").strip() for row in (context or [])[:3] if row.get("source", "").strip()
+    ]
+
+    result: dict[str, Any] = {"answer": answer, "citations": default_citations}
+    if action:
+        result["action"] = action
+
+    print(f"[RAG-DEBUG] actions_chat answer_length={len(answer)} citations={len(default_citations)} has_action={action is not None} for course_id={course_id}")
+    return result
