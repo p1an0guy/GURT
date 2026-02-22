@@ -34,7 +34,7 @@
   --bg-accent-a: rgba(196, 71, 35, 0.16);
   --bg-accent-b: rgba(34, 106, 181, 0.2);
   --ink: #17202a;
-  --ink-soft: #415262;
+  --ink-soft: #394b5e;
   --card: rgba(255, 255, 255, 0.86);
   --line: rgba(23, 32, 42, 0.14);
   --accent: #c40f11;
@@ -43,8 +43,8 @@
   --warn: #8a4e00;
   --error: #a82424;
   --surface: rgba(255, 255, 255, 0.94);
-  --surface-soft: rgba(23, 32, 42, 0.06);
-  --input-bg: rgba(255, 255, 255, 0.96);
+  --surface-soft: rgba(255, 255, 255, 0.75);
+  --input-bg: #ffffff;
   --button-muted: #6f6f73;
   --scrollbar-thumb: rgba(23, 32, 42, 0.22);
   --table-alt-row: rgba(23, 32, 42, 0.03);
@@ -678,24 +678,25 @@ body {
 }
 
 .citation-menu-button {
-  border: 1px solid #d1d5db;
-  background: #f8fafc;
-  color: #334155;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-soft);
   border-radius: 999px;
   font-size: 11px;
   line-height: 1;
   font-weight: 600;
   padding: 5px 10px;
   cursor: pointer;
+  font-family: inherit;
 }
 
 .citation-menu-button:hover {
-  background: #eef2f7;
-  border-color: #94a3b8;
+  background: var(--surface-soft);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
 }
 
 .citation-menu-button:focus-visible {
-  outline: 2px solid #4a90d9;
+  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
   outline-offset: 1px;
 }
 
@@ -707,10 +708,10 @@ body {
   width: min(280px, 74vw);
   max-height: 190px;
   overflow-y: auto;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--line);
   border-radius: 10px;
-  background: #fff;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
+  background: var(--surface);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
   padding: 6px;
   display: none;
   z-index: 20;
@@ -725,7 +726,7 @@ body {
   padding: 7px 9px;
   border-radius: 8px;
   font-size: 12px;
-  color: #075985;
+  color: var(--accent);
   text-decoration: none;
   white-space: nowrap;
   overflow: hidden;
@@ -733,8 +734,8 @@ body {
 }
 
 .citation-menu-link:hover {
-  background: #f0f9ff;
-  color: #0c4a6e;
+  background: var(--accent-soft);
+  color: var(--ink);
 }
 
 .typing-indicator {
