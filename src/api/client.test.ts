@@ -37,6 +37,23 @@ test("uses fixture mode when explicitly enabled", async () => {
   const cards = await client.getStudyToday("course-psych-101");
   const mastery = await client.getStudyMastery("course-psych-101");
   const calendarToken = await client.createCalendarToken();
+  const upload = await client.createUpload({
+    courseId: "course-psych-101",
+    filename: "week-1-notes.docx",
+    contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    contentLengthBytes: 1024,
+  });
+  await client.uploadFileToUrl(
+    upload.uploadUrl,
+    new Blob(["fixture note"]),
+    upload.contentType,
+  );
+  const materials = await client.listCourseMaterials("course-psych-101");
+  const generatedFromMaterials = await client.generateFlashcardsFromMaterials(
+    "course-psych-101",
+    [materials[0].canvasFileId],
+    2,
+  );
   const ingestStart = await client.startDocsIngest({
     docId: "doc-fixture",
     courseId: "course-psych-101",
@@ -52,6 +69,9 @@ test("uses fixture mode when explicitly enabled", async () => {
   assert.equal(chat.citations.length, 1);
   assert.equal(courses.length, 2);
   assert.ok(cards.length > 0);
+  assert.equal(upload.docId.startsWith("doc-fixture-"), true);
+  assert.ok(materials.length > 0);
+  assert.equal(generatedFromMaterials.length, 2);
   assert.equal(calendarToken.token, "demo-calendar-token");
   assert.equal(ingestStart.status, "RUNNING");
   assert.equal(ingestStatus.status, "RUNNING");
@@ -240,6 +260,45 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
       });
     }
 
+    if (url.endsWith("/courses/course%2F1/materials")) {
+      return jsonResponse([
+        {
+          canvasFileId: "file-1",
+          courseId: "course/1",
+          displayName: "Lecture 1.pdf",
+          contentType: "application/pdf",
+          sizeBytes: 123,
+          updatedAt: "2026-09-02T09:00:00Z",
+        },
+      ]);
+    }
+
+    if (url.endsWith("/generate/flashcards-from-materials")) {
+      return jsonResponse([
+        {
+          id: "card-material-1",
+          courseId: "course/1",
+          topicId: "topic-1",
+          prompt: "Material Prompt 1",
+          answer: "Material Answer 1",
+        },
+      ]);
+    }
+
+    if (url.endsWith("/uploads")) {
+      return jsonResponse({
+        docId: "doc-upload-1",
+        key: "uploads/course-1/doc-upload-1/week-1-notes.docx",
+        uploadUrl: "https://uploads.example.dev/doc-upload-1",
+        expiresInSeconds: 900,
+        contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      });
+    }
+
+    if (url.startsWith("https://uploads.example.dev/")) {
+      return new Response("", { status: 200 });
+    }
+
     if (url.endsWith("/docs/ingest")) {
       return jsonResponse({
         jobId: "ingest-123",
@@ -286,11 +345,20 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
   await client.chat("course/1", "What is retrieval practice?");
   await client.listCourses();
   await client.listCourseItems("course/1");
+  const materials = await client.listCourseMaterials("course/1");
+  await client.generateFlashcardsFromMaterials("course/1", [materials[0].canvasFileId], 2);
   await client.getStudyToday("course/1");
   await client.getStudyMastery("course/1");
   await client.postStudyReview(reviewEvent);
   const ics = await client.getCalendarIcs("demo/token");
   const tokenResponse = await client.createCalendarToken();
+  const upload = await client.createUpload({
+    courseId: "course-1",
+    filename: "week-1-notes.docx",
+    contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    contentLengthBytes: 4096,
+  });
+  await client.uploadFileToUrl(upload.uploadUrl, new Blob(["week 1 notes"]), upload.contentType);
   const ingestStarted = await client.startDocsIngest({
     docId: "doc-1",
     courseId: "course/1",
@@ -300,14 +368,17 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
 
   assert.match(ics, /BEGIN:VCALENDAR/);
   assert.equal(tokenResponse.token, "minted-token");
+  assert.equal(upload.docId, "doc-upload-1");
   assert.equal(ingestStatus.status, "FINISHED");
-  assert.equal(calls.length, 15);
+  assert.equal(calls.length, 19);
   assert.ok(calls.some((call) => call.url === "https://api.example.dev/canvas/connect"));
   assert.ok(calls.some((call) => call.url === "https://api.example.dev/canvas/sync"));
   assert.ok(calls.some((call) => call.url === "https://api.example.dev/generate/flashcards"));
+  assert.ok(calls.some((call) => call.url === "https://api.example.dev/generate/flashcards-from-materials"));
   assert.ok(calls.some((call) => call.url === "https://api.example.dev/generate/practice-exam"));
   assert.ok(calls.some((call) => call.url === "https://api.example.dev/chat"));
   assert.ok(calls.some((call) => call.url === "https://api.example.dev/courses/course%2F1/items"));
+  assert.ok(calls.some((call) => call.url === "https://api.example.dev/courses/course%2F1/materials"));
   assert.ok(calls.some((call) => call.url === "https://api.example.dev/study/today?courseId=course%2F1"));
   assert.ok(calls.some((call) => call.url === "https://api.example.dev/study/mastery?courseId=course%2F1"));
 
@@ -332,6 +403,37 @@ test("hits contract endpoints when fixture mode is disabled", async () => {
   const ingestStartCall = calls.find((call) => call.url === "https://api.example.dev/docs/ingest");
   assert.ok(ingestStartCall);
   assert.equal(ingestStartCall.init?.method, "POST");
+
+  const uploadCall = calls.find((call) => call.url === "https://api.example.dev/uploads");
+  assert.ok(uploadCall);
+  assert.equal(uploadCall.init?.method, "POST");
+  assert.equal(
+    uploadCall.init?.body,
+    JSON.stringify({
+      courseId: "course-1",
+      filename: "week-1-notes.docx",
+      contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      contentLengthBytes: 4096,
+    }),
+  );
+
+  const uploadPutCall = calls.find((call) => call.url === "https://uploads.example.dev/doc-upload-1");
+  assert.ok(uploadPutCall);
+  assert.equal(uploadPutCall.init?.method, "PUT");
+
+  const generateFromMaterialsCall = calls.find(
+    (call) => call.url === "https://api.example.dev/generate/flashcards-from-materials",
+  );
+  assert.ok(generateFromMaterialsCall);
+  assert.equal(generateFromMaterialsCall.init?.method, "POST");
+  assert.equal(
+    generateFromMaterialsCall.init?.body,
+    JSON.stringify({
+      courseId: "course/1",
+      materialIds: ["file-1"],
+      numCards: 2,
+    }),
+  );
 });
 
 test("preserves stage path when baseUrl includes a stage segment", async () => {
