@@ -147,6 +147,29 @@ Docs ingest workflow (Step Functions + PyMuPDF/Textract fallback + Bedrock KB):
 7. On successful finalize, Bedrock Knowledge Base `StartIngestionJob` is triggered automatically (no manual CLI) when `KNOWLEDGE_BASE_ID` and `KNOWLEDGE_BASE_DATA_SOURCE_ID` are configured.
 8. Status response may include `kbIngestionJobId` (when trigger succeeded) or `kbIngestionError` (when trigger failed) for traceability.
 
+Ingest finalize and KB trigger operational metrics:
+
+- CloudWatch namespace: `Gurt/IngestWorkflow`
+- Stable dimensions (all metrics):
+  - `Service=StudyBuddy`
+  - `Workflow=DocsIngest`
+  - `Handler=Finalize`
+  - `Environment=<APP_ENV|STAGE|ENV|unknown>`
+- Metric names (all `Count`):
+  - `IngestFinalizeSuccess` (emitted when finalize persists `FINISHED`)
+  - `IngestFinalizeFailure` (emitted when finalize persists `FAILED`)
+  - `IngestKbTriggerMissingConfig` (emitted when finalize is `FINISHED` but KB ids are missing)
+  - `IngestKbTriggerStarted` (emitted immediately before `StartIngestionJob`)
+  - `IngestKbTriggerSucceeded` (emitted after `StartIngestionJob` returns successfully)
+  - `IngestKbTriggerFailed` (emitted when `StartIngestionJob` raises)
+- Suggested alert thresholds:
+  - `IngestKbTriggerMissingConfig >= 1` for 10 minutes in non-local environments (critical misconfiguration).
+  - `IngestKbTriggerFailed >= 3` in 15 minutes (warning), `>= 10` in 15 minutes (critical).
+  - Finalize failure ratio > 5% over 30 minutes using metric math:
+    `IngestFinalizeFailure / (IngestFinalizeSuccess + IngestFinalizeFailure)`.
+  - Trigger failure ratio > 10% over 30 minutes using metric math:
+    `IngestKbTriggerFailed / (IngestKbTriggerSucceeded + IngestKbTriggerFailed)`.
+
 ## CDK infra synth and deploy (demo scaffold)
 
 Infrastructure is scaffolded in `infra/` with `GurtDataStack`, `GurtKnowledgeBaseStack`, and `GurtApiStack`.

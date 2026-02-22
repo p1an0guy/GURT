@@ -34,12 +34,20 @@ class FinalizeHandlerTests(unittest.TestCase):
         self._table = mock.MagicMock()
         self._table.put_item = mock.MagicMock(return_value=None)
         self._table.update_item = mock.MagicMock(return_value=None)
+        self._emit_metric_patcher = mock.patch(
+            "backend.ingest_workflow._emit_operational_metric"
+        )
+        self._emit_metric = self._emit_metric_patcher.start()
+        self.addCleanup(self._emit_metric_patcher.stop)
 
     def _patch_dynamodb(self) -> mock._patch:
         return mock.patch(
             "backend.ingest_workflow._dynamodb_table",
             return_value=self._table,
         )
+
+    def _emitted_metric_names(self) -> list[str]:
+        return [call.args[0] for call in self._emit_metric.call_args_list]
 
     def test_successful_finalize_triggers_kb_ingestion(self) -> None:
         """When status is FINISHED and KB ids are set, StartIngestionJob is called."""
@@ -75,6 +83,14 @@ class FinalizeHandlerTests(unittest.TestCase):
         self._table.update_item.assert_called()
         values = self._table.update_item.call_args.kwargs.get("ExpressionAttributeValues", {})
         self.assertEqual(values.get(":jid"), "kb-ingest-xyz")
+        self.assertEqual(
+            self._emitted_metric_names(),
+            [
+                "IngestFinalizeSuccess",
+                "IngestKbTriggerStarted",
+                "IngestKbTriggerSucceeded",
+            ],
+        )
 
     def test_trigger_failure_path_surfaced_with_actionable_error(self) -> None:
         """When StartIngestionJob fails, error is persisted and handler still returns FINISHED."""
@@ -104,6 +120,14 @@ class FinalizeHandlerTests(unittest.TestCase):
         err_val = values.get(":err", "")
         self.assertIn("KB ingestion trigger failed", str(err_val))
         self.assertIn("RateExceeded", str(err_val))
+        self.assertEqual(
+            self._emitted_metric_names(),
+            [
+                "IngestFinalizeSuccess",
+                "IngestKbTriggerStarted",
+                "IngestKbTriggerFailed",
+            ],
+        )
 
     def test_idempotent_client_token_for_same_source_revision(self) -> None:
         """Repeated finalize for same source_key and text length yields same clientToken."""
@@ -151,6 +175,13 @@ class FinalizeHandlerTests(unittest.TestCase):
         values = self._table.update_item.call_args.kwargs.get("ExpressionAttributeValues", {})
         self.assertIn("KNOWLEDGE_BASE_ID", str(values.get(":err", "")))
         self.assertIn("DATA_SOURCE_ID", str(values.get(":err", "")))
+        self.assertEqual(
+            self._emitted_metric_names(),
+            [
+                "IngestFinalizeSuccess",
+                "IngestKbTriggerMissingConfig",
+            ],
+        )
 
     def test_failed_status_skips_kb_ingestion(self) -> None:
         """When error is present, status is FAILED and KB ingestion is NOT triggered."""
@@ -179,6 +210,7 @@ class FinalizeHandlerTests(unittest.TestCase):
         item = self._table.put_item.call_args.kwargs["Item"]
         self.assertEqual(item["status"], "FAILED")
         self._table.update_item.assert_not_called()
+        self.assertEqual(self._emitted_metric_names(), ["IngestFinalizeFailure"])
 
     def test_invalid_event_non_dict_raises_value_error(self) -> None:
         """Non-dict event raises ValueError."""
