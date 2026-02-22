@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import type { CourseMaterial } from "../api/types.ts";
 import {
+  appendUniqueUploadFiles,
   getFlashcardSourceKind,
   getSelectedFlashcardSources,
   getUploadContentTypeForFile,
+  getUploadQueueKey,
+  splitFilesBySupportedUploadType,
 } from "./sources.ts";
-import type { CourseMaterial } from "../api/types.ts";
 
 test("getUploadContentTypeForFile accepts browser-provided content type", () => {
   const contentType = getUploadContentTypeForFile({
@@ -36,6 +39,69 @@ test("getUploadContentTypeForFile rejects unsupported files", () => {
   });
 
   assert.equal(contentType, null);
+});
+
+test("splitFilesBySupportedUploadType classifies accepted and rejected files", () => {
+  const files: Array<Pick<File, "name" | "type">> = [
+    { name: "lecture-1.pdf", type: "application/pdf" },
+    { name: "outline.DOCX", type: "" },
+    { name: "summary.txt", type: "text/plain" },
+    { name: "diagram.png", type: "image/png" },
+  ];
+
+  const { accepted, rejected } = splitFilesBySupportedUploadType(files);
+
+  assert.deepEqual(accepted.map((file) => file.name), [
+    "lecture-1.pdf",
+    "outline.DOCX",
+    "summary.txt",
+  ]);
+  assert.deepEqual(rejected.map((file) => file.name), ["diagram.png"]);
+});
+
+test("getUploadQueueKey uses name size and lastModified", () => {
+  const key = getUploadQueueKey({
+    name: "lecture.pdf",
+    size: 1024,
+    lastModified: 1700000000000,
+  });
+
+  assert.equal(key, "lecture.pdf::1024::1700000000000");
+});
+
+test("appendUniqueUploadFiles appends only unique files and reports counts", () => {
+  const existing = [
+    {
+      key: getUploadQueueKey({
+        name: "existing.pdf",
+        size: 10,
+        lastModified: 1,
+      }),
+      file: {
+        name: "existing.pdf",
+        size: 10,
+        lastModified: 1,
+        type: "application/pdf",
+      },
+    },
+  ];
+
+  const incoming: Array<Pick<File, "name" | "size" | "lastModified" | "type">> = [
+    { name: "existing.pdf", size: 10, lastModified: 1, type: "application/pdf" },
+    { name: "new.docx", size: 200, lastModified: 2, type: "" },
+    { name: "new.docx", size: 200, lastModified: 2, type: "" },
+    { name: "new-2.txt", size: 50, lastModified: 3, type: "text/plain" },
+  ];
+
+  const result = appendUniqueUploadFiles(existing, incoming);
+
+  assert.equal(result.addedCount, 2);
+  assert.equal(result.duplicateCount, 2);
+  assert.deepEqual(result.queue.map((row) => row.file.name), [
+    "existing.pdf",
+    "new.docx",
+    "new-2.txt",
+  ]);
 });
 
 test("getFlashcardSourceKind distinguishes uploaded notes from synced materials", () => {
@@ -78,4 +144,3 @@ test("getSelectedFlashcardSources returns selected sources with explicit kinds",
     },
   ]);
 });
-

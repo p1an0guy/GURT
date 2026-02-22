@@ -122,6 +122,8 @@ export interface IngestStatusResponse {
   usedTextract: boolean;
   updatedAt: string;
   error: string;
+  kbIngestionJobId?: string;
+  kbIngestionError?: string;
 }
 
 export interface TopicMastery {

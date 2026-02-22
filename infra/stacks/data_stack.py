@@ -11,8 +11,23 @@ from constructs import Construct
 class DataStack(Stack):
     """Owns S3 and DynamoDB resources used by the API stack."""
 
-    def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
+    def __init__(
+        self,
+        scope: Construct,
+        construct_id: str,
+        *,
+        frontend_allowed_origins: list[str] | None = None,
+        **kwargs,
+    ) -> None:
         super().__init__(scope, construct_id, **kwargs)
+
+        allowed_origins = [
+            origin.strip()
+            for origin in (frontend_allowed_origins or ["http://localhost:3000"])
+            if origin and origin.strip()
+        ]
+        if not allowed_origins:
+            allowed_origins = ["http://localhost:3000"]
 
         self.uploads_bucket = s3.Bucket(
             self,
@@ -22,6 +37,14 @@ class DataStack(Stack):
             enforce_ssl=True,
             auto_delete_objects=True,
             removal_policy=RemovalPolicy.DESTROY,
+            cors=[
+                s3.CorsRule(
+                    allowed_methods=[s3.HttpMethods.PUT, s3.HttpMethods.GET, s3.HttpMethods.HEAD],
+                    allowed_origins=allowed_origins,
+                    allowed_headers=["*"],
+                    exposed_headers=["ETag"],
+                )
+            ],
         )
 
         table_kwargs = {

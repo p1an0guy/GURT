@@ -25,7 +25,14 @@ export interface SelectedFlashcardSource {
   kind: FlashcardSourceKind;
 }
 
-export function getUploadContentTypeForFile(file: Pick<File, "name" | "type">): UploadRequest["contentType"] | null {
+export interface UploadQueueItem<TFile extends Pick<File, "name" | "size" | "lastModified"> = File> {
+  key: string;
+  file: TFile;
+}
+
+export function getUploadContentTypeForFile(
+  file: Pick<File, "name" | "type">,
+): UploadRequest["contentType"] | null {
   if (CONTENT_TYPE_SET.has(file.type as UploadRequest["contentType"])) {
     return file.type as UploadRequest["contentType"];
   }
@@ -40,7 +47,53 @@ export function getUploadContentTypeForFile(file: Pick<File, "name" | "type">): 
   return null;
 }
 
-export function getFlashcardSourceKind(material: Pick<CourseMaterial, "canvasFileId">): FlashcardSourceKind {
+export function splitFilesBySupportedUploadType<TFile extends Pick<File, "name" | "type">>(
+  files: readonly TFile[],
+): { accepted: TFile[]; rejected: TFile[] } {
+  const accepted: TFile[] = [];
+  const rejected: TFile[] = [];
+
+  for (const file of files) {
+    if (getUploadContentTypeForFile(file)) {
+      accepted.push(file);
+      continue;
+    }
+    rejected.push(file);
+  }
+
+  return { accepted, rejected };
+}
+
+export function getUploadQueueKey(file: Pick<File, "name" | "size" | "lastModified">): string {
+  return `${file.name}::${file.size}::${file.lastModified}`;
+}
+
+export function appendUniqueUploadFiles<TFile extends Pick<File, "name" | "size" | "lastModified">>(
+  previous: readonly UploadQueueItem<TFile>[],
+  incoming: readonly TFile[],
+): { queue: UploadQueueItem<TFile>[]; addedCount: number; duplicateCount: number } {
+  const seenKeys = new Set(previous.map((queued) => queued.key));
+  const queue = [...previous];
+  let addedCount = 0;
+  let duplicateCount = 0;
+
+  for (const file of incoming) {
+    const key = getUploadQueueKey(file);
+    if (seenKeys.has(key)) {
+      duplicateCount += 1;
+      continue;
+    }
+    seenKeys.add(key);
+    queue.push({ key, file });
+    addedCount += 1;
+  }
+
+  return { queue, addedCount, duplicateCount };
+}
+
+export function getFlashcardSourceKind(
+  material: Pick<CourseMaterial, "canvasFileId">,
+): FlashcardSourceKind {
   return material.canvasFileId.startsWith("doc-") ? "note" : "synced";
 }
 
@@ -56,4 +109,3 @@ export function getSelectedFlashcardSources(
       kind: getFlashcardSourceKind(material),
     }));
 }
-
