@@ -52,6 +52,7 @@ _ENTITY_CANVAS_ITEM = "CanvasItem"
 _ENTITY_CANVAS_CONNECTION = "CanvasConnection"
 _ENTITY_INGEST_JOB = "IngestJob"
 _ENTITY_FLASHCARD_GEN_JOB = "FlashcardGenJob"
+_ENTITY_PRACTICE_EXAM_GEN_JOB = "PracticeExamGenJob"
 _MATERIAL_FILENAME_SANITIZE = re.compile(r"[^A-Za-z0-9._-]+")
 _STUDY_TODAY_DEFAULT_COUNT = 5
 _STUDY_TODAY_MAX_COUNT = 50
@@ -696,6 +697,13 @@ def _flashcard_gen_state_machine_arn() -> str:
     return arn
 
 
+def _practice_exam_gen_state_machine_arn() -> str:
+    arn = os.getenv("PRACTICE_EXAM_GEN_STATE_MACHINE_ARN", "").strip()
+    if not arn:
+        raise RuntimeError("server misconfiguration: PRACTICE_EXAM_GEN_STATE_MACHINE_ARN missing")
+    return arn
+
+
 def _start_ingest_job(*, doc_id: str, course_id: str, key: str) -> dict[str, Any]:
     job_id = f"ingest-{uuid4().hex}"
     bucket = os.getenv("UPLOADS_BUCKET", "").strip()
@@ -777,6 +785,44 @@ def _start_flashcard_gen_job(
     }
     _stepfunctions_client().start_execution(
         stateMachineArn=_flashcard_gen_state_machine_arn(),
+        name=job_id,
+        input=json.dumps(execution_input),
+    )
+    return {"jobId": job_id, "status": "RUNNING", "createdAt": now}
+
+
+def _start_practice_exam_gen_job(
+    *,
+    user_id: str,
+    course_id: str,
+    num_questions: int,
+) -> dict[str, Any]:
+    job_id = f"pracexam-{uuid4().hex}"
+    now = _utc_now_rfc3339()
+    _docs_table().put_item(
+        Item={
+            "docId": job_id,
+            "entityType": _ENTITY_PRACTICE_EXAM_GEN_JOB,
+            "jobId": job_id,
+            "userId": user_id,
+            "courseId": course_id,
+            "numQuestions": num_questions,
+            "status": "RUNNING",
+            "exam": {},
+            "error": "",
+            "createdAt": now,
+            "updatedAt": now,
+        }
+    )
+
+    execution_input = {
+        "jobId": job_id,
+        "userId": user_id,
+        "courseId": course_id,
+        "numQuestions": num_questions,
+    }
+    _stepfunctions_client().start_execution(
+        stateMachineArn=_practice_exam_gen_state_machine_arn(),
         name=job_id,
         input=json.dumps(execution_input),
     )
@@ -1416,6 +1462,72 @@ def _handle_generate_practice_exam(event: Mapping[str, Any]) -> Dict[str, Any]:
         return _json_response(502, {"error": str(exc)})
 
     return _text_response(200, json.dumps(exam), content_type="application/json")
+
+
+def _handle_practice_exam_gen_start(event: Mapping[str, Any]) -> Dict[str, Any]:
+    """Start an async practice exam generation job."""
+    user_id, auth_error = _require_authenticated_user_id(event)
+    if auth_error is not None or user_id is None:
+        return auth_error or _json_response(401, {"error": "authenticated principal is required"})
+
+    payload, parse_error = _parse_json_body(event)
+    if parse_error is not None or payload is None:
+        return _json_response(400, {"error": parse_error or "request body must be valid JSON"})
+
+    try:
+        course_id = _require_non_empty_string(payload, "courseId")
+        num_questions_raw = payload.get("numQuestions", 10)
+        num_questions = int(num_questions_raw)
+        if num_questions < 1:
+            return _json_response(400, {"error": "numQuestions must be >= 1"})
+        num_questions = min(num_questions, 20)
+        job = _start_practice_exam_gen_job(
+            user_id=user_id,
+            course_id=course_id,
+            num_questions=num_questions,
+        )
+    except ValueError as exc:
+        return _json_response(400, {"error": str(exc)})
+    except RuntimeError as exc:
+        return _json_response(500, {"error": str(exc)})
+    except Exception as exc:
+        return _json_response(500, {"error": f"unable to start practice exam generation job: {exc}"})
+
+    return _json_response(202, job)
+
+
+def _handle_practice_exam_gen_status(event: Mapping[str, Any], job_id: str) -> Dict[str, Any]:
+    """Poll the status of an async practice exam generation job."""
+    user_id, auth_error = _require_authenticated_user_id(event)
+    if auth_error is not None or user_id is None:
+        return auth_error or _json_response(401, {"error": "authenticated principal is required"})
+
+    try:
+        response = _docs_table().get_item(Key={"docId": job_id})
+    except Exception as exc:
+        return _json_response(500, {"error": str(exc)})
+
+    record = response.get("Item")
+    if not isinstance(record, dict) or record.get("entityType") != _ENTITY_PRACTICE_EXAM_GEN_JOB:
+        return _json_response(404, {"error": "practice exam generation job not found"})
+
+    if str(record.get("userId", "")).strip() != user_id:
+        return _json_response(404, {"error": "practice exam generation job not found"})
+
+    result: dict[str, Any] = {
+        "jobId": str(record.get("jobId", job_id)),
+        "status": str(record.get("status", "UNKNOWN")),
+        "updatedAt": str(record.get("updatedAt", "")),
+    }
+    status = record.get("status")
+    if status == "FINISHED":
+        exam = record.get("exam")
+        if isinstance(exam, dict):
+            result["exam"] = exam
+    if status == "FAILED":
+        result["error"] = str(record.get("error", ""))
+
+    return _json_response(200, result)
 
 
 def _handle_chat(event: Mapping[str, Any]) -> Dict[str, Any]:
@@ -2361,6 +2473,14 @@ def lambda_handler(event: Mapping[str, Any], context: Any) -> Dict[str, Any]:
 
     if method == "POST" and path == "/generate/practice-exam":
         return _handle_generate_practice_exam(event)
+
+    if method == "POST" and path == "/generate/practice-exam/jobs":
+        return _handle_practice_exam_gen_start(event)
+
+    if method == "GET":
+        practice_exam_gen_job_match = re.fullmatch(r"/generate/practice-exam/jobs/([^/]+)", path)
+        if practice_exam_gen_job_match:
+            return _handle_practice_exam_gen_status(event, practice_exam_gen_job_match.group(1))
 
     if method == "GET":
         token = _extract_calendar_token(path, path_params)

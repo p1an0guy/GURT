@@ -33,6 +33,8 @@ import type {
   IngestStartResponse,
   IngestStatusResponse,
   PracticeExam,
+  PracticeExamGenerationStartResponse,
+  PracticeExamGenerationStatusResponse,
   ReviewEvent,
   StudyReviewAck,
   TopicMastery,
@@ -55,6 +57,11 @@ export interface ApiClient {
   syncCanvas(): Promise<CanvasSyncResponse>;
   generateFlashcards(courseId: string, numCards: number): Promise<Card[]>;
   generatePracticeExam(courseId: string, numQuestions: number): Promise<PracticeExam>;
+  startPracticeExamGeneration(
+    courseId: string,
+    numQuestions: number,
+  ): Promise<PracticeExamGenerationStartResponse>;
+  getPracticeExamGenerationStatus(jobId: string): Promise<PracticeExamGenerationStatusResponse>;
   chat(courseId: string, question: string): Promise<ChatResponse>;
   listCourses(): Promise<Course[]>;
   listCourseItems(courseId: string): Promise<CanvasItem[]>;
@@ -155,6 +162,7 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
   const fetchImpl = options.fetchImpl ?? fetch;
   const useFixtures = options.useFixtures ?? readFixtureModeEnv();
   const demoUserId = options.demoUserId?.trim() ?? "";
+  const fixturePracticeExamJobs = new Map<string, PracticeExam>();
 
   function withDemoHeader(init?: RequestInit): RequestInit | undefined {
     if (!demoUserId) {
@@ -251,6 +259,52 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
         },
         body: JSON.stringify({ courseId, numQuestions }),
       });
+    },
+
+    async startPracticeExamGeneration(
+      courseId: string,
+      numQuestions: number,
+    ): Promise<PracticeExamGenerationStartResponse> {
+      if (useFixtures) {
+        const jobId = `pracexam-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+        const exam = getFixturePracticeExam(courseId, numQuestions);
+        fixturePracticeExamJobs.set(jobId, exam);
+        return {
+          jobId,
+          status: "RUNNING",
+          createdAt: new Date().toISOString(),
+        };
+      }
+      return requestJson<PracticeExamGenerationStartResponse>("/generate/practice-exam/jobs", {
+        method: "POST",
+        headers: {
+          "content-type": "text/plain",
+        },
+        body: JSON.stringify({ courseId, numQuestions }),
+      });
+    },
+
+    async getPracticeExamGenerationStatus(jobId: string): Promise<PracticeExamGenerationStatusResponse> {
+      if (useFixtures) {
+        const exam = fixturePracticeExamJobs.get(jobId);
+        if (!exam) {
+          return {
+            jobId,
+            status: "FAILED",
+            updatedAt: new Date().toISOString(),
+            error: "Practice exam generation job not found.",
+          };
+        }
+        return {
+          jobId,
+          status: "FINISHED",
+          updatedAt: new Date().toISOString(),
+          exam,
+        };
+      }
+      return requestJson<PracticeExamGenerationStatusResponse>(
+        `/generate/practice-exam/jobs/${encodeURIComponent(jobId)}`,
+      );
     },
 
     async chat(courseId: string, question: string): Promise<ChatResponse> {
