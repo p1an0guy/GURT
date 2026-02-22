@@ -93,9 +93,10 @@ _INDEX_CREATOR_CODE = textwrap.dedent("""\
         credentials = session.get_credentials().get_frozen_credentials()
         region = os.environ.get("AWS_REGION", "us-west-2")
 
-        # Retry a few times since the collection may take a moment to become active.
+        # AOSS data access policies can take up to 2 minutes to propagate.
+        # Retry with increasing backoff to allow for this.
         last_error = None
-        for attempt in range(5):
+        for attempt in range(10):
             try:
                 req = AWSRequest(method="PUT", url=url, data=body,
                                  headers={"Content-Type": "application/json"})
@@ -115,11 +116,11 @@ _INDEX_CREATOR_CODE = textwrap.dedent("""\
                     print(f"Index already exists: {index_name}")
                     return
                 last_error = f"HTTP {exc.code}: {resp_body}"
-                print(f"Attempt {attempt+1} failed: {last_error}")
+                print(f"Attempt {attempt+1}/10 failed: {last_error}")
             except Exception as exc:
                 last_error = str(exc)
-                print(f"Attempt {attempt+1} failed: {last_error}")
-            time.sleep(10)
+                print(f"Attempt {attempt+1}/10 failed: {last_error}")
+            time.sleep(20)
 
         raise RuntimeError(f"Failed to create index after retries: {last_error}")
 """)
