@@ -858,7 +858,13 @@ async function handleChatQuery(query, pageContext, explicitCourseId, history) {
       throw new Error(`API ${response.status}: ${detail}`);
     }
 
-    return { success: true, answer: data.answer || data.message || JSON.stringify(data), action: data.action || null };
+    return {
+      success: true,
+      answer: (data && (data.answer || data.message)) || JSON.stringify(data),
+      action: (data && data.action) || null,
+      citations: data && Array.isArray(data.citations) ? data.citations : [],
+      citationDetails: data && Array.isArray(data.citationDetails) ? data.citationDetails : []
+    };
   } catch (err) {
     return { success: false, error: err.message };
   }
