@@ -5,6 +5,8 @@ The extension uses the same public API routes as the web app.
 Study/import redirects are opened against the frontend base URL configured in
 `browserextention/deployment_config.json` (`webAppBaseUrl`), which is synced from
 CDK output `FrontendCloudFrontUrl` by `scripts/deploy.sh`.
+Extension API requests are sent to `apiBaseUrl` in the same config file, synced
+from CDK output `ApiBaseUrl`.
 
 ## Backend routes used by extension
 

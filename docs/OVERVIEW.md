@@ -53,7 +53,9 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 - **Authentication for hackathon demo:**
   - No end-user login/auth for now.
   - Canvas token connectivity remains in scope for Canvas data sync.
-- **Extension redirect target:** Browser extension import redirects use `browserextention/deployment_config.json` (`webAppBaseUrl`), which is synced from CDK outputs after deploy.
+- **Extension deployment config:** Browser extension import redirects and API calls use
+  `browserextention/deployment_config.json` (`webAppBaseUrl`, `apiBaseUrl`),
+  which is synced from CDK outputs after deploy.
 
 ## Demo scope (strict)
 
