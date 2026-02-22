@@ -28,6 +28,34 @@
       <span id="filesLoadedBadge" class="files-loaded-badge hidden"><strong id="filesLoadedCount">0</strong> Files Loaded From Canvas</span>
     </header>
     <nav id="courseTabs" class="course-tabs" aria-label="Course tabs"></nav>
+    <section class="focus-panel" aria-label="Focus blocking">
+      <button id="focusToggle" class="focus-toggle" type="button" aria-expanded="true">
+        <span class="scrape-toggle-label">Focus Blocking</span>
+        <svg class="panel-toggle-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </button>
+      <div class="focus-drawer">
+        <section class="focus-block-card" aria-label="Focus blocking status">
+          <button id="blockSettingsBtn" class="block-settings-icon" type="button" aria-label="Open blocking settings">⚙</button>
+          <div class="focus-block-meta">
+            <h2>Focus Blocking</h2>
+            <p id="blockStatusSummary" class="focus-block-summary">Loading...</p>
+          </div>
+          <div class="focus-ring-wrap">
+            <svg class="focus-ring" viewBox="0 0 120 120" aria-hidden="true">
+              <circle class="focus-ring-track" cx="60" cy="60" r="46"></circle>
+              <circle id="focusRingProgress" class="focus-ring-progress" cx="60" cy="60" r="46"></circle>
+            </svg>
+            <div class="focus-ring-center">
+              <span id="pomodoroPhaseText" class="focus-phase-text">Idle</span>
+              <span id="pomodoroTimerText" class="focus-time-text">--:--</span>
+            </div>
+          </div>
+          <button id="pomodoroStartBtn" class="pomodoro-start-btn" type="button">Start Focus Session</button>
+        </section>
+      </div>
+    </section>
     <section class="scrape-panel collapsed" aria-label="Scrape workflow">
       <button id="scrapeToggle" class="scrape-toggle" type="button" aria-expanded="false">
         <span class="scrape-toggle-label">Scrape &amp; Upload</span>
