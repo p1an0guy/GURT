@@ -12,7 +12,7 @@ type NavItem = {
   matches: (pathname: string) => boolean;
 };
 
-const DEFAULT_APP_TITLE = "GURT StudyBuddy Demo";
+const DEFAULT_APP_TITLE = "GURT";
 
 function getDocumentTitle(pathname: string): string {
   if (!pathname || pathname === "/") {
