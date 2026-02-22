@@ -9,7 +9,7 @@ import "katex/dist/katex.min.css";
 import { createApiClient } from "../../../src/api/client.ts";
 import { MathText } from "../../../src/components/MathText.tsx";
 import { getDeckById, markDeckStudied, type DeckRecord } from "../../../src/decks/store.ts";
-import { readRuntimeSettings } from "../../../src/runtime-settings.ts";
+import { getDefaultRuntimeSettings } from "../../../src/runtime-settings.ts";
 
 function nowIso(): string {
   return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
@@ -52,7 +52,7 @@ export default function DeckStudyPage() {
   const [spacePressCount, setSpacePressCount] = useState(0);
   const [shortcutWarning, setShortcutWarning] = useState("");
 
-  const settings = useMemo(readRuntimeSettings, []);
+  const [settings] = useState(getDefaultRuntimeSettings);
   const client = useMemo(
     () =>
       createApiClient({
