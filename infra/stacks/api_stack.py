@@ -31,6 +31,8 @@ class ApiStack(Stack):
         demo_mode: str,
         bedrock_model_id: str,
         bedrock_model_arn: str,
+        bedrock_guardrail_id: str,
+        bedrock_guardrail_version: str,
         knowledge_base_id: str,
         knowledge_base_data_source_id: str,
         calendar_token_minting_path: str,
@@ -61,6 +63,8 @@ class ApiStack(Stack):
         env = {
             "DEMO_MODE": demo_mode,
             "BEDROCK_MODEL_ID": bedrock_model_id,
+            "BEDROCK_GUARDRAIL_ID": bedrock_guardrail_id,
+            "BEDROCK_GUARDRAIL_VERSION": bedrock_guardrail_version,
             "KNOWLEDGE_BASE_ID": knowledge_base_id,
             "KNOWLEDGE_BASE_DATA_SOURCE_ID": knowledge_base_data_source_id,
             "BEDROCK_MODEL_ARN": bedrock_model_arn,
@@ -169,6 +173,8 @@ class ApiStack(Stack):
             environment={
                 "UPLOADS_BUCKET": data_stack.uploads_bucket.bucket_name,
                 "BEDROCK_MODEL_ID": bedrock_model_id,
+                "BEDROCK_GUARDRAIL_ID": bedrock_guardrail_id,
+                "BEDROCK_GUARDRAIL_VERSION": bedrock_guardrail_version,
                 "FLASHCARD_MODEL_ID": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
             },
         )

@@ -174,6 +174,13 @@ KNOWLEDGE_BASE_DATA_SOURCE_ID=<data-source-id> \
 ./scripts/deploy.sh
 ```
 
+To enforce Bedrock guardrails at runtime, optionally include:
+
+```bash
+BEDROCK_GUARDRAIL_ID=<guardrail-id> \
+BEDROCK_GUARDRAIL_VERSION=<version-or-DRAFT>
+```
+
 If `KNOWLEDGE_BASE_ID` is omitted, CDK provisions a Bedrock Knowledge Base stack automatically.
 
 Optional override for CDK CLI package/version:
@@ -193,6 +200,8 @@ Key stack outputs to use for smoke/dev secrets:
 CDK context defaults for demo deploys (`infra/cdk.json`):
 
 - `bedrockModelId`: default model id for generation/chat (`us.anthropic.claude-sonnet-4-6`)
+- `bedrockGuardrailId`: optional Bedrock guardrail id for chat/generation safety enforcement
+- `bedrockGuardrailVersion`: optional Bedrock guardrail version (must be set together with `bedrockGuardrailId`)
 - `embeddingModelId`: default embedding model for KB indexing (`amazon.titan-embed-text-v2:0`)
 - `knowledgeBaseId`: optional existing KB ID override; when empty, CDK creates one
 - `knowledgeBaseDataSourceId`: optional existing KB data source ID override (required for auto-ingestion trigger on `/canvas/sync`)
