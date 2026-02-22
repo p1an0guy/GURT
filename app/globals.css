@@ -29,6 +29,7 @@
   --mobile-trigger-bg: #2d2f36;
   --bg-accent-a: rgba(196, 71, 35, 0.2);
   --bg-accent-b: rgba(130, 130, 130, 0.14);
+  --flashcard-face-bg: rgba(46, 46, 48, 0.92);
 }
 
 :root[data-theme="light"] {
@@ -60,6 +61,7 @@
   --mobile-trigger-bg: #3b4d61;
   --bg-accent-a: rgba(196, 71, 35, 0.16);
   --bg-accent-b: rgba(34, 106, 181, 0.2);
+  --flashcard-face-bg: rgba(255, 255, 255, 0.78);
 }
 
 * {
@@ -512,7 +514,7 @@ button:disabled {
   border: 1px solid var(--line);
   border-radius: 0.65rem;
   padding: 0.9rem 1rem;
-  background: rgba(255, 255, 255, 0.78);
+  background: var(--flashcard-face-bg);
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
   overflow-y: auto;
