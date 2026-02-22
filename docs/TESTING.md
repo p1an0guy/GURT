@@ -141,7 +141,7 @@ Docs ingest workflow (Step Functions + PyMuPDF/Textract fallback + Bedrock KB):
 
 ## CDK infra synth and deploy (demo scaffold)
 
-Infrastructure is scaffolded in `infra/` with `GurtDataStack`, `GurtKnowledgeBaseStack`, and `GurtApiStack`.
+Infrastructure is scaffolded in `infra/` with `GurtDataStack`, `GurtKnowledgeBaseStack`, `GurtApiStack`, and `GurtFrontendStack`.
 
 ```bash
 python3 -m venv .venv
@@ -150,7 +150,7 @@ python -m pip install --upgrade pip
 python -m pip install -r infra/requirements.txt
 cd infra
 cdk synth
-cdk deploy GurtDataStack GurtKnowledgeBaseStack GurtApiStack
+cdk deploy GurtDataStack GurtKnowledgeBaseStack GurtApiStack GurtFrontendStack
 ```
 
 Or use one command from repo root (build + CDK checks + bootstrap + deploy):
@@ -185,10 +185,25 @@ CDK_CLI_PACKAGE=aws-cdk@latest ./scripts/deploy.sh
 Key stack outputs to use for smoke/dev secrets:
 
 - `ApiBaseUrl` (or `SuggestedSmokeBaseUrlSecret`) -> `DEV_BASE_URL`
+- `FrontendCloudFrontUrl` -> public frontend URL (and extension redirect target)
 - `CalendarTokenMintEndpoint` -> call this endpoint to mint `DEV_CALENDAR_TOKEN`
 - `SuggestedSmokeCourseIdSecret` -> `DEV_COURSE_ID` (defaults to `course-psych-101`)
 - `KnowledgeBaseId` (from `GurtKnowledgeBaseStack`) -> runtime `KNOWLEDGE_BASE_ID`
 - `KnowledgeBaseDataSourceId` -> for `aws bedrock-agent start-ingestion-job`
+
+Deploy verification checklist:
+
+1. Confirm CloudFormation stack status is `UPDATE_COMPLETE` or `CREATE_COMPLETE` for:
+   - `GurtDataStack`
+   - `GurtApiStack`
+   - `GurtFrontendStack`
+2. Open `FrontendCloudFrontUrl` in a browser and verify the app loads.
+3. Verify route rewrite behavior for static export:
+   - open `<FrontendCloudFrontUrl>/import` and confirm page render (not S3 XML/404).
+4. Confirm extension redirect config was updated by deploy script:
+   - inspect `browserextention/deployment_config.json`
+   - verify `webAppBaseUrl` matches `FrontendCloudFrontUrl`.
+5. Reload unpacked extension in `chrome://extensions`, run a flashcard/practice-test generation from extension, and confirm the opened tab URL starts with `FrontendCloudFrontUrl/import#`.
 
 CDK context defaults for demo deploys (`infra/cdk.json`):
 

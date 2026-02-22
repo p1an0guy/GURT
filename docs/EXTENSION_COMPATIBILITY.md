@@ -2,6 +2,9 @@
 
 This project does not expose a separate extension-specific backend route in the hackathon phase.
 The extension uses the same public API routes as the web app.
+Study/import redirects are opened against the frontend base URL configured in
+`browserextention/deployment_config.json` (`webAppBaseUrl`), which is synced from
+CDK output `FrontendCloudFrontUrl` by `scripts/deploy.sh`.
 
 ## Backend routes used by extension
 

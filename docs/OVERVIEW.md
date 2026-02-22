@@ -12,7 +12,9 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
   - `GurtDataStack` for S3 + DynamoDB.
   - `GurtKnowledgeBaseStack` for Bedrock Knowledge Base + OpenSearch Serverless vector store.
   - `GurtApiStack` for API Gateway + Lambda wiring.
+  - `GurtFrontendStack` for S3 static frontend hosting + CloudFront distribution.
 - **Deploy automation:** `./scripts/deploy.sh` runs build + CDK checks + bootstrap + deploy in one command.
+- **Frontend hosting:** Next.js static export is served from CloudFront (public URL emitted as `FrontendCloudFrontUrl`).
 - **Storage:**
   - DynamoDB for app state (courses/assignments, cards, reviews, topics, tokens).
   - S3 for uploaded source files.
@@ -40,6 +42,7 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 - **Authentication for hackathon demo:**
   - No end-user login/auth for now.
   - Canvas token connectivity remains in scope for Canvas data sync.
+- **Extension redirect target:** Browser extension import redirects use `browserextention/deployment_config.json` (`webAppBaseUrl`), which is synced from CDK outputs after deploy.
 
 ## Demo scope (strict)
 
