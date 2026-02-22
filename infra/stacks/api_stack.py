@@ -158,6 +158,35 @@ class ApiStack(Stack):
             },
         )
 
+        flashcard_gen_worker_handler = lambda_.Function(
+            self,
+            "FlashcardGenWorkerHandler",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            code=lambda_code,
+            handler="backend.flashcard_workflow.worker_handler",
+            timeout=Duration.seconds(300),
+            memory_size=1024,
+            environment={
+                "UPLOADS_BUCKET": data_stack.uploads_bucket.bucket_name,
+                "BEDROCK_MODEL_ID": bedrock_model_id,
+                "FLASHCARD_MODEL_ID": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+            },
+        )
+
+        flashcard_gen_finalize_handler = lambda_.Function(
+            self,
+            "FlashcardGenFinalizeHandler",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            code=lambda_code,
+            handler="backend.flashcard_workflow.finalize_handler",
+            timeout=Duration.seconds(30),
+            memory_size=256,
+            environment={
+                "DOCS_TABLE": data_stack.docs_table.table_name,
+                "CARDS_TABLE": data_stack.cards_table.table_name,
+            },
+        )
+
         data_stack.uploads_bucket.grant_read_write(app_api_handler)
         data_stack.uploads_bucket.grant_put(uploads_handler)
         data_stack.uploads_bucket.grant_read_write(ingest_extract_handler)
@@ -186,6 +215,15 @@ class ApiStack(Stack):
                 resources=["*"],
             )
         )
+        data_stack.uploads_bucket.grant_read(flashcard_gen_worker_handler)
+        flashcard_gen_worker_handler.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["bedrock:InvokeModel"],
+                resources=["*"],
+            )
+        )
+        data_stack.docs_table.grant_read_write_data(flashcard_gen_finalize_handler)
+        data_stack.cards_table.grant_read_write_data(flashcard_gen_finalize_handler)
 
         ingest_extract_step = sfn_tasks.LambdaInvoke(
             self,
@@ -254,6 +292,30 @@ class ApiStack(Stack):
         ingest_state_machine.grant_start_execution(app_api_handler)
         app_api_handler.add_environment("INGEST_STATE_MACHINE_ARN", ingest_state_machine.state_machine_arn)
 
+        flashcard_gen_worker_step = sfn_tasks.LambdaInvoke(
+            self,
+            "FlashcardGenWorkerStep",
+            lambda_function=flashcard_gen_worker_handler,
+            payload_response_only=True,
+        )
+        flashcard_gen_finalize_step = sfn_tasks.LambdaInvoke(
+            self,
+            "FlashcardGenFinalizeStep",
+            lambda_function=flashcard_gen_finalize_handler,
+            payload_response_only=True,
+        )
+        flashcard_gen_definition = flashcard_gen_worker_step.next(flashcard_gen_finalize_step)
+        flashcard_gen_state_machine = sfn.StateMachine(
+            self,
+            "FlashcardGenStateMachine",
+            definition_body=sfn.DefinitionBody.from_chainable(flashcard_gen_definition),
+            timeout=Duration.minutes(10),
+        )
+        flashcard_gen_state_machine.grant_start_execution(app_api_handler)
+        app_api_handler.add_environment(
+            "FLASHCARD_GEN_STATE_MACHINE_ARN",
+            flashcard_gen_state_machine.state_machine_arn,
+        )
 
         app_api_handler.add_to_role_policy(
             iam.PolicyStatement(
@@ -343,6 +405,18 @@ class ApiStack(Stack):
         generate_flashcards_from_materials = generate.add_resource("flashcards-from-materials")
         generate_flashcards_from_materials.add_method(
             "POST",
+            app_integration,
+            authorization_type=apigateway.AuthorizationType.NONE,
+        )
+        flashcard_gen_jobs = generate_flashcards_from_materials.add_resource("jobs")
+        flashcard_gen_jobs.add_method(
+            "POST",
+            app_integration,
+            authorization_type=apigateway.AuthorizationType.NONE,
+        )
+        flashcard_gen_job_id = flashcard_gen_jobs.add_resource("{jobId}")
+        flashcard_gen_job_id.add_method(
+            "GET",
             app_integration,
             authorization_type=apigateway.AuthorizationType.NONE,
         )
