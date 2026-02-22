@@ -17,6 +17,7 @@
   --input-bg: rgba(9, 10, 12, 0.95);
   --button-muted: #56585f;
   --sidebar-bg: #111216;
+  --sidebar-width: 156px;
   --sidebar-border: rgba(255, 255, 255, 0.1);
   --sidebar-avatar-bg: var(--flashcard-face-bg);
   --sidebar-active-bg: #44464d;
@@ -30,6 +31,26 @@
   --bg-accent-a: rgba(196, 71, 35, 0.2);
   --bg-accent-b: rgba(130, 130, 130, 0.14);
   --flashcard-face-bg: rgba(46, 46, 48, 0.92);
+  --flashcards-page-bg:
+    radial-gradient(circle at 12% 18%, color-mix(in srgb, #b30d10 48%, transparent), transparent 42%),
+    linear-gradient(155deg, #0a0708 14%, color-mix(in srgb, #220709 90%, #09090b) 48%, #070708 100%);
+  --flashcards-hero-surface-a: color-mix(in srgb, #1d1113 82%, var(--surface));
+  --flashcards-hero-surface-b: color-mix(in srgb, #130d10 86%, var(--card));
+  --flashcards-hero-accent-strong: color-mix(in srgb, #f95d3f 30%, transparent);
+  --flashcards-hero-accent-soft: color-mix(in srgb, #f95d3f 18%, transparent);
+  --flashcards-heading-ink: color-mix(in srgb, #ff6a4b 38%, var(--ink));
+  --flashcards-subheading-ink: color-mix(in srgb, #ff6a4b 34%, var(--ink));
+  --flashcards-panel-surface-a: color-mix(in srgb, #f95d3f 5%, var(--surface));
+  --flashcards-meta-label-ink: color-mix(in srgb, #f95d3f 76%, var(--ink));
+  --flashcards-elevation:
+    0 16px 32px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 color-mix(in srgb, #ffffff 12%, transparent);
+  --flashcards-panel-elevation:
+    0 16px 28px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 color-mix(in srgb, #ffffff 10%, transparent);
+  --flashcards-panel-hover-elevation: 0 14px 22px rgba(0, 0, 0, 0.2);
+  --flashcards-button-elevation: 0 10px 18px color-mix(in srgb, var(--accent) 28%, transparent);
+  --flashcards-button-hover-elevation: 0 14px 22px color-mix(in srgb, var(--accent) 34%, transparent);
 }
 
 :root[data-theme="light"] {
@@ -51,7 +72,7 @@
   --sidebar-bg: #d3d3d3;
   --sidebar-border: rgba(0, 0, 0, 0.08);
   --sidebar-avatar-bg: #ececec;
-  --sidebar-active-bg: #9f9f9f;
+  --sidebar-active-bg: #c40f11;
   --sidebar-active-ink: #ffffff;
   --cta-bg-start: #2f3845;
   --cta-bg-end: #3a4757;
@@ -62,6 +83,22 @@
   --bg-accent-a: rgba(196, 71, 35, 0.16);
   --bg-accent-b: rgba(34, 106, 181, 0.2);
   --flashcard-face-bg: rgba(255, 255, 255, 0.78);
+  --flashcards-page-bg:
+    radial-gradient(circle at 14% 16%, rgba(224, 70, 49, 0.3), transparent 42%),
+    linear-gradient(160deg, #fff4ee 2%, #f8d9cd 40%, #efe3dc 100%);
+  --flashcards-hero-surface-a: rgba(255, 252, 250, 0.88);
+  --flashcards-hero-surface-b: rgba(255, 244, 239, 0.9);
+  --flashcards-hero-accent-strong: rgba(224, 70, 49, 0.26);
+  --flashcards-hero-accent-soft: rgba(224, 70, 49, 0.16);
+  --flashcards-heading-ink: #ad241f;
+  --flashcards-subheading-ink: #b3312b;
+  --flashcards-panel-surface-a: rgba(255, 241, 236, 0.72);
+  --flashcards-meta-label-ink: #c13931;
+  --flashcards-elevation: none;
+  --flashcards-panel-elevation: none;
+  --flashcards-panel-hover-elevation: none;
+  --flashcards-button-elevation: none;
+  --flashcards-button-hover-elevation: none;
 }
 
 * {
@@ -87,7 +124,7 @@ body {
 .app-sidebar {
   position: fixed;
   inset: 0 auto 0 0;
-  width: 176px;
+  width: var(--sidebar-width);
   background: var(--sidebar-bg);
   border-right: 1px solid var(--sidebar-border);
   display: flex;
@@ -151,6 +188,15 @@ body {
   color: var(--sidebar-active-ink);
 }
 
+:root[data-theme="light"] .sidebar-nav-item {
+  color: #7b2424;
+}
+
+:root[data-theme="light"] .sidebar-nav-item.active {
+  background: var(--sidebar-active-bg);
+  color: var(--sidebar-active-ink);
+}
+
 .sidebar-icon {
   display: inline-grid;
   place-items: center;
@@ -209,7 +255,7 @@ body {
 }
 
 .app-content {
-  margin-left: 176px;
+  margin-left: var(--sidebar-width);
   min-height: 100vh;
 }
 
@@ -744,6 +790,478 @@ button:disabled {
 
 .deck-actions {
   margin-top: 0.65rem;
+}
+
+.flashcards-modern {
+  position: relative;
+  isolation: isolate;
+  max-width: 1160px;
+  padding-top: 2.35rem;
+  padding-left: 2.5rem;
+  padding-right: 2.5rem;
+  border-radius: 1rem;
+}
+
+.app-content:has(.flashcards-modern) {
+  background: var(--flashcards-page-bg);
+  background-attachment: fixed;
+}
+
+.flashcards-modern::before,
+.flashcards-modern::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.flashcards-modern::before {
+  width: min(74vw, 780px);
+  height: min(74vw, 780px);
+  top: -380px;
+  right: -280px;
+  background:
+    conic-gradient(
+      from 150deg at 50% 50%,
+      color-mix(in srgb, #f95d3f 36%, transparent) 0deg,
+      color-mix(in srgb, #ffc84f 18%, transparent) 120deg,
+      color-mix(in srgb, #ab1419 18%, transparent) 260deg,
+      color-mix(in srgb, #f95d3f 36%, transparent) 360deg
+    );
+  filter: blur(26px);
+  opacity: 0.72;
+}
+
+.flashcards-modern::after {
+  width: 430px;
+  height: 430px;
+  bottom: -170px;
+  left: -170px;
+  background:
+    radial-gradient(
+      circle at 30% 30%,
+      color-mix(in srgb, #f95d3f 18%, transparent),
+      transparent 48%
+    ),
+    radial-gradient(
+      circle at 45% 45%,
+      color-mix(in srgb, #9e161b 22%, transparent),
+      transparent 64%
+    );
+  filter: blur(14px);
+}
+
+.flashcards-modern-hero {
+  position: relative;
+  margin-bottom: 1.25rem;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: 1.25rem;
+  padding: 1.4rem 1.4rem 1.3rem;
+  background:
+    linear-gradient(135deg, var(--flashcards-hero-surface-a), var(--flashcards-hero-surface-b)),
+    radial-gradient(circle at 85% 10%, var(--flashcards-hero-accent-strong), transparent 44%),
+    linear-gradient(0deg, var(--flashcards-hero-accent-soft), transparent 42%);
+  box-shadow: var(--flashcards-elevation);
+}
+
+.flashcards-modern-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(circle at 2px 2px, color-mix(in srgb, var(--line) 45%, transparent) 1px, transparent 0);
+  background-size: 17px 17px;
+  opacity: 0.26;
+}
+
+.flashcards-hero-content {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.flashcards-kicker {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--ink-soft) 72%, var(--ink));
+}
+
+.flashcards-modern-hero h1 {
+  font-size: clamp(2rem, 5vw, 3.55rem);
+  letter-spacing: -0.035em;
+  line-height: 0.93;
+  margin: 0;
+  text-wrap: balance;
+  max-width: 12ch;
+  color: var(--flashcards-heading-ink);
+}
+
+.flashcards-modern-hero p {
+  font-size: 0.98rem;
+  max-width: 58ch;
+  color: color-mix(in srgb, var(--ink-soft) 85%, var(--ink));
+}
+
+.flashcards-hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.2rem;
+}
+
+.flashcards-chip {
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: 999px;
+  padding: 0.34rem 0.68rem;
+  font-size: 0.76rem;
+  color: color-mix(in srgb, var(--ink-soft) 88%, var(--ink));
+  background: color-mix(in srgb, var(--surface-soft) 66%, transparent);
+}
+
+.flashcards-chip strong {
+  color: var(--ink);
+  margin-right: 0.22rem;
+}
+
+.flashcards-chip-course {
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flashcards-modern-grid {
+  grid-template-columns: minmax(0, 1.33fr) minmax(280px, 0.93fr);
+  gap: 1rem;
+}
+
+.flashcards-modern .panel {
+  position: relative;
+  border-radius: 1.14rem;
+  border: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
+  background:
+    linear-gradient(165deg, var(--flashcards-panel-surface-a), color-mix(in srgb, var(--card) 94%, transparent)),
+    radial-gradient(circle at top right, color-mix(in srgb, var(--accent-soft) 34%, transparent), transparent 38%);
+  box-shadow: var(--flashcards-panel-elevation);
+  overflow: hidden;
+}
+
+.flashcards-modern .panel::before {
+  content: "";
+  position: absolute;
+  left: 0.9rem;
+  right: 0.9rem;
+  top: 0;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 72%, transparent), color-mix(in srgb, #c42a22 62%, transparent));
+  opacity: 0.85;
+}
+
+.flashcards-modern .panel h2 {
+  margin: 0;
+  font-size: 1.12rem;
+  letter-spacing: 0.01em;
+  color: var(--flashcards-subheading-ink);
+}
+
+.flashcards-panel-head {
+  display: grid;
+  gap: 0.35rem;
+  margin-bottom: 0.65rem;
+}
+
+.flashcards-panel-head .small {
+  margin: 0;
+}
+
+.flashcards-modern-controls {
+  gap: 0.78rem;
+}
+
+.flashcards-modern label {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.72rem;
+  color: color-mix(in srgb, var(--ink-soft) 80%, var(--ink));
+}
+
+.flashcards-modern input,
+.flashcards-modern select {
+  border-radius: 0.8rem;
+  border-color: color-mix(in srgb, var(--line) 70%, transparent);
+  background: color-mix(in srgb, var(--input-bg) 92%, transparent);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.flashcards-modern input:hover,
+.flashcards-modern select:hover {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
+}
+
+.flashcards-modern input:focus,
+.flashcards-modern select:focus {
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.flashcards-modern button {
+  border-radius: 0.82rem;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 90%, #f05a39), color-mix(in srgb, var(--accent) 86%, #7a0a0a));
+  box-shadow: var(--flashcards-button-elevation);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
+
+.flashcards-modern button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--flashcards-button-hover-elevation);
+}
+
+.flashcards-modern .secondary-button,
+.flashcards-modern .material-toggle-all {
+  background: color-mix(in srgb, var(--surface-soft) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  color: var(--ink);
+  box-shadow: none;
+}
+
+.flashcards-modern .secondary-button:hover:not(:disabled),
+.flashcards-modern .material-toggle-all:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  transform: none;
+}
+
+.flashcards-modern .material-list {
+  gap: 0.45rem;
+  max-height: 17rem;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.flashcards-modern .material-list-header .small {
+  font-size: 0.74rem;
+}
+
+.flashcards-modern .material-list::-webkit-scrollbar {
+  width: 9px;
+}
+
+.flashcards-modern .material-list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 42%, transparent);
+}
+
+.flashcards-modern .material-row {
+  border-radius: 0.78rem;
+  border-color: color-mix(in srgb, var(--line) 65%, transparent);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+
+.flashcards-modern .material-row:hover {
+  transform: translateX(2px);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+
+.flashcards-modern .material-row.selected {
+  border-color: color-mix(in srgb, var(--accent) 70%, var(--line));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent-soft) 75%, transparent), color-mix(in srgb, var(--surface) 82%, transparent));
+}
+
+.flashcards-modern .status-block {
+  border-radius: 0.8rem;
+  border-color: color-mix(in srgb, var(--line) 70%, transparent);
+  background: color-mix(in srgb, var(--surface-soft) 60%, transparent);
+}
+
+.flashcards-modern .small {
+  color: color-mix(in srgb, var(--ink-soft) 88%, var(--ink));
+}
+
+.flashcards-generate-button {
+  margin-top: 0.12rem;
+}
+
+.flashcards-feedback.success {
+  margin: 0.15rem 0 0;
+  color: color-mix(in srgb, var(--ok) 78%, var(--ink));
+}
+
+.flashcards-footer-note {
+  margin: 0.32rem 0 0;
+  padding-top: 0.58rem;
+  border-top: 1px dashed color-mix(in srgb, var(--line) 68%, transparent);
+}
+
+.flashcards-modern .list {
+  gap: 0.7rem;
+}
+
+.flashcards-modern .flashcards-recent-item {
+  display: grid;
+  gap: 0.62rem;
+  border-radius: 1rem;
+  border-color: color-mix(in srgb, var(--line) 70%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 86%, transparent), color-mix(in srgb, var(--card) 86%, transparent)),
+    radial-gradient(circle at left center, color-mix(in srgb, var(--accent-soft) 35%, transparent), transparent 42%);
+  transition: transform 0.24s ease, border-color 0.24s ease, box-shadow 0.24s ease;
+}
+
+.flashcards-modern .flashcards-recent-item:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  box-shadow: var(--flashcards-panel-hover-elevation);
+}
+
+.flashcards-modern .flashcards-recent-item .tag {
+  margin-left: 0;
+  margin-right: 0;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: color-mix(in srgb, var(--ink) 92%, var(--accent));
+}
+
+.flashcards-deck-title {
+  margin: 0;
+  font-size: clamp(1.52rem, 2.15vw, 2.02rem);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  text-wrap: pretty;
+}
+
+.flashcards-deck-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.42rem 0.66rem;
+}
+
+.flashcards-modern .flashcards-deck-summary .tag {
+  font-size: 0.82rem;
+  padding: 0.2rem 0.6rem;
+}
+
+.flashcards-deck-count {
+  font-size: 1.12rem;
+  font-weight: 700;
+  color: color-mix(in srgb, var(--ink-soft) 55%, var(--ink));
+}
+
+.flashcards-deck-meta {
+  display: grid;
+  gap: 0.46rem;
+}
+
+.flashcards-meta-line {
+  display: grid;
+  gap: 0.2rem;
+  margin: 0;
+}
+
+.flashcards-meta-label {
+  font-size: 0.68rem;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--flashcards-meta-label-ink);
+}
+
+.flashcards-meta-value {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.32;
+  color: color-mix(in srgb, var(--ink-soft) 68%, var(--ink));
+}
+
+.flashcards-empty-state {
+  margin: 0.2rem 0 0;
+}
+
+.flashcards-modern .button-link {
+  border-radius: 999px;
+  padding: 0.5rem 0.9rem;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 84%, #e15038), color-mix(in srgb, var(--accent) 80%, #7a0a0a));
+}
+
+.flashcards-modern .deck-actions {
+  margin-top: 0.35rem;
+}
+
+.flashcards-modern .panel,
+.flashcards-modern-hero {
+  animation: flashcards-enter 340ms ease both;
+}
+
+.flashcards-modern-grid > :nth-child(2) {
+  animation-delay: 70ms;
+}
+
+@keyframes flashcards-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 1080px) {
+  .flashcards-modern-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .flashcards-chip-course {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 720px) {
+  .flashcards-modern {
+    padding-top: 1.35rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .flashcards-modern-hero {
+    padding: 1.08rem 1rem;
+  }
+
+  .flashcards-modern-hero h1 {
+    line-height: 1;
+  }
+
+  .flashcards-modern-hero p {
+    font-size: 0.93rem;
+  }
+
+  .flashcards-hero-meta {
+    gap: 0.4rem;
+  }
+
+  .flashcards-chip {
+    width: 100%;
+    border-radius: 0.75rem;
+  }
+
+  .flashcards-modern .panel {
+    padding: 0.92rem;
+  }
+
+  .flashcards-deck-title {
+    font-size: 1.34rem;
+  }
+
+  .flashcards-deck-count {
+    font-size: 1rem;
+  }
 }
 
 .practice-tests-list-header {

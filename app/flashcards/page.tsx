@@ -193,17 +193,40 @@ export default function FlashcardsPage() {
     !isGenerating &&
     !isLoadingMaterials;
 
+  const selectedCourseName =
+    courses.find((course) => course.id === courseId)?.name ?? "No course selected";
+
   return (
-    <main className="page">
-      <section className="hero">
-        <h1>Flashcards</h1>
-        <p>Select course materials and generate focused flashcard decks with AI.</p>
+    <main className="page flashcards-modern">
+      <section className="hero flashcards-modern-hero">
+        <div className="flashcards-hero-content">
+          <p className="flashcards-kicker">Study Lab</p>
+          <h1>Flashcards</h1>
+          <p>
+            Build targeted decks from real class materials, then jump straight into
+            review.
+          </p>
+          <div className="flashcards-hero-meta">
+            <span className="flashcards-chip">
+              <strong>{selectedMaterialIds.size}</strong> selected
+            </span>
+            <span className="flashcards-chip">
+              <strong>{numCards || "12"}</strong> target cards
+            </span>
+            <span className="flashcards-chip flashcards-chip-course" title={selectedCourseName}>
+              {selectedCourseName}
+            </span>
+          </div>
+        </div>
       </section>
 
-      <section className="panel-grid">
-        <article className="panel">
-          <h2>Generate New Deck</h2>
-          <div className="controls">
+      <section className="panel-grid flashcards-modern-grid">
+        <article className="panel flashcards-generate-panel">
+          <div className="flashcards-panel-head">
+            <h2>Generate New Deck</h2>
+            <p className="small">Pick your course, sources, and deck size.</p>
+          </div>
+          <div className="controls flashcards-modern-controls">
             {/* Step 1: Course selection */}
             <label htmlFor="courseSelect">Course</label>
             {coursesLoaded ? (
@@ -330,17 +353,18 @@ export default function FlashcardsPage() {
 
             <button
               type="button"
+              className="flashcards-generate-button"
               onClick={handleGenerateDeck}
               disabled={!canGenerate}
             >
               {isGenerating
                 ? "Generating..."
                 : selectedMaterialIds.size === 0
-                  ? "Select materials to generate"
+                  ? "Generate Deck"
                   : `Generate Deck from ${selectedMaterialIds.size} material${selectedMaterialIds.size === 1 ? "" : "s"}`}
             </button>
 
-            {message ? <p className="small">{message}</p> : null}
+            {message ? <p className="small flashcards-feedback success">{message}</p> : null}
             {error ? (
               <div className="status-block">
                 <p className="small">
@@ -362,29 +386,44 @@ export default function FlashcardsPage() {
               </div>
             ) : null}
 
-            <p className="small">
+            <p className="small flashcards-footer-note">
               Need raw API/debug actions? <Link href="/dev-tools">Open dev tools</Link>.
             </p>
           </div>
         </article>
 
-        <article className="panel">
-          <h2>Recent Decks</h2>
+        <article className="panel flashcards-recent-panel">
+          <div className="flashcards-panel-head">
+            <h2>Recent Decks</h2>
+            <p className="small">Continue where you left off.</p>
+          </div>
           {recentDecks.length === 0 ? (
-            <p className="small">No decks yet. Generate your first deck to get started.</p>
+            <p className="small flashcards-empty-state">
+              No decks yet. Generate your first deck to get started.
+            </p>
           ) : (
-            <ul className="list">
+            <ul className="list flashcards-recent-list">
               {recentDecks.map((deck) => (
-                <li key={deck.deckId}>
-                  <strong>{deck.title}</strong>
-                  <span className="tag">{deck.courseName}</span>
-                  <div className="small">{deck.cardCount} cards</div>
-                  <div className="small">Created {deck.createdAt}</div>
-                  {deck.resourceLabels.length > 0 ? (
-                    <div className="small">Sources: {deck.resourceLabels.join(", ")}</div>
-                  ) : (
-                    <div className="small">Sources: none listed</div>
-                  )}
+                <li key={deck.deckId} className="flashcards-recent-item">
+                  <h3 className="flashcards-deck-title">{deck.title}</h3>
+                  <div className="flashcards-deck-summary">
+                    <span className="tag">{deck.courseName}</span>
+                    <span className="flashcards-deck-count">{deck.cardCount} cards</span>
+                  </div>
+                  <div className="flashcards-deck-meta">
+                    <p className="flashcards-meta-line">
+                      <span className="flashcards-meta-label">Created</span>
+                      <span className="flashcards-meta-value mono">{deck.createdAt}</span>
+                    </p>
+                    <p className="flashcards-meta-line">
+                      <span className="flashcards-meta-label">Sources</span>
+                      <span className="flashcards-meta-value">
+                        {deck.resourceLabels.length > 0
+                          ? deck.resourceLabels.join(", ")
+                          : "none listed"}
+                      </span>
+                    </p>
+                  </div>
                   <div className="deck-actions">
                     <Link
                       className="button-link"
