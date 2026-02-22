@@ -1,16 +1,15 @@
-# StudyBuddy Architecture (AWS Demo)
+# StudyBuddy Architecture (Final Project on AWS)
 
-This document explains how the StudyBuddy system is intended to work end-to-end on AWS, combining the current implementation with the finalized hackathon demo target described in:
+This document explains how the StudyBuddy system works end-to-end on AWS in the current final project state:
 
 - `docs/OVERVIEW.md`
-- `docs/ROADMAP.md`
-- `docs/POST_HACKATHON_ROADMAP.md`
+- `docs/ROADMAP.md` (current-state status)
 
 ## Scope and framing
 
-- **Current provisioned backend architecture:** API Gateway + Lambda + DynamoDB + S3 + Step Functions + EventBridge + Bedrock Knowledge Base + OpenSearch Serverless + Textract.
-- **Finalized hackathon demo target:** complete user flow from Canvas sync -> docs ingest -> generate -> study -> calendar subscription, with deterministic fallback modes where explicitly enabled for demo resilience.
-- **Out of scope for hackathon:** production auth/multi-user hardening and deeper reliability controls (tracked in post-hackathon roadmap).
+- **Current deployed architecture:** CloudFront-hosted web frontend + API Gateway + Lambda + DynamoDB + S3 + Step Functions + EventBridge + Bedrock Knowledge Base + OpenSearch Serverless + Textract.
+- **Current demo flow coverage:** Canvas sync -> docs ingest -> generation/chat -> study loop -> calendar subscription.
+- **Out of scope for hackathon:** full production auth/multi-user hardening and deeper reliability controls.
 
 ## AWS services and responsibilities
 
@@ -52,15 +51,20 @@ This document explains how the StudyBuddy system is intended to work end-to-end 
   - Vectorized retrieval over uploaded course content.
   - S3-backed KB data source with chunking and embedding configured in CDK.
 
-- **Frontend on AWS (target deployment)**
-  - Next.js web client deployed on AWS-managed hosting (service choice to be finalized in deployment decisions).
+- **Amazon CloudFront (frontend delivery)**
+  - Public entry point for the web app.
+  - Serves the deployed frontend bundle and routes browser requests to the app origin.
+
+- **Frontend app**
+  - Next.js web client deployed behind CloudFront.
   - Calls API Gateway using `NEXT_PUBLIC_API_BASE_URL`.
 
-## End-to-end architecture (finalized demo target)
+## End-to-end architecture (current final state)
 
 ```mermaid
 flowchart TD
-    U["Student (Web Browser)"] --> FE["Next.js Frontend (AWS-hosted)"]
+    U["Student (Web Browser)"] --> CF["Amazon CloudFront"]
+    CF --> FE["Next.js Frontend"]
 
     FE --> APIGW["Amazon API Gateway"]
 
@@ -126,23 +130,13 @@ flowchart TD
 3. Calendar client pulls `GET /calendar/{token}.ics`.
 4. ICS content is generated from user schedule rows (with optional demo fallback when explicitly enabled).
 
-## Current vs finalized demo (delta from roadmap)
+## Current status snapshot
 
-- **Already in place**
-  - CDK split stacks for data, API, and knowledge base.
-  - API surface scaffolded in API Gateway/Lambda.
-  - EventBridge scheduled Canvas sync trigger.
-  - Step Functions ingest with Textract fallback path.
-  - Bedrock KB infrastructure and retrieval permissions.
-
-- **Needed to complete finalized hackathon demo**
-  - Ensure Canvas sync write path fully drives real schedule rows used by ICS and timeline.
-  - Close loop from docs ingest completion to reliable KB ingestion job trigger (currently manual in roadmap notes).
-  - Expand study queue prioritization (exam-aware weighting) and mastery signals beyond baseline FSRS state rollups.
-  - Finalize frontend deployment path on AWS and wire live API base URL for end-to-end demo.
-
-- **Post-hackathon hardening (not demo blockers)**
-  - Strong auth/multi-user, token encryption/rotation, retry/DLQ/alerts, deeper ingestion quality controls.
+- Frontend is deployed on CloudFront and calls the API Gateway stage configured in `NEXT_PUBLIC_API_BASE_URL`.
+- Runtime endpoints for Canvas, uploads/ingest, generation/chat, study, and calendar are live.
+- EventBridge scheduled Canvas sync and tokenized ICS feed are part of the deployed architecture.
+- Bedrock KB retrieval stack is active with OpenSearch Serverless vector storage.
+- Demo safety fallback behavior remains available where explicitly enabled by environment flags.
 
 ## Notes for maintainers
 
