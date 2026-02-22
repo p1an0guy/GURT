@@ -37,7 +37,7 @@ export default function DashboardPage() {
   const [calendarError, setCalendarError] = useState("");
   const [isMintingCalendar, setIsMintingCalendar] = useState(false);
 
-  const userName = "Student";
+  const userName = "Mason";
 
   const client = useMemo(
     () =>

@@ -161,17 +161,20 @@ export default function ChatPage() {
   }
 
   return (
-    <main className="page chat-page">
-      <section className="hero">
-        <h1>Chat</h1>
-        <p>Ask grounded questions about one course at a time.</p>
+    <main className="page chat-page chat-modern">
+      <section className="hero chat-modern-hero">
+        <div className="chat-hero-content">
+          <p className="chat-kicker">Study Lab</p>
+          <h1>Chat</h1>
+          <p>Ask GURT questions about your courses!</p>
+        </div>
       </section>
 
       {isCoursePickerVisible ? (
-        <section className="panel chat-course-picker">
+        <section className="panel chat-course-picker chat-modern-panel">
           <h2>Choose a Course</h2>
           <p className="small">
-            Select the course you want to chat about. GURT will use this course as your RAG context.
+            Select the course you want to chat about.
           </p>
 
           {isLoadingCourses ? <p className="small">Loading courses...</p> : null}
@@ -207,7 +210,7 @@ export default function ChatPage() {
           ) : null}
         </section>
       ) : (
-        <section className="panel chat-shell">
+        <section className="panel chat-shell chat-modern-panel">
           <header className="chat-shell-header">
             <div className="chat-shell-course">
               <h2>{selectedCourse?.name ?? selectedCourseId}</h2>
