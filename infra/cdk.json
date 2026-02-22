@@ -3,10 +3,10 @@
   "context": {
     "stageName": "dev",
     "demoMode": "1",
-    "bedrockModelId": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+    "bedrockModelId": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
     "embeddingModelId": "amazon.titan-embed-text-v2:0",
-    "knowledgeBaseId": "AOKQR2EWNF",
-    "knowledgeBaseDataSourceId": "",
+    "knowledgeBaseId": "YPNYU6LWMA",
+    "knowledgeBaseDataSourceId": "D19GB87TMV",
     "createKnowledgeBaseStack": "0",
     "calendarTokenMintingPath": "endpoint",
     "calendarToken": "demo-calendar-token",
