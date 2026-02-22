@@ -548,6 +548,7 @@ class ApiStack(Stack):
                 actions=[
                     "bedrock:InvokeModel",
                     "bedrock:InvokeModelWithResponseStream",
+                    "bedrock:ApplyGuardrail",
                     "bedrock:Retrieve",
                     "bedrock:StartIngestionJob",
                     "bedrock:RetrieveAndGenerate",

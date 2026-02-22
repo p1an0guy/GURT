@@ -1,4 +1,4 @@
 {
-  "webAppBaseUrl": "http://localhost:3000",
-  "apiBaseUrl": "http://localhost:3000"
+  "webAppBaseUrl": "https://d2ffy8wtp214n4.cloudfront.net",
+  "apiBaseUrl": "https://hpthlfk5ql.execute-api.us-west-2.amazonaws.com/dev"
 }

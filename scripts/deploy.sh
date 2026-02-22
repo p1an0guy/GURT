@@ -25,6 +25,7 @@ CALENDAR_TOKEN="${CALENDAR_TOKEN:-demo-calendar-token}"
 CALENDAR_TOKEN_USER_ID="${CALENDAR_TOKEN_USER_ID:-demo-user}"
 OUTPUTS_FILE="${OUTPUTS_FILE:-$ROOT_DIR/outputs.${STAGE_NAME}.json}"
 FRONTEND_ASSET_PATH="${FRONTEND_ASSET_PATH:-$ROOT_DIR/out}"
+FRONTEND_ALLOWED_ORIGINS="${FRONTEND_ALLOWED_ORIGINS:-https://d2ffy8wtp214n4.cloudfront.net,http://localhost:3000}"
 AWS_PROFILE="${AWS_PROFILE:-default}"
 
 echo "Starting deploy for stage: $STAGE_NAME"
@@ -52,6 +53,7 @@ export AWS_PROFILE
 export KNOWLEDGE_BASE_ID
 export KNOWLEDGE_BASE_DATA_SOURCE_ID
 export CREATE_KB_STACK
+export FRONTEND_ALLOWED_ORIGINS
 
 python -m pip install --upgrade pip
 pip install -r "$INFRA_DIR/requirements.txt"
