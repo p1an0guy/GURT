@@ -229,8 +229,8 @@ export default function DeckStudyPage() {
               </button>
 
               <div>
-                <p className="small">Rate recall quality:</p>
                 <p className="small">Click card or press Space to flip</p>
+                <p className="small">Rate recall quality:</p>
                 <p className="small">1: Forgot, 2: Hard, 3: Good, 4: Easy</p>
                 <div className="rating-row">
                   <button type="button" onClick={() => void handleRate(1)} disabled={isSubmittingReview}>
