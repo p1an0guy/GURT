@@ -10,6 +10,19 @@
     "citations": {
       "type": "array",
       "items": {"type": "string", "minLength": 1}
+    },
+    "citationDetails": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source", "label", "url"],
+        "properties": {
+          "source": {"type": "string", "minLength": 1},
+          "label": {"type": "string", "minLength": 1},
+          "url": {"type": "string", "minLength": 1, "pattern": "^https://"}
+        }
+      }
     }
   }
 }

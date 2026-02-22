@@ -1163,19 +1163,40 @@ class RuntimeHandlerTests(unittest.TestCase):
             ),
         }
 
-        with patch(
-            "backend.runtime.chat_answer",
-            return_value={
-                "answer": "Working memory temporarily stores and manipulates information.",
-                "citations": ["s3://bucket/doc.pdf#chunk-3"],
-            },
-        ) as chat_answer:
+        with (
+            patch(
+                "backend.runtime.chat_answer",
+                return_value={
+                    "answer": "Working memory temporarily stores and manipulates information.",
+                    "citations": ["s3://bucket/doc.pdf#chunk-3"],
+                },
+            ) as chat_answer,
+            patch("backend.runtime._s3_client") as s3_client_factory,
+        ):
+            s3_client_factory.return_value.generate_presigned_url.return_value = (
+                "https://signed.example/doc.pdf?X-Amz-Signature=test"
+            )
             response = self._invoke(event, env={"DEMO_MODE": "false"})
 
         self.assertEqual(response["statusCode"], 200)
         body = json.loads(response["body"])
         self.assertIn("answer", body)
         self.assertEqual(len(body["citations"]), 1)
+        self.assertEqual(
+            body["citationDetails"],
+            [
+                {
+                    "source": "s3://bucket/doc.pdf#chunk-3",
+                    "label": "doc.pdf (chunk-3)",
+                    "url": "https://signed.example/doc.pdf?X-Amz-Signature=test",
+                }
+            ],
+        )
+        s3_client_factory.return_value.generate_presigned_url.assert_called_once_with(
+            "get_object",
+            Params={"Bucket": "bucket", "Key": "doc.pdf"},
+            ExpiresIn=3600,
+        )
         chat_answer.assert_called_once_with(
             course_id="course-psych-101",
             question="What is working memory?",
@@ -1225,6 +1246,40 @@ class RuntimeHandlerTests(unittest.TestCase):
         call_kwargs = chat_mock.call_args.kwargs
         self.assertIsNotNone(call_kwargs["canvas_context"])
         self.assertIn("Midterm Exam", call_kwargs["canvas_context"])
+
+    def test_chat_converts_http_citations_to_https_link_details(self) -> None:
+        event = {
+            "httpMethod": "POST",
+            "path": "/chat",
+            "body": json.dumps(
+                {
+                    "courseId": "course-psych-101",
+                    "question": "How should I study?",
+                }
+            ),
+        }
+
+        with patch(
+            "backend.runtime.chat_answer",
+            return_value={
+                "answer": "Review the lecture notes.",
+                "citations": ["http://example.edu/notes/week-2.pdf"],
+            },
+        ):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 200)
+        body = json.loads(response["body"])
+        self.assertEqual(
+            body["citationDetails"],
+            [
+                {
+                    "source": "http://example.edu/notes/week-2.pdf",
+                    "label": "week-2.pdf",
+                    "url": "https://example.edu/notes/week-2.pdf",
+                }
+            ],
+        )
 
     def test_chat_proceeds_when_canvas_query_fails(self) -> None:
         event = {

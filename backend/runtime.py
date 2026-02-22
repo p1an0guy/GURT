@@ -10,6 +10,7 @@ from decimal import Decimal
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlparse
 from uuid import uuid4
 from typing import Any, Dict, Mapping
 
@@ -56,6 +57,9 @@ _STUDY_TODAY_DEFAULT_COUNT = 5
 _STUDY_TODAY_MAX_COUNT = 50
 _STUDY_TODAY_NEAR_EXAM_DAYS = 7
 _STUDY_TODAY_LOW_MASTERY_THRESHOLD = 0.5
+_CHAT_CITATION_URL_TTL_DEFAULT_SECONDS = 3600
+_CHAT_CITATION_URL_TTL_MIN_SECONDS = 60
+_CHAT_CITATION_URL_TTL_MAX_SECONDS = 604800
 
 
 @lru_cache(maxsize=1)
@@ -248,6 +252,117 @@ def _require_non_empty_string(payload: Mapping[str, Any], field: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{field} is required")
     return value.strip()
+
+
+def _normalize_chat_citations(raw: Any) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+
+    citations: list[str] = []
+    seen: set[str] = set()
+    for value in raw:
+        if not isinstance(value, str):
+            continue
+        citation = value.strip()
+        if not citation or citation in seen:
+            continue
+        citations.append(citation)
+        seen.add(citation)
+    return citations
+
+
+def _chat_citation_url_ttl_seconds() -> int:
+    raw = os.getenv(
+        "CHAT_CITATION_URL_TTL_SECONDS",
+        str(_CHAT_CITATION_URL_TTL_DEFAULT_SECONDS),
+    ).strip()
+    try:
+        parsed = int(raw)
+    except ValueError:
+        parsed = _CHAT_CITATION_URL_TTL_DEFAULT_SECONDS
+    return max(
+        _CHAT_CITATION_URL_TTL_MIN_SECONDS,
+        min(parsed, _CHAT_CITATION_URL_TTL_MAX_SECONDS),
+    )
+
+
+def _chat_citation_https_url(source: str) -> str | None:
+    parsed = urlparse(source)
+    if parsed.scheme == "https" and parsed.netloc:
+        return source
+
+    if parsed.scheme == "http" and parsed.netloc:
+        return parsed._replace(scheme="https").geturl()
+
+    if parsed.scheme == "s3" and parsed.netloc:
+        key = parsed.path.lstrip("/")
+        if not key:
+            return None
+        try:
+            return str(
+                _s3_client().generate_presigned_url(
+                    "get_object",
+                    Params={"Bucket": parsed.netloc, "Key": key},
+                    ExpiresIn=_chat_citation_url_ttl_seconds(),
+                )
+            )
+        except Exception:
+            return None
+
+    return None
+
+
+def _chat_citation_label(source: str) -> str:
+    parsed = urlparse(source)
+    if parsed.scheme == "s3":
+        key = parsed.path.lstrip("/")
+        base = key.rsplit("/", 1)[-1] if key else parsed.netloc
+    elif parsed.scheme in ("http", "https"):
+        base = parsed.path.rsplit("/", 1)[-1] if parsed.path else parsed.netloc
+    else:
+        base = source.rsplit("/", 1)[-1]
+
+    label = base or source
+    if parsed.fragment:
+        label = f"{label} ({parsed.fragment})"
+    return label
+
+
+def _build_chat_citation_details(citations: list[str]) -> list[dict[str, str]]:
+    details: list[dict[str, str]] = []
+    for source in citations:
+        url = _chat_citation_https_url(source)
+        if not url:
+            continue
+        details.append(
+            {
+                "source": source,
+                "label": _chat_citation_label(source),
+                "url": url,
+            }
+        )
+    return details
+
+
+def _normalize_chat_response(raw: Any) -> dict[str, Any]:
+    if not isinstance(raw, Mapping):
+        raise GenerationError("chat model returned invalid response payload")
+
+    answer_raw = raw.get("answer")
+    answer = answer_raw.strip() if isinstance(answer_raw, str) else ""
+    if not answer:
+        raise GenerationError("chat model returned empty answer")
+
+    citations = _normalize_chat_citations(raw.get("citations"))
+    normalized: dict[str, Any] = {
+        "answer": answer,
+        "citations": citations,
+        "citationDetails": _build_chat_citation_details(citations),
+    }
+    action = raw.get("action")
+    if isinstance(action, dict):
+        normalized["action"] = action
+    return normalized
 
 
 def _utc_now_rfc3339() -> str:
@@ -1358,6 +1473,7 @@ def _handle_chat(event: Mapping[str, Any]) -> Dict[str, Any]:
             )
         else:
             answer = chat_answer(course_id=course_id, question=question, canvas_context=canvas_context)
+        answer = _normalize_chat_response(answer)
     except ValueError as exc:
         return _json_response(400, {"error": str(exc)})
     except GuardrailBlockedError:

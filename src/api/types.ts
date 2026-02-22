@@ -47,6 +47,13 @@ export interface CanvasSyncResponse {
 export interface ChatResponse {
   answer: string;
   citations: string[];
+  citationDetails?: ChatCitation[];
+}
+
+export interface ChatCitation {
+  source: string;
+  label: string;
+  url: string;
 }
 
 export interface Card {

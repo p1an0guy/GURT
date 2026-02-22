@@ -206,6 +206,13 @@ class FixtureMockHandler(BaseHTTPRequestHandler):
                 {
                     "answer": "Use active recall and spaced repetition for this topic.",
                     "citations": ["s3://bucket/uploads/170880/doc-a/ch1.pdf#chunk-2"],
+                    "citationDetails": [
+                        {
+                            "source": "s3://bucket/uploads/170880/doc-a/ch1.pdf#chunk-2",
+                            "label": "ch1.pdf (chunk-2)",
+                            "url": "https://bucket.s3.us-west-2.amazonaws.com/uploads/170880/doc-a/ch1.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=example",
+                        }
+                    ],
                 }
             )
             return
