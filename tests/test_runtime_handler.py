@@ -1069,6 +1069,24 @@ class RuntimeHandlerTests(unittest.TestCase):
             generation.GUARDRAIL_BLOCKED_MESSAGE,
         )
 
+    def test_generate_flashcards_returns_502_with_json_error_detail(self) -> None:
+        event = {
+            "httpMethod": "POST",
+            "path": "/generate/flashcards",
+            "body": json.dumps({"courseId": "course-psych-101", "numCards": 5}),
+        }
+
+        with patch(
+            "backend.runtime.generate_flashcards",
+            side_effect=generation.GenerationError(
+                "model returned invalid JSON payload (line 1 col 3: Expecting value)"
+            ),
+        ):
+            response = self._invoke(event, env={"DEMO_MODE": "false"})
+
+        self.assertEqual(response["statusCode"], 502)
+        self.assertIn("invalid JSON payload", json.loads(response["body"])["error"])
+
     def test_generate_flashcards_from_materials_returns_400_when_guardrail_blocks(self) -> None:
         event = {
             "httpMethod": "POST",

@@ -19,6 +19,12 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 - **Canvas materials sync reliability model:**
   - Primary path: `POST /canvas/sync` mirrors published/visible Canvas files through Canvas APIs.
   - Fallback path: when Canvas file API sync is partial or unreliable, the Chrome extension can scrape `/courses/{id}/modules` file links and push files through `POST /uploads` + `POST /docs/ingest` (same ingest pipeline, no extension-only ingest route).
+- **Chrome extension focus controls (MVP):**
+  - Extension-side website blocking engine runs in the MV3 service worker.
+  - Rules are user-configured in extension options and enforced via `webNavigation`/`tabs` redirects to an internal blocked page.
+  - Includes Pomodoro mode (enabled by default) with configurable focus/break durations; matched sites are blocked during focus phases.
+  - Pomodoro sessions are start-only from side panel and run until the focus+break cycle completes.
+  - Hard allowlist defaults include Canvas + GURT domains; add the final CloudFront web app domain to this allowlist before production launch.
 - **Text extraction:**
   - Fast path: PyMuPDF text extraction
   - Office path (`.pptx`, `.docx`, `.doc`): convert to PDF during ingest extraction, then run PyMuPDF extraction on converted PDF
@@ -71,6 +77,7 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
      - `POST /canvas/connect` may return `demoUserId`
      - clients pass `X-Gurt-Demo-User-Id` on subsequent user-scoped requests to keep per-user data isolated
    - extension fallback for Canvas files: scrape `/courses/{id}/modules` and ingest via `POST /uploads` + `POST /docs/ingest` when Canvas file API sync is unreliable
+   - extension focus blocking controls (local-only; no backend API surface)
    - per-course partial failure reporting (`failedCourseIds`)
 6. EventBridge runs periodic Canvas sync every 24 hours for all users with stored Canvas connections.
 
