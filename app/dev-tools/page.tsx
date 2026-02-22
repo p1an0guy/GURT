@@ -1,1 +1,1 @@
-export { DevConsolePage as default } from "../page";
+export { default } from "../dev-console-page";
