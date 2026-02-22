@@ -74,7 +74,24 @@ function ChatIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+function DashboardIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...props}>
+      <rect x="3.5" y="3.5" width="7" height="7" rx="1.4" />
+      <rect x="13.5" y="3.5" width="7" height="4.5" rx="1.2" />
+      <rect x="13.5" y="11" width="7" height="9.5" rx="1.2" />
+      <rect x="3.5" y="13" width="7" height="7.5" rx="1.4" />
+    </svg>
+  );
+}
+
 const NAV_ITEMS: NavItem[] = [
+  {
+    href: "/",
+    label: "Dashboard",
+    Icon: DashboardIcon,
+    matches: (pathname) => pathname === "/",
+  },
   {
     href: "/flashcards",
     label: "Flashcards",

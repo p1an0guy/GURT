@@ -253,21 +253,35 @@ export default function PracticeTestsPage() {
   }
 
   return (
-    <main className={`page practice-test-page${isInTestSession ? " in-session" : ""}`}>
+    <main className={`page practice-test-page practice-tests-modern${isInTestSession ? " in-session" : ""}`}>
       {!isInTestSession ? (
         <>
-          <section className="hero">
-            <h1>Practice Tests</h1>
-            <p>
-              Generate timed-style multiple-choice sets and check your answers instantly.
-            </p>
+          <section className="hero practice-tests-modern-hero">
+            <div className="practice-tests-hero-content">
+              <p className="practice-tests-kicker">Study Lab</p>
+              <h1>Practice Tests</h1>
+              <p>
+                Generate timed-style multiple-choice sets and check your answers instantly.
+              </p>
+              <div className="practice-tests-hero-meta">
+                <span className="practice-tests-chip">
+                  <strong>{savedTests.length}</strong> saved
+                </span>
+                <span className="practice-tests-chip">
+                  <strong>{courses.length}</strong> courses
+                </span>
+                <span className="practice-tests-chip">
+                  <strong>{coursesLoaded ? "ready" : "sync needed"}</strong>
+                </span>
+              </div>
+            </div>
           </section>
         </>
       ) : null}
 
       {!isInTestSession ? (
-        <section className="panel-grid">
-          <article className="panel">
+        <section className="panel-grid practice-tests-modern-grid">
+          <article className="panel practice-tests-list-panel">
             <div className="practice-tests-list-header">
               <h2>Saved Practice Tests</h2>
               <button
@@ -287,7 +301,7 @@ export default function PracticeTestsPage() {
             ) : (
               <ul className="list">
                 {savedTests.map((test) => (
-                  <li key={test.testId}>
+                  <li key={test.testId} className="practice-tests-list-item">
                     <strong>{test.title}</strong>
                     <span className="tag">{test.courseName}</span>
                     <div className="small">
@@ -350,7 +364,7 @@ export default function PracticeTestsPage() {
             </div>
           </div>
 
-          <article className="panel">
+          <article className="panel practice-test-session-panel">
             <h2>Practice Test In Progress</h2>
             <div className="stack">
               <div className="practice-test-info">
