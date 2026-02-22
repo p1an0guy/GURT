@@ -57,7 +57,39 @@ chrome.action.onClicked.addListener((tab) => {
 
 const CHAT_API_URL = "https://hpthlfk5ql.execute-api.us-west-2.amazonaws.com/dev/chat";
 const API_BASE_URL = CHAT_API_URL.replace(/\/chat\/?$/, "");
-const WEBAPP_BASE_URL = "http://localhost:3000"; // TODO: update with CloudFront URL for production
+const DEFAULT_WEBAPP_BASE_URL = "http://localhost:3000";
+const DEPLOYMENT_CONFIG_PATH = "deployment_config.json";
+
+let resolvedWebAppBaseUrlPromise = null;
+
+function normalizeWebAppBaseUrl(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.trim().replace(/\/+$/, "");
+}
+
+async function resolveWebAppBaseUrl() {
+  try {
+    const configUrl = chrome.runtime.getURL(DEPLOYMENT_CONFIG_PATH);
+    const response = await fetch(configUrl, { cache: "no-store" });
+    if (!response.ok) {
+      return DEFAULT_WEBAPP_BASE_URL;
+    }
+    const config = await response.json();
+    const configuredUrl = normalizeWebAppBaseUrl(config.webAppBaseUrl);
+    return configuredUrl || DEFAULT_WEBAPP_BASE_URL;
+  } catch {
+    return DEFAULT_WEBAPP_BASE_URL;
+  }
+}
+
+async function getWebAppBaseUrl() {
+  if (!resolvedWebAppBaseUrlPromise) {
+    resolvedWebAppBaseUrlPromise = resolveWebAppBaseUrl();
+  }
+  return resolvedWebAppBaseUrlPromise;
+}
 
 let activeScrapeRun = null;
 
@@ -931,7 +963,8 @@ async function handleGenerateStudyTool(action, courseId, courseName) {
         cards: data
       };
       const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
-      const url = `${WEBAPP_BASE_URL}/import#${encoded}`;
+      const webAppBaseUrl = await getWebAppBaseUrl();
+      const url = `${webAppBaseUrl}/import#${encoded}`;
       chrome.tabs.create({ url });
       return { success: true };
 
@@ -958,7 +991,8 @@ async function handleGenerateStudyTool(action, courseId, courseName) {
         exam: data
       };
       const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
-      const url = `${WEBAPP_BASE_URL}/import#${encoded}`;
+      const webAppBaseUrl = await getWebAppBaseUrl();
+      const url = `${webAppBaseUrl}/import#${encoded}`;
       chrome.tabs.create({ url });
       return { success: true };
 

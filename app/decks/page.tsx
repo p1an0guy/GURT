@@ -1,15 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import "katex/dist/katex.min.css";
 
-import { createApiClient } from "../../../src/api/client.ts";
-import { MathText } from "../../../src/components/MathText.tsx";
-import { getDeckById, markDeckStudied, type DeckRecord } from "../../../src/decks/store.ts";
-import { getDefaultRuntimeSettings } from "../../../src/runtime-settings.ts";
+import { createApiClient } from "../../src/api/client.ts";
+import { MathText } from "../../src/components/MathText.tsx";
+import { getDeckById, markDeckStudied, type DeckRecord } from "../../src/decks/store.ts";
+import { getDefaultRuntimeSettings } from "../../src/runtime-settings.ts";
 
 function nowIso(): string {
   return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
@@ -40,9 +40,8 @@ const RATING_LABELS: Record<RecallRating, string> = {
 };
 
 export default function DeckStudyPage() {
-  const params = useParams<{ deckId: string }>();
   const router = useRouter();
-  const deckId = typeof params.deckId === "string" ? params.deckId : "";
+  const [deckId, setDeckId] = useState("");
   const [deck, setDeck] = useState<DeckRecord | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
@@ -63,7 +62,21 @@ export default function DeckStudyPage() {
   );
 
   useEffect(() => {
+    function updateDeckIdFromUrl(): void {
+      const params = new URLSearchParams(window.location.search);
+      setDeckId(params.get("deckId") ?? "");
+    }
+
+    updateDeckIdFromUrl();
+    window.addEventListener("popstate", updateDeckIdFromUrl);
+    return () => {
+      window.removeEventListener("popstate", updateDeckIdFromUrl);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!deckId) {
+      setDeck(null);
       return;
     }
     const row = getDeckById(deckId);
@@ -170,7 +183,7 @@ export default function DeckStudyPage() {
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [activeCard, deck, handleRate, isFinished, isSubmittingReview, router]);
+  }, [activeCard, deck, isFinished, isSubmittingReview, router]);
 
   if (!deck) {
     return (
@@ -222,11 +235,15 @@ export default function DeckStudyPage() {
                 <div className={`flashcard-flip-inner${revealed ? " is-revealed" : ""}`}>
                   <div className="flashcard-face flashcard-front">
                     <p className="flashcard-side-label">Prompt</p>
-                    <p className="flashcard-side-text"><MathText text={activeCard.prompt} /></p>
+                    <p className="flashcard-side-text">
+                      <MathText text={activeCard.prompt} />
+                    </p>
                   </div>
                   <div className="flashcard-face flashcard-back">
                     <p className="flashcard-side-label">Answer</p>
-                    <p className="flashcard-side-text"><MathText text={activeCard.answer} /></p>
+                    <p className="flashcard-side-text">
+                      <MathText text={activeCard.answer} />
+                    </p>
                   </div>
                 </div>
               </button>

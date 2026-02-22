@@ -443,7 +443,7 @@ export default function FlashcardsPage() {
                   <div className="deck-actions">
                     <Link
                       className="button-link"
-                      href={`/decks/${encodeURIComponent(deck.deckId)}`}
+                      href={`/decks?deckId=${encodeURIComponent(deck.deckId)}`}
                     >
                       Study Deck
                     </Link>
