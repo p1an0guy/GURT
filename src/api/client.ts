@@ -57,8 +57,14 @@ export interface ApiClient {
   syncCanvas(): Promise<CanvasSyncResponse>;
   generateFlashcards(courseId: string, numCards: number): Promise<Card[]>;
   generatePracticeExam(courseId: string, numQuestions: number): Promise<PracticeExam>;
+  generatePracticeExamFromMaterials(
+    courseId: string,
+    materialIds: string[],
+    numQuestions: number,
+  ): Promise<PracticeExam>;
   startPracticeExamGeneration(
     courseId: string,
+    materialIds: string[],
     numQuestions: number,
   ): Promise<PracticeExamGenerationStartResponse>;
   getPracticeExamGenerationStatus(jobId: string): Promise<PracticeExamGenerationStatusResponse>;
@@ -261,8 +267,26 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
       });
     },
 
+    async generatePracticeExamFromMaterials(
+      courseId: string,
+      materialIds: string[],
+      numQuestions: number,
+    ): Promise<PracticeExam> {
+      if (useFixtures) {
+        return getFixturePracticeExam(courseId, numQuestions);
+      }
+      return requestJson<PracticeExam>("/generate/practice-exam", {
+        method: "POST",
+        headers: {
+          "content-type": "text/plain",
+        },
+        body: JSON.stringify({ courseId, materialIds, numQuestions }),
+      });
+    },
+
     async startPracticeExamGeneration(
       courseId: string,
+      materialIds: string[],
       numQuestions: number,
     ): Promise<PracticeExamGenerationStartResponse> {
       if (useFixtures) {
@@ -280,7 +304,7 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
         headers: {
           "content-type": "text/plain",
         },
-        body: JSON.stringify({ courseId, numQuestions }),
+        body: JSON.stringify({ courseId, materialIds, numQuestions }),
       });
     },
 

@@ -32,7 +32,7 @@ from backend.generation import (
     format_canvas_items,
     generate_flashcards,
     generate_flashcards_from_materials,
-    generate_practice_exam,
+    generate_practice_exam_from_materials,
     guardrail_blocked_chat_response,
 )
 from backend import uploads
@@ -795,6 +795,8 @@ def _start_practice_exam_gen_job(
     *,
     user_id: str,
     course_id: str,
+    material_ids: list[str],
+    material_s3_keys: list[str],
     num_questions: int,
 ) -> dict[str, Any]:
     job_id = f"pracexam-{uuid4().hex}"
@@ -806,6 +808,8 @@ def _start_practice_exam_gen_job(
             "jobId": job_id,
             "userId": user_id,
             "courseId": course_id,
+            "materialIds": material_ids,
+            "materialS3Keys": material_s3_keys,
             "numQuestions": num_questions,
             "status": "RUNNING",
             "exam": {},
@@ -819,6 +823,8 @@ def _start_practice_exam_gen_job(
         "jobId": job_id,
         "userId": user_id,
         "courseId": course_id,
+        "materialIds": material_ids,
+        "materialS3Keys": material_s3_keys,
         "numQuestions": num_questions,
     }
     _stepfunctions_client().start_execution(
@@ -1442,16 +1448,62 @@ def _handle_flashcard_gen_status(job_id: str) -> Dict[str, Any]:
 
 
 def _handle_generate_practice_exam(event: Mapping[str, Any]) -> Dict[str, Any]:
+    user_id, auth_error = _require_authenticated_user_id(event)
+    if auth_error is not None or user_id is None:
+        return auth_error or _json_response(401, {"error": "authenticated principal is required"})
+
     payload, parse_error = _parse_json_body(event)
     if parse_error is not None or payload is None:
         return _json_response(400, {"error": parse_error or "request body must be valid JSON"})
     try:
         course_id = _require_non_empty_string(payload, "courseId")
+        material_ids_raw = payload.get("materialIds")
+        if not isinstance(material_ids_raw, list) or not material_ids_raw:
+            return _json_response(400, {"error": "materialIds is required and must be a non-empty array"})
+        if len(material_ids_raw) > 10:
+            return _json_response(400, {"error": "materialIds must contain at most 10 items"})
+        material_ids = [str(mid).strip() for mid in material_ids_raw if isinstance(mid, str) and mid.strip()]
+        if not material_ids:
+            return _json_response(400, {"error": "materialIds must contain non-empty strings"})
+
         num_questions_raw = payload.get("numQuestions", 10)
         num_questions = int(num_questions_raw)
         if num_questions < 1:
             return _json_response(400, {"error": "numQuestions must be >= 1"})
-        exam = generate_practice_exam(course_id=course_id, num_questions=min(num_questions, 20))
+        num_questions = min(num_questions, 20)
+
+        table = _canvas_data_table()
+        from studybuddy.models.canvas import item_partition_key, material_sort_key
+        pk = item_partition_key(user_id, course_id)
+        bucket = os.getenv("UPLOADS_BUCKET", "").strip()
+        material_s3_keys: list[str] = []
+        for mid in material_ids:
+            sk = material_sort_key(mid)
+            result = table.get_item(Key={"pk": pk, "sk": sk})
+            item = result.get("Item")
+            if item and item.get("entityType") == "CanvasMaterial":
+                s3_key = item.get("s3Key", "")
+                if s3_key:
+                    material_s3_keys.append(str(s3_key))
+                    continue
+
+            if not bucket:
+                return _json_response(404, {"error": f"material {mid} not found for this course"})
+            s3_prefix = f"uploads/{course_id}/{mid}/"
+            try:
+                listing = _s3_client().list_objects_v2(Bucket=bucket, Prefix=s3_prefix, MaxKeys=1)
+                objects = listing.get("Contents", [])
+                if not objects:
+                    return _json_response(404, {"error": f"material {mid} not found for this course"})
+                material_s3_keys.append(objects[0]["Key"])
+            except Exception as exc:
+                return _json_response(502, {"error": f"failed to look up material {mid}: {exc}"})
+
+        exam = generate_practice_exam_from_materials(
+            course_id=course_id,
+            material_s3_keys=material_s3_keys,
+            num_questions=num_questions,
+        )
     except ValueError as exc:
         return _json_response(400, {"error": str(exc)})
     except GuardrailBlockedError:
@@ -1476,14 +1528,53 @@ def _handle_practice_exam_gen_start(event: Mapping[str, Any]) -> Dict[str, Any]:
 
     try:
         course_id = _require_non_empty_string(payload, "courseId")
+        material_ids_raw = payload.get("materialIds")
+        if not isinstance(material_ids_raw, list) or not material_ids_raw:
+            return _json_response(400, {"error": "materialIds is required and must be a non-empty array"})
+        if len(material_ids_raw) > 10:
+            return _json_response(400, {"error": "materialIds must contain at most 10 items"})
+        material_ids = [str(mid).strip() for mid in material_ids_raw if isinstance(mid, str) and mid.strip()]
+        if not material_ids:
+            return _json_response(400, {"error": "materialIds must contain non-empty strings"})
+
         num_questions_raw = payload.get("numQuestions", 10)
         num_questions = int(num_questions_raw)
         if num_questions < 1:
             return _json_response(400, {"error": "numQuestions must be >= 1"})
         num_questions = min(num_questions, 20)
+
+        table = _canvas_data_table()
+        from studybuddy.models.canvas import item_partition_key, material_sort_key
+        pk = item_partition_key(user_id, course_id)
+        bucket = os.getenv("UPLOADS_BUCKET", "").strip()
+        material_s3_keys: list[str] = []
+        for mid in material_ids:
+            sk = material_sort_key(mid)
+            result = table.get_item(Key={"pk": pk, "sk": sk})
+            item = result.get("Item")
+            if item and item.get("entityType") == "CanvasMaterial":
+                s3_key = item.get("s3Key", "")
+                if s3_key:
+                    material_s3_keys.append(str(s3_key))
+                    continue
+
+            if not bucket:
+                return _json_response(404, {"error": f"material {mid} not found for this course"})
+            s3_prefix = f"uploads/{course_id}/{mid}/"
+            try:
+                listing = _s3_client().list_objects_v2(Bucket=bucket, Prefix=s3_prefix, MaxKeys=1)
+                objects = listing.get("Contents", [])
+                if not objects:
+                    return _json_response(404, {"error": f"material {mid} not found for this course"})
+                material_s3_keys.append(objects[0]["Key"])
+            except Exception as exc:
+                return _json_response(502, {"error": f"failed to look up material {mid}: {exc}"})
+
         job = _start_practice_exam_gen_job(
             user_id=user_id,
             course_id=course_id,
+            material_ids=material_ids,
+            material_s3_keys=material_s3_keys,
             num_questions=num_questions,
         )
     except ValueError as exc:

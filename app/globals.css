@@ -1942,6 +1942,18 @@ body:has(.flashcards-modern),
   margin: 0;
 }
 
+.practice-test-page.flashcards-modern .practice-tests-list-header {
+  margin-bottom: 0.35rem;
+}
+
+.practice-test-page.flashcards-modern .flashcards-hero-meta {
+  align-items: center;
+}
+
+.practice-test-page.flashcards-modern .panel-grid {
+  align-items: start;
+}
+
 .compact-button {
   border-radius: 999px;
   padding: 0.62rem 1.55rem;
@@ -2188,6 +2200,16 @@ body:has(.flashcards-modern),
 
 .practice-generate-modal h3 {
   margin: 0;
+}
+
+.practice-generate-modal .material-list {
+  max-height: 220px;
+  overflow: auto;
+}
+
+.practice-generate-modal .flashcards-upload-chip-list {
+  max-height: 160px;
+  overflow: auto;
 }
 
 .practice-generate-actions {
