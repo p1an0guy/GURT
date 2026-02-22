@@ -1033,7 +1033,7 @@ export default function PracticeTestsPage() {
             ) : (
               <ul className="list">
                 {savedTests.map((test) => (
-                  <li key={test.testId}>
+                  <li key={test.testId} className="practice-tests-list-item">
                     <strong>{test.title}</strong>
                     <span className="tag">{test.courseName}</span>
                     <div className="small">
@@ -1096,7 +1096,7 @@ export default function PracticeTestsPage() {
             </div>
           </div>
 
-          <article className="panel">
+          <article className="panel practice-test-session-panel">
             <h2>Practice Test In Progress</h2>
             <div className="stack">
               <div className="practice-test-info">

@@ -58,6 +58,25 @@ chrome.action.onClicked.addListener((tab) => {
 const CHAT_API_URL = "https://hpthlfk5ql.execute-api.us-west-2.amazonaws.com/dev/chat";
 const API_BASE_URL = CHAT_API_URL.replace(/\/chat\/?$/, "");
 const WEBAPP_BASE_URL = "http://localhost:3000"; // TODO: update with CloudFront URL for production
+const MAX_FLASHCARD_MATERIAL_IDS = 10;
+
+const BLOCK_CONFIG_KEY = "gurtBlockConfigV1";
+const BLOCK_RUNTIME_KEY = "gurtBlockRuntimeV1";
+const BLOCK_TICK_ALARM = "GURT_BLOCK_TICK";
+const BLOCK_DEBUG_KEY = "gurtBlockDebug";
+const BLOCKED_PAGE = "blocked.html";
+const BLOCKED_PAGE_URL = chrome.runtime.getURL(BLOCKED_PAGE);
+const BLOCKING_ENGINE_CANDIDATES = ["blocking_engine.js", "/blocking_engine.js"];
+const POMODORO_NOTIFICATION_ICON = "logo.png";
+
+let blockEngineLoadError = null;
+let blockConfig = null;
+let blockRuntime = null;
+let blockCompiled = null;
+let blockRanges = { ranges: [], errors: [] };
+let blockInitialized = false;
+let activeTabIdForBlocking = null;
+let isBrowserWindowFocused = true;
 
 const BLOCK_CONFIG_KEY = "gurtBlockConfigV1";
 const BLOCK_RUNTIME_KEY = "gurtBlockRuntimeV1";
@@ -1529,13 +1548,31 @@ async function handleGenerateStudyTool(action, courseId, courseName) {
     let data;
 
     if (action.type === "flashcards") {
+      const rawMaterialIds = Array.isArray(action.materialIds) ? action.materialIds : [];
+      const normalizedMaterialIds = [];
+      const seenMaterialIds = new Set();
+      for (const materialId of rawMaterialIds) {
+        if (typeof materialId !== "string") {
+          continue;
+        }
+        const trimmed = materialId.trim();
+        if (!trimmed || seenMaterialIds.has(trimmed)) {
+          continue;
+        }
+        seenMaterialIds.add(trimmed);
+        normalizedMaterialIds.push(trimmed);
+        if (normalizedMaterialIds.length >= MAX_FLASHCARD_MATERIAL_IDS) {
+          break;
+        }
+      }
+
       // --- Async: start generation job ---
       const startResponse = await fetch(`${API_BASE_URL}/generate/flashcards-from-materials/jobs`, {
         method: "POST",
         headers: { "Content-Type": "text/plain" },
         body: JSON.stringify({
           courseId: courseId,
-          materialIds: action.materialIds || [],
+          materialIds: normalizedMaterialIds,
           numCards: action.count || 12
         })
       });
@@ -1587,7 +1624,9 @@ async function handleGenerateStudyTool(action, courseId, courseName) {
         title: `${courseName || courseId} Flashcards`,
         courseId: courseId,
         courseName: courseName || courseId,
-        resourceLabels: action.materialNames || [],
+        resourceLabels: Array.isArray(action.materialNames)
+          ? action.materialNames.slice(0, normalizedMaterialIds.length)
+          : [],
         cards: data
       };
       const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));

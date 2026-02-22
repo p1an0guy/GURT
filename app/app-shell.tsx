@@ -12,6 +12,40 @@ type NavItem = {
   matches: (pathname: string) => boolean;
 };
 
+const DEFAULT_APP_TITLE = "GURT";
+
+function getDocumentTitle(pathname: string): string {
+  if (!pathname || pathname === "/") {
+    return "GURT Dashboard";
+  }
+
+  if (pathname === "/flashcards") {
+    return "GURT Flashcards";
+  }
+
+  if (pathname.startsWith("/decks/")) {
+    return "GURT Flashcards Deck";
+  }
+
+  if (pathname === "/practice-tests") {
+    return "GURT Practice Tests";
+  }
+
+  if (pathname === "/chat") {
+    return "GURT Chat";
+  }
+
+  if (pathname === "/import") {
+    return "GURT Import";
+  }
+
+  if (pathname === "/dev-tools") {
+    return "GURT Dev Tools";
+  }
+
+  return DEFAULT_APP_TITLE;
+}
+
 function FlashcardsIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 36 35" fill="none" {...props}>
@@ -40,7 +74,24 @@ function ChatIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+function DashboardIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...props}>
+      <rect x="3.5" y="3.5" width="7" height="7" rx="1.4" />
+      <rect x="13.5" y="3.5" width="7" height="4.5" rx="1.2" />
+      <rect x="13.5" y="11" width="7" height="9.5" rx="1.2" />
+      <rect x="3.5" y="13" width="7" height="7.5" rx="1.4" />
+    </svg>
+  );
+}
+
 const NAV_ITEMS: NavItem[] = [
+  {
+    href: "/",
+    label: "Dashboard",
+    Icon: DashboardIcon,
+    matches: (pathname) => pathname === "/",
+  },
   {
     href: "/flashcards",
     label: "Flashcards",
@@ -82,6 +133,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
     document.documentElement.setAttribute("data-theme", theme);
     window.localStorage.setItem(THEME_STORAGE_KEY, theme);
   }, [theme]);
+
+  useEffect(() => {
+    document.title = getDocumentTitle(activePath);
+  }, [activePath]);
 
   function toggleTheme(): void {
     setTheme((currentTheme) => (currentTheme === "dark" ? "light" : "dark"));

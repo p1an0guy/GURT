@@ -7,6 +7,7 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
 ## Current architecture decisions (locked)
 
 - **Client:** Web app (no desktop app).
+- **Frontend hosting:** deployed behind Amazon CloudFront.
 - **Backend:** AWS **API Gateway + Lambda** (Lambda proxy integration).
 - **IaC scaffold:** AWS CDK (Python) under `infra/` with split stacks:
   - `GurtDataStack` for S3 + DynamoDB.
@@ -24,7 +25,7 @@ StudyBuddy is a web app that syncs Canvas deadlines, ingests course materials (s
   - Rules are user-configured in extension options and enforced via `webNavigation`/`tabs` redirects to an internal blocked page.
   - Includes Pomodoro mode (enabled by default) with configurable focus/break durations; matched sites are blocked during focus phases.
   - Pomodoro sessions are start-only from side panel and run until the focus+break cycle completes.
-  - Hard allowlist defaults include Canvas + GURT domains; add the final CloudFront web app domain to this allowlist before production launch.
+  - Hard allowlist defaults include Canvas + GURT domains; the deployed CloudFront web app domain should remain on this allowlist.
 - **Text extraction:**
   - Fast path: PyMuPDF text extraction
   - Office path (`.pptx`, `.docx`, `.doc`): convert to PDF during ingest extraction, then run PyMuPDF extraction on converted PDF
