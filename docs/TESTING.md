@@ -295,6 +295,40 @@ npm run dev
 
 If browser calls fail with `Failed to fetch`, verify deployed API has CORS enabled (OPTIONS preflight + response headers) and that `NEXT_PUBLIC_API_BASE_URL` matches the deployed stage URL exactly.
 
+## S3 upload CORS origin config (presigned upload URL)
+
+`POST /uploads` returns a presigned S3 upload URL. Browser upload CORS is enforced by the uploads bucket CORS policy (not API Gateway CORS), so keep API Gateway CORS settings unchanged when debugging upload preflight issues.
+
+`infra/app.py` reads `FRONTEND_ALLOWED_ORIGINS` as a comma-separated list and passes it to `GurtDataStack` for S3 CORS.
+Default when unset or empty: `http://localhost:3000`.
+
+Example (localhost + CloudFront follow-up origin):
+
+```bash
+export FRONTEND_ALLOWED_ORIGINS="http://localhost:3000,https://d123example.cloudfront.net"
+AWS_PROFILE=<your-sso-profile> ./scripts/deploy.sh
+```
+
+Explicit preflight verification against a returned presigned upload URL:
+
+```bash
+UPLOAD_URL="$(curl -sS -X POST "$BASE_URL/uploads" \
+  -H 'content-type: application/json' \
+  -d '{"courseId":"course-psych-101","filename":"cors-check.txt","contentType":"text/plain"}' | jq -r '.uploadUrl')"
+
+curl -i -X OPTIONS "$UPLOAD_URL" \
+  -H 'Origin: http://localhost:3000' \
+  -H 'Access-Control-Request-Method: PUT' \
+  -H 'Access-Control-Request-Headers: content-type'
+```
+
+Expected preflight headers include:
+- `Access-Control-Allow-Origin: http://localhost:3000`
+- `Access-Control-Allow-Methods` includes `PUT, GET, HEAD`
+- `Access-Control-Allow-Headers` allows `*`
+
+For completed upload `PUT` responses, `ETag` should be exposed to the browser via CORS.
+
 Quick runtime-hardening checks in browser:
 
 1. Use `Live API` mode, run `Connect Canvas`, then run `Sync Canvas` (primary ingest flow).
