@@ -22,7 +22,11 @@ const COLLAPSED_MODULE_CLASSES = [
 const FETCHABLE_SOURCE_TYPES = {
   assignment: "assignment_attachment",
   page: "page_attachment",
-  discussion: "discussion_attachment"
+  discussion: "discussion_attachment",
+  module_item: "module_item_attachment",
+  modules: "modules_page",
+  quiz: "quiz_page",
+  files_index: "files_index_page"
 };
 
 const NOISE_QUERY_PARAMS = new Set([
@@ -32,6 +36,9 @@ const NOISE_QUERY_PARAMS = new Set([
   "verifier",
   "wrap"
 ]);
+
+const DEFAULT_MAX_CRAWL_DEPTH = 3;
+const DEFAULT_MAX_SOURCE_PAGES = 60;
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -71,6 +78,49 @@ function normalizeUrl(rawUrl, baseUrl = window.location.href) {
   return url.toString();
 }
 
+function isCanvasUserContentHost(hostname) {
+  return /(^|\.)canvas-user-content\.com$/i.test(String(hostname || ""));
+}
+
+function isAllowedDownloadOrigin(urlObject) {
+  if (!urlObject) {
+    return false;
+  }
+  return (
+    urlObject.origin === window.location.origin ||
+    isCanvasUserContentHost(urlObject.hostname)
+  );
+}
+
+function isInCourseScope(urlObject, expectedCourseId) {
+  if (!urlObject) {
+    return false;
+  }
+  const normalizedExpected = normalizeWhitespace(expectedCourseId);
+  if (!normalizedExpected) {
+    return true;
+  }
+  const linkCourseId = extractCourseId(urlObject.toString());
+  if (!linkCourseId) {
+    return true;
+  }
+  return linkCourseId === normalizedExpected;
+}
+
+function parseCanvasFileId(rawValue) {
+  const candidate = normalizeWhitespace(String(rawValue || "").toLowerCase());
+  if (!candidate) {
+    return "";
+  }
+  if (/^\d+$/.test(candidate)) {
+    return candidate;
+  }
+  if (/^\d+~\d+$/.test(candidate)) {
+    return candidate;
+  }
+  return "";
+}
+
 function canonicalizeUrlForDedupe(rawUrl) {
   const url = safeUrl(rawUrl);
   if (!url) {
@@ -98,8 +148,18 @@ function extractFileId(rawUrl) {
   if (!url) {
     return null;
   }
-  const match = url.pathname.match(/\/files\/(\d+)(?:\/|$)/);
-  return match ? match[1] : null;
+  const match = url.pathname.match(/\/files\/([^/]+)(?:\/|$)/i);
+  if (!match || !match[1]) {
+    return null;
+  }
+  let decoded = match[1];
+  try {
+    decoded = decodeURIComponent(decoded);
+  } catch {
+    // Keep original segment when decode fails.
+  }
+  const parsed = parseCanvasFileId(decoded);
+  return parsed || null;
 }
 
 function extractCourseId(rawUrl) {
@@ -506,17 +566,16 @@ function createAttachmentRecordFromModuleItem(moduleItemElement, { moduleName, s
   });
 }
 
-function isModuleItemWrapperUrl(urlObject) {
-  if (!urlObject) {
-    return false;
-  }
-  return /\/courses\/[^/]+\/modules\/items\/\d+(?:\/|$)/.test(urlObject.pathname.toLowerCase());
-}
-
 function classifyModuleItem(urlObject, moduleItemElement) {
   const path = urlObject.pathname.toLowerCase();
-  if (/\/files\/\d+(?:\/|$)/.test(path)) {
+  if (isCanvasFileLink(urlObject)) {
     return "module_file";
+  }
+  if (/\/courses\/[^/]+\/modules\/items\/\d+(?:\/|$)/.test(path)) {
+    return "module_item";
+  }
+  if (/\/courses\/[^/]+\/modules(?:\/|$)/.test(path)) {
+    return "modules";
   }
   if (path.includes("/assignments/")) {
     return "assignment";
@@ -573,8 +632,20 @@ function classifyLinkByPath(urlObject) {
     return "other";
   }
   const path = urlObject.pathname.toLowerCase();
-  if (/\/files\/\d+(?:\/|$)/.test(path)) {
+  if (isCanvasFileLink(urlObject)) {
     return "module_file";
+  }
+  if (/\/courses\/[^/]+\/modules\/items\/\d+(?:\/|$)/.test(path)) {
+    return "module_item";
+  }
+  if (/\/courses\/[^/]+\/modules(?:\/|$)/.test(path)) {
+    return "modules";
+  }
+  if (/\/courses\/[^/]+\/wiki(?:\/|$)/.test(path)) {
+    return "page";
+  }
+  if (path.includes("/syllabus")) {
+    return "page";
   }
   if (path.includes("/assignments/")) {
     return "assignment";
@@ -585,6 +656,15 @@ function classifyLinkByPath(urlObject) {
   if (path.includes("/discussion_topics/")) {
     return "discussion";
   }
+  if (path.includes("/announcements")) {
+    return "discussion";
+  }
+  if (path.includes("/quizzes/")) {
+    return "quiz";
+  }
+  if (/\/courses\/[^/]+\/files(?:\/|$)/.test(path)) {
+    return "files_index";
+  }
   return "other";
 }
 
@@ -592,66 +672,16 @@ function extractFileIdFromApiEndpoint(value) {
   if (!value) {
     return null;
   }
-  const match = value.match(/\/files\/(\d+)(?:\/|$|[?#])/);
-  return match ? match[1] : null;
+  const match = value.match(/\/files\/([0-9~]+)(?:\/|$|[?#])/i);
+  if (!match || !match[1]) {
+    return null;
+  }
+  const parsed = parseCanvasFileId(match[1]);
+  return parsed || null;
 }
 
 function isCanvasFileLink(urlObject) {
-  return /\/files\/\d+(?:\/|$)/.test(urlObject.pathname.toLowerCase());
-}
-
-function extractAttachmentCandidates(documentNode, sourceUrl) {
-  const anchors = [...documentNode.querySelectorAll("a[href], a[data-api-endpoint]")];
-  const seen = new Set();
-  const results = [];
-  const sourceCourseId = extractCourseId(sourceUrl || window.location.href);
-
-  for (const anchor of anchors) {
-    let rawTarget = anchor.getAttribute("href");
-    let targetUrl = normalizeUrl(rawTarget, sourceUrl);
-    let targetObject = targetUrl ? safeUrl(targetUrl) : null;
-
-    if (!targetObject || !isCanvasFileLink(targetObject)) {
-      const apiEndpoint = anchor.getAttribute("data-api-endpoint") || "";
-      const fileId = extractFileIdFromApiEndpoint(apiEndpoint);
-      if (!fileId) {
-        continue;
-      }
-
-      targetObject =
-        (sourceCourseId
-          ? safeUrl(
-              `/courses/${encodeURIComponent(sourceCourseId)}/files/${encodeURIComponent(fileId)}/download?download_frd=1`,
-              sourceUrl
-            )
-          : null) || safeUrl(`/files/${fileId}`, sourceUrl);
-      targetUrl = targetObject ? targetObject.toString() : null;
-    }
-
-    if (!targetObject || targetObject.origin !== window.location.origin) {
-      continue;
-    }
-
-    const dedupe = fileDedupeKey(targetUrl);
-    if (seen.has(dedupe)) {
-      continue;
-    }
-    seen.add(dedupe);
-
-    const title = normalizeWhitespace(
-      anchor.getAttribute("title") ||
-      anchor.getAttribute("download") ||
-      anchor.textContent ||
-      getFileNameFromUrl(targetUrl)
-    );
-
-    results.push({
-      fileUrl: targetUrl,
-      title
-    });
-  }
-
-  return results;
+  return Boolean(extractFileId(urlObject.toString()));
 }
 
 function createRecord({ sourceUrl, fileUrl, title, moduleName, sourceType }) {
@@ -702,22 +732,133 @@ function dedupeFetchTargets(targets) {
   const seen = new Set();
 
   for (const target of targets) {
-    const key = [
-      canonicalizeUrlForDedupe(target.sourceUrl),
-      target.sourceType,
-      normalizeWhitespace(target.moduleName)
-    ].join("|");
-    if (seen.has(key)) {
+    const sourceUrl = normalizeUrl(target && target.sourceUrl ? target.sourceUrl : "");
+    if (!sourceUrl) {
+      continue;
+    }
+    const key = canonicalizeUrlForDedupe(sourceUrl);
+    if (!key || seen.has(key)) {
       continue;
     }
     seen.add(key);
-    deduped.push(target);
+    deduped.push({
+      sourceUrl,
+      moduleName: normalizeWhitespace(target && target.moduleName ? target.moduleName : "") || "Course Content",
+      sourceType: normalizeWhitespace(target && target.sourceType ? target.sourceType : "") || "linked_page",
+      depth: Math.max(1, Number(target && target.depth ? target.depth : 1) || 1)
+    });
   }
 
   return deduped;
 }
 
-async function fetchAttachmentsFromSource(target) {
+function buildFetchTarget(target, depth = 1) {
+  const sourceUrl = normalizeUrl(target && target.sourceUrl ? target.sourceUrl : "");
+  if (!sourceUrl) {
+    return null;
+  }
+  return {
+    sourceUrl,
+    moduleName: normalizeWhitespace(target && target.moduleName ? target.moduleName : "") || "Course Content",
+    sourceType: normalizeWhitespace(target && target.sourceType ? target.sourceType : "") || "linked_page",
+    depth: Math.max(1, Number(depth) || 1)
+  };
+}
+
+function deriveFallbackModuleName() {
+  const heading = normalizeWhitespace(
+    document.querySelector("#content h1, [role='main'] h1, .assignment-title h2, h1")?.textContent || ""
+  );
+  if (heading) {
+    return heading;
+  }
+  return normalizeWhitespace(document.title) || "Course Content";
+}
+
+function findLooseModuleRoot() {
+  const mainContent = document.querySelector("#content, #main, [role='main']");
+  if (mainContent) {
+    return mainContent;
+  }
+  return document.querySelector("#context_modules") || document.body;
+}
+
+function scanLooseAnchors(root, startUrl, options = {}) {
+  const courseId = normalizeWhitespace(options.courseId || extractCourseId(startUrl || window.location.href));
+  const fallbackModuleName = normalizeWhitespace(options.defaultModuleName) || "Course Content";
+  const directRecords = [];
+  const fetchTargets = [];
+  const anchors = [...root.querySelectorAll("a[href], a[data-api-endpoint]")].filter((a) => !isIgnoredLink(a));
+
+  for (const anchor of anchors) {
+    let normalizedLinkUrl = normalizeUrl(anchor.getAttribute("href"), startUrl || window.location.href);
+    let linkUrlObject = safeUrl(normalizedLinkUrl);
+
+    if (!linkUrlObject || !isCanvasFileLink(linkUrlObject)) {
+      const apiEndpoint = anchor.getAttribute("data-api-endpoint") || "";
+      const fileId = extractFileIdFromApiEndpoint(apiEndpoint);
+      if (fileId) {
+        const courseDownloadUrl = courseId
+          ? buildCourseFileDownloadUrl(courseId, fileId, startUrl || window.location.href)
+          : null;
+        normalizedLinkUrl =
+          courseDownloadUrl ||
+          normalizeUrl(`/files/${encodeURIComponent(fileId)}`, startUrl || window.location.href);
+        linkUrlObject = safeUrl(normalizedLinkUrl);
+      }
+    }
+
+    const moduleContainer = anchor.closest(".context_module, [id^='context_module_'], .module");
+    const moduleName = moduleContainer ? getModuleName(moduleContainer, 0) : fallbackModuleName;
+    const title = extractLinkTitle(anchor, normalizedLinkUrl || "");
+
+    if (
+      linkUrlObject &&
+      isCanvasFileLink(linkUrlObject) &&
+      isAllowedDownloadOrigin(linkUrlObject) &&
+      isInCourseScope(linkUrlObject, courseId)
+    ) {
+      const record = createRecord({
+        sourceUrl: startUrl || window.location.href,
+        fileUrl: normalizedLinkUrl,
+        title,
+        moduleName,
+        sourceType: "module_file"
+      });
+      if (record) {
+        directRecords.push(record);
+      }
+      continue;
+    }
+
+    if (
+      !linkUrlObject ||
+      linkUrlObject.origin !== window.location.origin ||
+      !isInCourseScope(linkUrlObject, courseId)
+    ) {
+      continue;
+    }
+
+    const type = classifyLinkByPath(linkUrlObject);
+    if (!FETCHABLE_SOURCE_TYPES[type]) {
+      continue;
+    }
+
+    if (canonicalizeUrlForDedupe(linkUrlObject.toString()) === canonicalizeUrlForDedupe(startUrl)) {
+      continue;
+    }
+
+    fetchTargets.push({
+      sourceUrl: normalizedLinkUrl,
+      moduleName,
+      sourceType: FETCHABLE_SOURCE_TYPES[type]
+    });
+  }
+
+  return { directRecords, fetchTargets };
+}
+
+async function fetchAttachmentsFromSource(target, crawlOptions = {}) {
   const response = await fetch(target.sourceUrl, {
     method: "GET",
     credentials: "include"
@@ -730,23 +871,37 @@ async function fetchAttachmentsFromSource(target) {
   const html = await response.text();
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
-  const attachments = extractAttachmentCandidates(doc, target.sourceUrl);
+  const pageScan = scanLooseAnchors(doc, target.sourceUrl, {
+    courseId: crawlOptions.courseId,
+    defaultModuleName: target.moduleName
+  });
 
-  return attachments
-    .map((attachment) =>
-      createRecord({
-        sourceUrl: target.sourceUrl,
-        fileUrl: attachment.fileUrl,
-        title: attachment.title,
-        moduleName: target.moduleName,
-        sourceType: target.sourceType
-      })
-    )
-    .filter(Boolean);
+  const maxDepth = Math.max(1, Number(crawlOptions.maxDepth) || DEFAULT_MAX_CRAWL_DEPTH);
+  const shouldEnqueueMore = target.depth < maxDepth;
+
+  const nextTargets = shouldEnqueueMore
+    ? pageScan.fetchTargets
+        .map((candidate) =>
+          buildFetchTarget(
+            {
+              sourceUrl: candidate.sourceUrl,
+              moduleName: target.moduleName,
+              sourceType: candidate.sourceType
+            },
+            target.depth + 1
+          )
+        )
+        .filter(Boolean)
+    : [];
+
+  return {
+    directRecords: pageScan.directRecords,
+    nextTargets
+  };
 }
 
 function isModulesPage(pathname) {
-  return /\/courses\/\d+\/modules(?:\/|$)/.test(pathname);
+  return /\/courses\/[^/]+\/modules(?:\/|$)/.test(pathname);
 }
 
 function extractLinkTitle(anchor, fallbackUrl) {
@@ -757,21 +912,51 @@ function extractLinkTitle(anchor, fallbackUrl) {
   return getFileNameFromUrl(fallbackUrl);
 }
 
-async function fetchTargetsWithConcurrency(targets, onProgress, concurrency = 3) {
+async function fetchTargetsWithConcurrency(targets, onProgress, options = {}) {
   if (targets.length === 0) {
     return [];
   }
 
+  const concurrency = Math.min(
+    Math.max(1, Number(options.concurrency) || 3),
+    Math.max(1, targets.length)
+  );
+  const maxDepth = Math.max(1, Number(options.maxDepth) || DEFAULT_MAX_CRAWL_DEPTH);
+  const maxSources = Math.max(1, Number(options.maxSources) || DEFAULT_MAX_SOURCE_PAGES);
+
   const output = [];
-  const queue = [...targets];
-  const workerCount = Math.min(Math.max(1, concurrency), targets.length);
+  const queue = [];
+  const seenSources = new Set();
   let completed = 0;
 
-  const workers = Array.from({ length: workerCount }, async () => {
+  function enqueue(target) {
+    const normalized = buildFetchTarget(target, target && target.depth ? target.depth : 1);
+    if (!normalized) {
+      return false;
+    }
+    if (normalized.depth > maxDepth) {
+      return false;
+    }
+    const key = canonicalizeUrlForDedupe(normalized.sourceUrl);
+    if (!key || seenSources.has(key)) {
+      return false;
+    }
+    if (seenSources.size >= maxSources) {
+      return false;
+    }
+    seenSources.add(key);
+    queue.push(normalized);
+    return true;
+  }
+
+  targets.forEach((target) => enqueue(target));
+  const totalSources = () => seenSources.size;
+
+  const workers = Array.from({ length: concurrency }, async () => {
     while (queue.length > 0) {
       const target = queue.shift();
       if (!target) {
-        return;
+        continue;
       }
 
       emitProgress(onProgress, {
@@ -780,20 +965,33 @@ async function fetchTargetsWithConcurrency(targets, onProgress, concurrency = 3)
         sourceUrl: target.sourceUrl,
         moduleName: target.moduleName,
         sourceType: target.sourceType,
+        depth: target.depth,
         completedSources: completed,
-        totalSources: targets.length
+        totalSources: totalSources()
       });
 
       try {
-        const records = await fetchAttachmentsFromSource(target);
-        output.push(...records);
+        const discovered = await fetchAttachmentsFromSource(target, {
+          courseId: options.courseId,
+          maxDepth
+        });
+        output.push(...discovered.directRecords);
+        let queuedSources = 0;
+        discovered.nextTargets.forEach((nextTarget) => {
+          if (enqueue(nextTarget)) {
+            queuedSources += 1;
+          }
+        });
+
         emitProgress(onProgress, {
           stage: "fetch_source_success",
-          message: `Found ${records.length} attachment(s) in source.`,
+          message: `Found ${discovered.directRecords.length} attachment(s) in source.`,
           sourceUrl: target.sourceUrl,
           moduleName: target.moduleName,
           sourceType: target.sourceType,
-          foundInSource: records.length
+          depth: target.depth,
+          foundInSource: discovered.directRecords.length,
+          queuedSources
         });
       } catch (error) {
         emitProgress(onProgress, {
@@ -801,15 +999,16 @@ async function fetchTargetsWithConcurrency(targets, onProgress, concurrency = 3)
           message: error instanceof Error ? error.message : String(error),
           sourceUrl: target.sourceUrl,
           moduleName: target.moduleName,
-          sourceType: target.sourceType
+          sourceType: target.sourceType,
+          depth: target.depth
         });
       } finally {
         completed += 1;
         emitProgress(onProgress, {
           stage: "fetch_progress",
-          message: `Fetched ${completed}/${targets.length} linked source page(s).`,
+          message: `Fetched ${completed}/${totalSources()} linked source page(s).`,
           completedSources: completed,
-          totalSources: targets.length
+          totalSources: totalSources()
         });
       }
     }
@@ -819,162 +1018,130 @@ async function fetchTargetsWithConcurrency(targets, onProgress, concurrency = 3)
   return output;
 }
 
-function findLooseModuleRoot() {
-  return document.querySelector("#context_modules") || document.body;
-}
-
-function scanLooseAnchors(root, startUrl) {
-  const directRecords = [];
-  const fetchTargets = [];
-  const anchors = [...root.querySelectorAll("a[href]")].filter((a) => !isIgnoredLink(a));
-
-  for (const anchor of anchors) {
-    const normalizedLinkUrl = normalizeUrl(anchor.getAttribute("href"), startUrl || window.location.href);
-    const linkUrlObject = safeUrl(normalizedLinkUrl);
-    if (!normalizedLinkUrl || !linkUrlObject) {
-      continue;
-    }
-    if (linkUrlObject.origin !== window.location.origin) {
-      continue;
-    }
-    if (isModuleItemWrapperUrl(linkUrlObject) && !isCanvasFileLink(linkUrlObject)) {
-      continue;
-    }
-
-    const type = classifyLinkByPath(linkUrlObject);
-    if (type === "other") {
-      continue;
-    }
-
-    const moduleContainer = anchor.closest(".context_module, [id^='context_module_'], .module");
-    const moduleName = moduleContainer ? getModuleName(moduleContainer, 0) : "Modules";
-    const title = extractLinkTitle(anchor, normalizedLinkUrl);
-
-    if (type === "module_file") {
-      const record = createRecord({
-        sourceUrl: normalizedLinkUrl,
-        fileUrl: normalizedLinkUrl,
-        title,
-        moduleName,
-        sourceType: "module_file"
-      });
-      if (record) {
-        directRecords.push(record);
-      }
-    } else if (FETCHABLE_SOURCE_TYPES[type]) {
-      fetchTargets.push({
-        sourceUrl: normalizedLinkUrl,
-        moduleName,
-        sourceType: FETCHABLE_SOURCE_TYPES[type]
-      });
-    }
-  }
-
-  return { directRecords, fetchTargets };
-}
-
 async function scrapeCanvasModules(options = {}) {
   const onProgress = options.onProgress;
   const startUrl = normalizeUrl(options.sourceUrl || window.location.href, window.location.href);
   const courseId = extractCourseId(startUrl || window.location.href);
-
-  if (!isModulesPage(window.location.pathname)) {
-    throw new Error("SCRAPE_MODULES_START can only run on a Canvas course modules page.");
-  }
+  const runningOnModulesPage = isModulesPage(window.location.pathname);
+  const fallbackModuleName = deriveFallbackModuleName();
 
   emitProgress(onProgress, {
     stage: "start",
-    message: "Starting Canvas module discovery.",
+    message: runningOnModulesPage
+      ? "Starting Canvas module discovery."
+      : "Starting Canvas page discovery.",
     sourceUrl: startUrl
   });
 
-  await waitForModules();
-  const expandedCount = await expandCollapsedModules(onProgress);
-
-  const modules = findModuleContainers();
   const directRecords = [];
   const fetchTargets = [];
+  let expandedCount = 0;
+  let modules = [];
 
-  emitProgress(onProgress, {
-    stage: "scan_modules_start",
-    message: `Scanning ${modules.length} module(s) for links.`,
-    moduleCount: modules.length,
-    expandedCount
-  });
+  if (runningOnModulesPage) {
+    await waitForModules();
+    expandedCount = await expandCollapsedModules(onProgress);
 
-  modules.forEach((moduleElement, moduleIndex) => {
-    const moduleName = getModuleName(moduleElement, moduleIndex);
-    const moduleItems = findModuleItems(moduleElement);
+    modules = findModuleContainers();
 
     emitProgress(onProgress, {
-      stage: "scan_module",
-      message: `Scanning ${moduleName} (${moduleItems.length} item(s)).`,
-      moduleName,
-      moduleIndex: moduleIndex + 1,
+      stage: "scan_modules_start",
+      message: `Scanning ${modules.length} module(s) for links.`,
       moduleCount: modules.length,
-      itemCount: moduleItems.length
+      expandedCount
     });
 
-    moduleItems.forEach((moduleItem) => {
-      const moduleItemType = readModuleItemType(moduleItem);
-      if (moduleItemType === "attachment") {
-        const attachmentRecord = createAttachmentRecordFromModuleItem(moduleItem, {
-          moduleName,
-          startUrl,
-          courseId
-        });
-        if (attachmentRecord) {
-          directRecords.push(attachmentRecord);
-          return;
-        }
-      }
+    modules.forEach((moduleElement, moduleIndex) => {
+      const moduleName = getModuleName(moduleElement, moduleIndex);
+      const moduleItems = findModuleItems(moduleElement);
 
-      const links = findCandidateItemLinks(moduleItem);
-      links.forEach((link) => {
-        const normalizedLinkUrl = normalizeUrl(link.getAttribute("href"), startUrl || window.location.href);
-        const linkUrlObject = safeUrl(normalizedLinkUrl);
-        if (!normalizedLinkUrl || !linkUrlObject) {
-          return;
-        }
+      emitProgress(onProgress, {
+        stage: "scan_module",
+        message: `Scanning ${moduleName} (${moduleItems.length} item(s)).`,
+        moduleName,
+        moduleIndex: moduleIndex + 1,
+        moduleCount: modules.length,
+        itemCount: moduleItems.length
+      });
 
-        if (linkUrlObject.origin !== window.location.origin) {
-          return;
-        }
-        if (isModuleItemWrapperUrl(linkUrlObject) && !isCanvasFileLink(linkUrlObject)) {
-          return;
-        }
-
-        const itemType = classifyModuleItem(linkUrlObject, moduleItem);
-        const title = extractLinkTitle(link, normalizedLinkUrl);
-
-        if (itemType === "module_file") {
-          const record = createRecord({
-            sourceUrl: normalizedLinkUrl,
-            fileUrl: normalizedLinkUrl,
-            title,
+      moduleItems.forEach((moduleItem) => {
+        const moduleItemType = readModuleItemType(moduleItem);
+        if (moduleItemType === "attachment") {
+          const attachmentRecord = createAttachmentRecordFromModuleItem(moduleItem, {
             moduleName,
-            sourceType: "module_file"
+            startUrl,
+            courseId
           });
-          if (record) {
-            directRecords.push(record);
+          if (attachmentRecord) {
+            directRecords.push(attachmentRecord);
+            return;
           }
-          return;
         }
 
-        if (FETCHABLE_SOURCE_TYPES[itemType]) {
-          fetchTargets.push({
-            sourceUrl: normalizedLinkUrl,
-            moduleName,
-            sourceType: FETCHABLE_SOURCE_TYPES[itemType]
-          });
-        }
+        const links = findCandidateItemLinks(moduleItem);
+        links.forEach((link) => {
+          const normalizedLinkUrl = normalizeUrl(link.getAttribute("href"), startUrl || window.location.href);
+          const linkUrlObject = safeUrl(normalizedLinkUrl);
+          if (!normalizedLinkUrl || !linkUrlObject) {
+            return;
+          }
+
+          if (!isInCourseScope(linkUrlObject, courseId)) {
+            return;
+          }
+
+          const title = extractLinkTitle(link, normalizedLinkUrl);
+          if (isCanvasFileLink(linkUrlObject) && isAllowedDownloadOrigin(linkUrlObject)) {
+            const record = createRecord({
+              sourceUrl: startUrl || window.location.href,
+              fileUrl: normalizedLinkUrl,
+              title,
+              moduleName,
+              sourceType: "module_file"
+            });
+            if (record) {
+              directRecords.push(record);
+            }
+            return;
+          }
+
+          if (linkUrlObject.origin !== window.location.origin) {
+            return;
+          }
+
+          const itemType = classifyModuleItem(linkUrlObject, moduleItem);
+          if (itemType === "module_file") {
+            const record = createRecord({
+              sourceUrl: startUrl || window.location.href,
+              fileUrl: normalizedLinkUrl,
+              title,
+              moduleName,
+              sourceType: "module_file"
+            });
+            if (record) {
+              directRecords.push(record);
+            }
+            return;
+          }
+
+          if (FETCHABLE_SOURCE_TYPES[itemType]) {
+            fetchTargets.push({
+              sourceUrl: normalizedLinkUrl,
+              moduleName,
+              sourceType: FETCHABLE_SOURCE_TYPES[itemType]
+            });
+          }
+        });
       });
     });
-  });
+  }
 
   if (directRecords.length === 0 && fetchTargets.length === 0) {
     const looseRoot = findLooseModuleRoot();
-    const looseScan = scanLooseAnchors(looseRoot, startUrl);
+    const looseScan = scanLooseAnchors(looseRoot, startUrl, {
+      courseId,
+      defaultModuleName: fallbackModuleName
+    });
     directRecords.push(...looseScan.directRecords);
     fetchTargets.push(...looseScan.fetchTargets);
     emitProgress(onProgress, {
@@ -988,22 +1155,23 @@ async function scrapeCanvasModules(options = {}) {
   const uniqueFetchTargets = dedupeFetchTargets(fetchTargets);
 
   emitProgress(onProgress, {
-    stage: "scan_modules_complete",
+    stage: runningOnModulesPage ? "scan_modules_complete" : "scan_page_complete",
     message: `Found ${directRecords.length} direct file link(s) and ${uniqueFetchTargets.length} linked source page(s).`,
     directCount: directRecords.length,
     linkedSourceCount: uniqueFetchTargets.length
   });
 
-  const fetchedRecords = await fetchTargetsWithConcurrency(
-    uniqueFetchTargets,
-    onProgress,
-    options.concurrency || 3
-  );
+  const fetchedRecords = await fetchTargetsWithConcurrency(uniqueFetchTargets, onProgress, {
+    concurrency: options.concurrency || 3,
+    maxDepth: options.maxDepth || DEFAULT_MAX_CRAWL_DEPTH,
+    maxSources: options.maxSources || DEFAULT_MAX_SOURCE_PAGES,
+    courseId
+  });
 
   const discovered = dedupeRecords([...directRecords, ...fetchedRecords]);
   emitProgress(onProgress, {
     stage: "complete",
-    message: `Module discovery complete with ${discovered.length} unique file record(s).`,
+    message: `Discovery complete with ${discovered.length} unique file record(s).`,
     discoveredCount: discovered.length,
     directCount: directRecords.length,
     attachmentCount: fetchedRecords.length
