@@ -665,9 +665,11 @@ async function sendMessage() {
     typingEl.remove();
 
     if (response && response.success) {
-      appendMessage("bot", response.answer);
       if (response.action) {
+        appendMessage("bot", buildActionConfirmationMessage(response.answer, response.action));
         renderActionCard(response.action);
+      } else {
+        appendMessage("bot", response.answer);
       }
     } else {
       const errMsg = (response && response.error) || "Something went wrong.";
@@ -768,6 +770,56 @@ function renderMarkdown(text) {
   html = html.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, "<em>$1</em>");
 
   return html;
+}
+
+function buildActionConfirmationMessage(answer, action) {
+  const provided = typeof answer === "string" ? answer.trim() : "";
+  if (provided && !looksLikeGeneratedStudyContent(provided)) {
+    return provided;
+  }
+
+  const isFlashcards = action && action.type === "flashcards";
+  const typeLabel = isFlashcards ? "Flashcard Deck" : "Practice Exam";
+  const count = (action && action.count) || (isFlashcards ? 12 : 10);
+  const unit = isFlashcards ? "cards" : "questions";
+  const materialNames = Array.isArray(action && action.materialNames) ? action.materialNames : [];
+
+  const lines = [
+    "Ready to generate!",
+    `${typeLabel} (${count} ${unit})`,
+  ];
+
+  if (materialNames.length > 0) {
+    lines.push("Materials:");
+    for (const name of materialNames) {
+      lines.push(String(name));
+    }
+  }
+
+  return lines.join("\n");
+}
+
+function looksLikeGeneratedStudyContent(text) {
+  if (text.length > 1200) {
+    return true;
+  }
+
+  const patterns = [
+    /(^|\n)\s*(question|flashcard)\s*\d+[:.)]/i,
+    /(^|\n)\s*q[:.)\s]/i,
+    /(^|\n)\s*a[:.)\s]/i,
+    /(^|\n)\s*answer[:.)\s]/i,
+  ];
+  if (patterns.some((pattern) => pattern.test(text))) {
+    return true;
+  }
+
+  const numberedItems = (text.match(/(^|\n)\s*\d+\.\s/g) || []).length;
+  if (numberedItems >= 4 && text.includes("?")) {
+    return true;
+  }
+
+  return false;
 }
 
 function renderActionCard(action) {
