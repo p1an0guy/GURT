@@ -9,7 +9,6 @@ This document tracks only active deltas after reassessing open GitHub issues, ro
 - `#50` Chat: expose structured Bedrock citations and clickable source links
 - `#52` Ingest observability: add finalize/KB-trigger metrics and thresholds
 - `#53` [BLOCKED] Smoke coverage for materials metadata assertions
-- `#54` Repo governance: enforce required CI/smoke checks via branch protection
 - `#55` Frontend ingest UX: finalize Canvas-first vs manual flow and align docs
 
 ## Progress Snapshot
@@ -18,7 +17,7 @@ This document tracks only active deltas after reassessing open GitHub issues, ro
 2. Ingestion runtime completion: `MOSTLY COMPLETE`
 3. Study/generation runtime wiring: `COMPLETE`
 4. Frontend runtime hardening: `MOSTLY COMPLETE`
-5. CI and merge-gate hardening: `PARTIAL`
+5. CI and merge-gate hardening: `MOSTLY COMPLETE`
 6. Extension compatibility docs: `COMPLETE`
 
 ## Reassessed Status by Workstream
@@ -71,15 +70,15 @@ Remaining delta:
 
 ## 5) CI and Merge-Gate Hardening
 
-Status: `PARTIAL`
+Status: `MOSTLY COMPLETE`
 
 Completed:
 - CI executes typecheck/lint/test/build + contract validation + unit tests + mock smoke.
 - Conditional CDK checks run when `infra/**` changes.
 - Dev smoke workflow exists.
+- `main` ruleset enforcement is active and requires status check `contracts-and-tests` (which includes mock smoke gate in CI).
 
 Remaining delta:
-- `#54`: verify/enforce branch protection required checks in repository settings.
 - `#53`: extend smoke coverage for materials metadata after contract is finalized.
 
 ## 6) Integration Workstream: Extension Compatibility
@@ -100,10 +99,6 @@ No remaining delta in current scope.
 2. `#52` Add ingest pipeline metrics (finalize + KB trigger) and document thresholds.
 3. `#55` Resolve and implement final ingest UX direction in dashboard and docs.
 
-## P2 (active)
-
-1. `#54` Confirm/enforce required checks through branch protection for `main`.
-
 ## Blocked
 
 1. `#53` Add materials metadata smoke assertions only after materials metadata contract finalization.
@@ -111,8 +106,7 @@ No remaining delta in current scope.
 ## Execution Order
 
 1. `#50`, `#52`, `#55`
-2. `#54`
-3. `#53` once unblocked
+2. `#53` once unblocked
 
 ## Final Integration Checklist (Current)
 
@@ -132,6 +126,6 @@ No remaining delta in current scope.
 - Risk: ingest failures are harder to triage without metrics.
   - Mitigation: complete `#52` with stage-level metrics and runbook thresholds.
 - Risk: merge gates drift from expected checks.
-  - Mitigation: complete `#54` and record enforced checks in docs.
+  - Mitigation: keep ruleset required checks current with CI workflow naming and gate changes.
 - Risk: materials smoke assertions remain incomplete.
   - Mitigation: keep `#53` explicitly blocked until contract is finalized.

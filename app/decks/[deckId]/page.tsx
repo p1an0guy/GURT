@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { createApiClient } from "../../../src/api/client.ts";
@@ -12,8 +12,33 @@ function nowIso(): string {
   return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  if (target.isContentEditable) {
+    return true;
+  }
+
+  const tagName = target.tagName;
+  return tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT";
+}
+
+type RecallRating = 1 | 2 | 3 | 4;
+
+const SHORTCUT_WARNING = "Must rate recall quality before continuing.";
+const SPACE_WARNING_THRESHOLD = 3;
+const RATING_LABELS: Record<RecallRating, string> = {
+  1: "Forgot",
+  2: "Hard",
+  3: "Good",
+  4: "Easy",
+};
+
 export default function DeckStudyPage() {
   const params = useParams<{ deckId: string }>();
+  const router = useRouter();
   const deckId = typeof params.deckId === "string" ? params.deckId : "";
   const [deck, setDeck] = useState<DeckRecord | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -21,6 +46,8 @@ export default function DeckStudyPage() {
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [spacePressCount, setSpacePressCount] = useState(0);
+  const [shortcutWarning, setShortcutWarning] = useState("");
 
   const settings = useMemo(readRuntimeSettings, []);
   const client = useMemo(
@@ -43,7 +70,7 @@ export default function DeckStudyPage() {
   const activeCard = deck?.cards[activeIndex];
   const isFinished = deck !== null && activeIndex >= deck.cards.length;
 
-  async function handleRate(rating: 1 | 2 | 3 | 4 | 5): Promise<void> {
+  async function handleRate(rating: RecallRating): Promise<void> {
     if (!deck || !activeCard || isSubmittingReview) {
       return;
     }
@@ -61,13 +88,86 @@ export default function DeckStudyPage() {
       markDeckStudied(deck.deckId);
       setActiveIndex((prev) => prev + 1);
       setRevealed(false);
-      setMessage(`Saved rating ${rating}.`);
+      setSpacePressCount(0);
+      setShortcutWarning("");
+      setMessage(`Saved rating: ${RATING_LABELS[rating]}.`);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Failed to submit review");
     } finally {
       setIsSubmittingReview(false);
     }
   }
+
+  useEffect(() => {
+    if (!isFinished) {
+      return;
+    }
+    setSpacePressCount(0);
+    setShortcutWarning("");
+  }, [isFinished]);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent): void {
+      if (isEditableTarget(event.target)) {
+        return;
+      }
+
+      if (isFinished && event.code === "Space") {
+        event.preventDefault();
+        router.push("/");
+        return;
+      }
+
+      if (!deck || !activeCard || isSubmittingReview) {
+        return;
+      }
+
+      if (event.code === "Space") {
+        event.preventDefault();
+        setSpacePressCount((prev) => {
+          const next = prev + 1;
+          if (next >= SPACE_WARNING_THRESHOLD) {
+            setShortcutWarning(SHORTCUT_WARNING);
+          }
+          return next;
+        });
+        setRevealed((prev) => !prev);
+        return;
+      }
+
+      let rating: RecallRating | null = null;
+      switch (event.code) {
+        case "Digit1":
+        case "Numpad1":
+          rating = 1;
+          break;
+        case "Digit2":
+        case "Numpad2":
+          rating = 2;
+          break;
+        case "Digit3":
+        case "Numpad3":
+          rating = 3;
+          break;
+        case "Digit4":
+        case "Numpad4":
+          rating = 4;
+          break;
+        default:
+          break;
+      }
+
+      if (rating !== null) {
+        event.preventDefault();
+        void handleRate(rating);
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [activeCard, deck, handleRate, isFinished, isSubmittingReview, router]);
 
   if (!deck) {
     return (
@@ -110,43 +210,43 @@ export default function DeckStudyPage() {
               <p className="small">
                 Card {activeIndex + 1} of {deck.cards.length}
               </p>
-              <div className="status-block">
-                <p>
-                  <strong>Prompt</strong>
-                </p>
-                <p>{activeCard.prompt}</p>
-              </div>
-
-              {revealed ? (
-                <div className="status-block">
-                  <p>
-                    <strong>Answer</strong>
-                  </p>
-                  <p>{activeCard.answer}</p>
+              <button
+                type="button"
+                className="flashcard-flip"
+                onClick={() => setRevealed((prev) => !prev)}
+                aria-label={revealed ? "Show prompt side of card" : "Show answer side of card"}
+              >
+                <div className={`flashcard-flip-inner${revealed ? " is-revealed" : ""}`}>
+                  <div className="flashcard-face flashcard-front">
+                    <p className="flashcard-side-label">Prompt</p>
+                    <p className="flashcard-side-text">{activeCard.prompt}</p>
+                  </div>
+                  <div className="flashcard-face flashcard-back">
+                    <p className="flashcard-side-label">Answer</p>
+                    <p className="flashcard-side-text">{activeCard.answer}</p>
+                  </div>
                 </div>
-              ) : null}
-
-              <button type="button" onClick={() => setRevealed((prev) => !prev)}>
-                {revealed ? "Hide Answer" : "Reveal Answer"}
               </button>
 
-              <p className="small">Rate recall quality:</p>
-              <div className="rating-row">
-                <button type="button" onClick={() => void handleRate(1)} disabled={isSubmittingReview}>
-                  1
-                </button>
-                <button type="button" onClick={() => void handleRate(2)} disabled={isSubmittingReview}>
-                  2
-                </button>
-                <button type="button" onClick={() => void handleRate(3)} disabled={isSubmittingReview}>
-                  3
-                </button>
-                <button type="button" onClick={() => void handleRate(4)} disabled={isSubmittingReview}>
-                  4
-                </button>
-                <button type="button" onClick={() => void handleRate(5)} disabled={isSubmittingReview}>
-                  5
-                </button>
+              <div>
+                <p className="small">Rate recall quality:</p>
+                <p className="small">Click card or press Space to flip</p>
+                <p className="small">1: Forgot, 2: Hard, 3: Good, 4: Easy</p>
+                <div className="rating-row">
+                  <button type="button" onClick={() => void handleRate(1)} disabled={isSubmittingReview}>
+                    Forgot
+                  </button>
+                  <button type="button" onClick={() => void handleRate(2)} disabled={isSubmittingReview}>
+                    Hard
+                  </button>
+                  <button type="button" onClick={() => void handleRate(3)} disabled={isSubmittingReview}>
+                    Good
+                  </button>
+                  <button type="button" onClick={() => void handleRate(4)} disabled={isSubmittingReview}>
+                    Easy
+                  </button>
+                </div>
+                {shortcutWarning ? <p className="error-text">{shortcutWarning}</p> : null}
               </div>
 
               {message ? <p className="small">{message}</p> : null}

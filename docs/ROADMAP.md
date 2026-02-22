@@ -22,6 +22,7 @@ Last updated: **February 21, 2026**
   - `GET /study/today`, `POST /study/review`, `GET /study/mastery`
 - Study queue includes near-exam booster behavior with deterministic ordering tests.
 - CI currently runs contracts, tests, and mock smoke checks; CDK checks run conditionally on `infra/**` changes.
+- `main` merge governance is enforced via active repository ruleset requiring status check `contracts-and-tests` (which includes the mock smoke gate).
 
 ## Remaining roadmap (mapped to open issues)
 
@@ -31,16 +32,13 @@ Last updated: **February 21, 2026**
    - Add explicit metrics and thresholds for finalize and KB trigger outcomes.
 3. `#55` Frontend ingest UX finalization
    - Resolve mixed dashboard behavior between manual ingest controls and Canvas-first ingest status model.
-4. `#54` Merge-gate governance
-   - Verify branch protection requires CI and smoke checks in GitHub settings.
-5. `#53` Blocked smoke expansion
+4. `#53` Blocked smoke expansion
    - Add materials metadata smoke assertions after the materials metadata contract is finalized.
 
 ## Execution order
 
 1. `#50`, `#52`, `#55` (active implementation priorities)
-2. `#54` (repository governance enforcement)
-3. `#53` (unblock after contract finalization)
+2. `#53` (unblock after contract finalization)
 
 ## Operator checklist before each merge
 

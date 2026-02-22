@@ -5,7 +5,9 @@ import {
   getFixtureCalendarIcs,
   getFixtureCalendarTokenResponse,
   getFixtureCourseItems,
+  getFixtureCourseMaterials,
   getFixtureGeneratedFlashcards,
+  getFixtureGeneratedFlashcardsFromMaterials,
   getFixtureCourses,
   getFixtureHealth,
   getFixtureIngestStartResponse,
@@ -24,6 +26,7 @@ import type {
   CanvasSyncResponse,
   Card,
   Course,
+  CourseMaterial,
   HealthStatus,
   IngestStartRequest,
   IngestStartResponse,
@@ -57,6 +60,8 @@ export interface ApiClient {
   getStudyMastery(courseId: string): Promise<TopicMastery[]>;
   getCalendarIcs(token: string): Promise<string>;
   createCalendarToken(): Promise<CalendarTokenResponse>;
+  listCourseMaterials(courseId: string): Promise<CourseMaterial[]>;
+  generateFlashcardsFromMaterials(courseId: string, materialIds: string[], numCards: number): Promise<Card[]>;
   startDocsIngest(request: IngestStartRequest): Promise<IngestStartResponse>;
   getDocsIngestStatus(jobId: string): Promise<IngestStatusResponse>;
 }
@@ -65,6 +70,7 @@ export interface CreateApiClientOptions {
   baseUrl: string;
   fetchImpl?: FetchLike;
   useFixtures?: boolean;
+  demoUserId?: string;
 }
 
 export class ApiClientError extends Error {
@@ -143,13 +149,26 @@ async function parseError(response: Response): Promise<ApiClientError> {
 export function createApiClient(options: CreateApiClientOptions): ApiClient {
   const fetchImpl = options.fetchImpl ?? fetch;
   const useFixtures = options.useFixtures ?? readFixtureModeEnv();
+  const demoUserId = options.demoUserId?.trim() ?? "";
+
+  function withDemoHeader(init?: RequestInit): RequestInit | undefined {
+    if (!demoUserId) {
+      return init;
+    }
+    const headers = new Headers(init?.headers);
+    headers.set("x-gurt-demo-user-id", demoUserId);
+    return {
+      ...(init ?? {}),
+      headers,
+    };
+  }
 
   async function requestJson<T>(
     path: string,
     init?: RequestInit,
     query?: Record<string, string>,
   ): Promise<T> {
-    const response = await fetchImpl(buildUrl(options.baseUrl, path, query), init);
+    const response = await fetchImpl(buildUrl(options.baseUrl, path, query), withDemoHeader(init));
 
     if (!response.ok) {
       throw await parseError(response);
@@ -163,7 +182,7 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
     init?: RequestInit,
     query?: Record<string, string>,
   ): Promise<string> {
-    const response = await fetchImpl(buildUrl(options.baseUrl, path, query), init);
+    const response = await fetchImpl(buildUrl(options.baseUrl, path, query), withDemoHeader(init));
 
     if (!response.ok) {
       throw await parseError(response);
@@ -303,6 +322,27 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
 
       return requestJson<CalendarTokenResponse>("/calendar/token", {
         method: "POST",
+      });
+    },
+
+    async listCourseMaterials(courseId: string): Promise<CourseMaterial[]> {
+      if (useFixtures) {
+        return getFixtureCourseMaterials(courseId);
+      }
+
+      return requestJson<CourseMaterial[]>(`/courses/${encodeURIComponent(courseId)}/materials`);
+    },
+
+    async generateFlashcardsFromMaterials(courseId: string, materialIds: string[], numCards: number): Promise<Card[]> {
+      if (useFixtures) {
+        return getFixtureGeneratedFlashcardsFromMaterials(courseId, materialIds, numCards);
+      }
+      return requestJson<Card[]>("/generate/flashcards-from-materials", {
+        method: "POST",
+        headers: {
+          "content-type": "text/plain",
+        },
+        body: JSON.stringify({ courseId, materialIds, numCards }),
       });
     },
 

@@ -1,0 +1,21 @@
+{
+  "cardId": "card-901",
+  "entityType": "Card",
+  "courseId": "course-psych-101",
+  "topicId": "topic-memory",
+  "prompt": "What is working memory?",
+  "answer": "A limited-capacity system for temporary storage and manipulation of information.",
+  "dueAt": "2026-02-22T10:15:00Z",
+  "createdAt": "2026-02-22T10:15:00Z",
+  "updatedAt": "2026-02-22T12:30:00Z",
+  "lastReviewedAt": "2026-02-22T12:30:00Z",
+  "reviewCount": 1,
+  "fsrsState": {
+    "dueAt": "2026-02-25T12:30:00Z",
+    "stability": "3.5",
+    "difficulty": "5.7",
+    "reps": 1,
+    "lapses": 0,
+    "lastReviewedAt": "2026-02-22T12:30:00Z"
+  }
+}

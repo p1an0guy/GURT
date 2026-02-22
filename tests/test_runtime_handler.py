@@ -619,6 +619,26 @@ class RuntimeHandlerTests(unittest.TestCase):
             self.fail("Expected token to be stored")
         self.assertEqual(record.user_id, "demo-fallback-user")
 
+    def test_calendar_token_create_uses_demo_user_header_when_present(self) -> None:
+        store = _MemoryCalendarTokenStore()
+        with patch("backend.runtime._calendar_token_store", return_value=store):
+            response = self._invoke(
+                {
+                    "httpMethod": "POST",
+                    "path": "/calendar/token",
+                    "headers": {"x-gurt-demo-user-id": "canvas-user-12345"},
+                },
+                env={"DEMO_MODE": "true", "DEMO_USER_ID": "demo-fallback-user"},
+            )
+
+        self.assertEqual(response["statusCode"], 201)
+        body = json.loads(response["body"])
+        record = store.get(body["token"])
+        self.assertIsNotNone(record)
+        if record is None:
+            self.fail("Expected token to be stored")
+        self.assertEqual(record.user_id, "canvas-user-12345")
+
     def test_calendar_token_create_requires_authenticated_principal_when_demo_mode_disabled(self) -> None:
         response = self._invoke(
             {"httpMethod": "POST", "path": "/calendar/token"},
@@ -628,19 +648,40 @@ class RuntimeHandlerTests(unittest.TestCase):
         self.assertEqual(response["statusCode"], 401)
         self.assertIn("authenticated principal", json.loads(response["body"])["error"])
 
-    def test_canvas_connect_uses_demo_user_when_principal_is_missing_in_demo_mode(self) -> None:
+    def test_canvas_connect_derives_demo_user_from_canvas_identity_when_principal_is_missing(self) -> None:
         event = {
             "httpMethod": "POST",
             "path": "/canvas/connect",
             "body": json.dumps({"canvasBaseUrl": "https://canvas.example.edu", "accessToken": "x"}),
         }
 
-        with patch("backend.runtime._upsert_canvas_connection") as upsert:
-            response = self._invoke(event, env={"DEMO_MODE": "true", "DEMO_USER_ID": "demo-fallback-user"})
+        with (
+            patch("backend.runtime.fetch_current_user_id", return_value="12345"),
+            patch("backend.runtime._upsert_canvas_connection") as upsert,
+        ):
+            response = self._invoke(event, env={"DEMO_MODE": "true"})
 
         self.assertEqual(response["statusCode"], 200)
+        body = json.loads(response["body"])
+        self.assertEqual(body["demoUserId"], "canvas-user-12345")
         call_kwargs = upsert.call_args.kwargs
-        self.assertEqual(call_kwargs["user_id"], "demo-fallback-user")
+        self.assertEqual(call_kwargs["user_id"], "canvas-user-12345")
+
+    def test_canvas_connect_uses_demo_user_header_when_present(self) -> None:
+        event = {
+            "httpMethod": "POST",
+            "path": "/canvas/connect",
+            "headers": {"x-gurt-demo-user-id": "canvas-user-abc"},
+            "body": json.dumps({"canvasBaseUrl": "https://canvas.example.edu", "accessToken": "x"}),
+        }
+
+        with patch("backend.runtime._upsert_canvas_connection") as upsert:
+            response = self._invoke(event, env={"DEMO_MODE": "true"})
+
+        self.assertEqual(response["statusCode"], 200)
+        body = json.loads(response["body"])
+        self.assertEqual(body["demoUserId"], "canvas-user-abc")
+        self.assertEqual(upsert.call_args.kwargs["user_id"], "canvas-user-abc")
 
     def test_canvas_connect_requires_authenticated_principal_when_demo_mode_disabled(self) -> None:
         response = self._invoke(
@@ -687,6 +728,32 @@ class RuntimeHandlerTests(unittest.TestCase):
 
         self.assertEqual(response["statusCode"], 400)
         self.assertIn("canvas connection not found", json.loads(response["body"])["error"])
+
+    def test_canvas_sync_uses_demo_user_header_when_principal_is_missing(self) -> None:
+        event = {
+            "httpMethod": "POST",
+            "path": "/canvas/sync",
+            "headers": {"x-gurt-demo-user-id": "canvas-user-12345"},
+        }
+
+        with (
+            patch(
+                "backend.runtime._read_canvas_connection",
+                return_value={"userId": "canvas-user-12345", "canvasBaseUrl": "https://canvas.example.edu", "accessToken": "x"},
+            ),
+            patch(
+                "backend.runtime._sync_canvas_assignments_for_user",
+                return_value=(1, 2, []),
+            ) as sync_rows,
+            patch(
+                "backend.runtime._sync_canvas_materials_for_user",
+                return_value=(0, 0, []),
+            ),
+        ):
+            response = self._invoke(event, env={"DEMO_MODE": "true"})
+
+        self.assertEqual(response["statusCode"], 200)
+        self.assertEqual(sync_rows.call_args.kwargs["user_id"], "canvas-user-12345")
 
     def test_canvas_sync_upserts_rows_and_returns_failed_course_ids(self) -> None:
         event = {

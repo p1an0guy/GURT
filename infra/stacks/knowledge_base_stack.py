@@ -93,9 +93,10 @@ _INDEX_CREATOR_CODE = textwrap.dedent("""\
         credentials = session.get_credentials().get_frozen_credentials()
         region = os.environ.get("AWS_REGION", "us-west-2")
 
-        # Retry a few times since the collection may take a moment to become active.
+        # AOSS data access policies can take up to 2 minutes to propagate.
+        # Retry with increasing backoff to allow for this.
         last_error = None
-        for attempt in range(5):
+        for attempt in range(10):
             try:
                 req = AWSRequest(method="PUT", url=url, data=body,
                                  headers={"Content-Type": "application/json"})
@@ -115,11 +116,11 @@ _INDEX_CREATOR_CODE = textwrap.dedent("""\
                     print(f"Index already exists: {index_name}")
                     return
                 last_error = f"HTTP {exc.code}: {resp_body}"
-                print(f"Attempt {attempt+1} failed: {last_error}")
+                print(f"Attempt {attempt+1}/10 failed: {last_error}")
             except Exception as exc:
                 last_error = str(exc)
-                print(f"Attempt {attempt+1} failed: {last_error}")
-            time.sleep(10)
+                print(f"Attempt {attempt+1}/10 failed: {last_error}")
+            time.sleep(20)
 
         raise RuntimeError(f"Failed to create index after retries: {last_error}")
 """)
@@ -297,6 +298,8 @@ class KnowledgeBaseStack(Stack):
             )
         )
 
+        parsed_content_uri = f"s3://{data_stack.uploads_bucket.bucket_name}/kb-parsed/"
+
         knowledge_base = bedrock.CfnKnowledgeBase(
             self,
             "KnowledgeBase",
@@ -307,6 +310,18 @@ class KnowledgeBaseStack(Stack):
                 type="VECTOR",
                 vector_knowledge_base_configuration=bedrock.CfnKnowledgeBase.VectorKnowledgeBaseConfigurationProperty(
                     embedding_model_arn=embedding_model_arn,
+                    supplemental_data_storage_configuration=(
+                        bedrock.CfnKnowledgeBase.SupplementalDataStorageConfigurationProperty(
+                            supplemental_data_storage_locations=[
+                                bedrock.CfnKnowledgeBase.SupplementalDataStorageLocationProperty(
+                                    supplemental_data_storage_location_type="S3",
+                                    s3_location=bedrock.CfnKnowledgeBase.S3LocationProperty(
+                                        uri=parsed_content_uri,
+                                    ),
+                                )
+                            ],
+                        )
+                    ),
                 ),
             ),
             storage_configuration=bedrock.CfnKnowledgeBase.StorageConfigurationProperty(
@@ -332,6 +347,17 @@ class KnowledgeBaseStack(Stack):
         if default_policy is not None:
             knowledge_base.add_dependency(default_policy.node.default_child)  # type: ignore[arg-type]
 
+        parsing_model_arn = (
+            f"arn:aws:bedrock:{self.region}::foundation-model/"
+            "anthropic.claude-3-5-haiku-20241022-v1:0"
+        )
+        kb_service_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["bedrock:InvokeModel"],
+                resources=[parsing_model_arn],
+            )
+        )
+
         data_source = bedrock.CfnDataSource(
             self,
             "KnowledgeBaseUploadsDataSource",
@@ -355,7 +381,16 @@ class KnowledgeBaseStack(Stack):
                             breakpoint_percentile_threshold=90,
                         )
                     ),
-                )
+                ),
+                parsing_configuration=bedrock.CfnDataSource.ParsingConfigurationProperty(
+                    parsing_strategy="BEDROCK_FOUNDATION_MODEL",
+                    bedrock_foundation_model_configuration=(
+                        bedrock.CfnDataSource.BedrockFoundationModelConfigurationProperty(
+                            model_arn=parsing_model_arn,
+                            parsing_modality="MULTIMODAL",
+                        )
+                    ),
+                ),
             ),
         )
         data_source.add_dependency(knowledge_base)

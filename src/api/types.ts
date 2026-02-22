@@ -27,6 +27,7 @@ export interface CanvasConnectRequest {
 
 export interface CanvasConnectResponse {
   connected: boolean;
+  demoUserId?: string;
   updatedAt: string;
 }
 
@@ -101,6 +102,15 @@ export interface TopicMastery {
   courseId: string;
   masteryLevel: number;
   dueCards: number;
+}
+
+export interface CourseMaterial {
+  canvasFileId: string;
+  courseId: string;
+  displayName: string;
+  contentType: string;
+  sizeBytes: number;
+  updatedAt: string;
 }
 
 export interface PracticeExamQuestion {
