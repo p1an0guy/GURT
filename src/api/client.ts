@@ -5,7 +5,9 @@ import {
   getFixtureCalendarIcs,
   getFixtureCalendarTokenResponse,
   getFixtureCourseItems,
+  getFixtureCourseMaterials,
   getFixtureGeneratedFlashcards,
+  getFixtureGeneratedFlashcardsFromMaterials,
   getFixtureCourses,
   getFixtureHealth,
   getFixtureIngestStartResponse,
@@ -24,6 +26,7 @@ import type {
   CanvasSyncResponse,
   Card,
   Course,
+  CourseMaterial,
   HealthStatus,
   IngestStartRequest,
   IngestStartResponse,
@@ -57,6 +60,8 @@ export interface ApiClient {
   getStudyMastery(courseId: string): Promise<TopicMastery[]>;
   getCalendarIcs(token: string): Promise<string>;
   createCalendarToken(): Promise<CalendarTokenResponse>;
+  listCourseMaterials(courseId: string): Promise<CourseMaterial[]>;
+  generateFlashcardsFromMaterials(courseId: string, materialIds: string[], numCards: number): Promise<Card[]>;
   startDocsIngest(request: IngestStartRequest): Promise<IngestStartResponse>;
   getDocsIngestStatus(jobId: string): Promise<IngestStatusResponse>;
 }
@@ -317,6 +322,27 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
 
       return requestJson<CalendarTokenResponse>("/calendar/token", {
         method: "POST",
+      });
+    },
+
+    async listCourseMaterials(courseId: string): Promise<CourseMaterial[]> {
+      if (useFixtures) {
+        return getFixtureCourseMaterials(courseId);
+      }
+
+      return requestJson<CourseMaterial[]>(`/courses/${encodeURIComponent(courseId)}/materials`);
+    },
+
+    async generateFlashcardsFromMaterials(courseId: string, materialIds: string[], numCards: number): Promise<Card[]> {
+      if (useFixtures) {
+        return getFixtureGeneratedFlashcardsFromMaterials(courseId, materialIds, numCards);
+      }
+      return requestJson<Card[]>("/generate/flashcards-from-materials", {
+        method: "POST",
+        headers: {
+          "content-type": "text/plain",
+        },
+        body: JSON.stringify({ courseId, materialIds, numCards }),
       });
     },
 

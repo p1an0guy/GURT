@@ -11,6 +11,7 @@ import type {
   CanvasSyncResponse,
   Card,
   Course,
+  CourseMaterial,
   HealthStatus,
   IngestStartRequest,
   IngestStartResponse,
@@ -163,6 +164,43 @@ export function getFixtureCalendarTokenResponse(baseUrl: string): CalendarTokenR
     feedUrl,
     createdAt: "2026-09-02T09:00:00Z",
   };
+}
+
+export function getFixtureCourseMaterials(courseId: string): CourseMaterial[] {
+  return [
+    {
+      canvasFileId: "file-101",
+      courseId,
+      displayName: "Syllabus.pdf",
+      contentType: "application/pdf",
+      sizeBytes: 245_000,
+      updatedAt: "2026-01-15T08:00:00Z",
+    },
+    {
+      canvasFileId: "file-102",
+      courseId,
+      displayName: "Lecture 1 - Introduction.pdf",
+      contentType: "application/pdf",
+      sizeBytes: 1_200_000,
+      updatedAt: "2026-01-20T10:30:00Z",
+    },
+    {
+      canvasFileId: "file-103",
+      courseId,
+      displayName: "Chapter 3 Notes.txt",
+      contentType: "text/plain",
+      sizeBytes: 18_500,
+      updatedAt: "2026-02-01T14:15:00Z",
+    },
+  ];
+}
+
+export function getFixtureGeneratedFlashcardsFromMaterials(
+  courseId: string,
+  _materialIds: string[],
+  numCards: number,
+): Card[] {
+  return getFixtureGeneratedFlashcards(courseId, numCards);
 }
 
 export function getFixtureIngestStartResponse(request: IngestStartRequest): IngestStartResponse {
