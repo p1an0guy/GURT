@@ -2117,23 +2117,36 @@ def lambda_handler(event: Mapping[str, Any], context: Any) -> Dict[str, Any]:
         if error is not None:
             return error
 
-        runtime_rows = _runtime_study_mastery(course_id)
+        try:
+            runtime_rows = _runtime_study_mastery(course_id)
+        except Exception:
+            runtime_rows = []
         if runtime_rows:
             return _text_response(200, json.dumps(runtime_rows), content_type="application/json")
 
-        fixtures = _load_fixtures()
-        due_cards_by_topic = Counter(str(card["topicId"]) for card in fixtures["cards"] if card.get("courseId") == course_id)
+        try:
+            fixtures = _load_fixtures()
+        except Exception:
+            fixtures = {"cards": [], "topics": []}
+        due_cards_by_topic = Counter(
+            str(card.get("topicId"))
+            for card in fixtures.get("cards", [])
+            if isinstance(card, dict) and card.get("courseId") == course_id and card.get("topicId")
+        )
 
         rows = []
-        for topic in fixtures["topics"]:
-            if topic.get("courseId") != course_id:
+        for topic in fixtures.get("topics", []):
+            if not isinstance(topic, dict) or topic.get("courseId") != course_id:
+                continue
+            topic_id = str(topic.get("id", "")).strip()
+            if not topic_id:
                 continue
             rows.append(
                 {
-                    "topicId": topic["id"],
+                    "topicId": topic_id,
                     "courseId": course_id,
-                    "masteryLevel": topic["masteryLevel"],
-                    "dueCards": due_cards_by_topic.get(str(topic["id"]), 0),
+                    "masteryLevel": topic.get("masteryLevel", 0.0),
+                    "dueCards": due_cards_by_topic.get(topic_id, 0),
                 }
             )
         return _text_response(200, json.dumps(rows), content_type="application/json")
