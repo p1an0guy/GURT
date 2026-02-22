@@ -13,26 +13,34 @@
       <span class="subtitle">Generative Uni Revision Tool</span>
     </header>
     <nav id="courseTabs" class="course-tabs" aria-label="Course tabs"></nav>
-    <section class="scrape-panel" aria-label="Scrape workflow">
-      <div class="scrape-actions">
-        <button id="scrapeBtn" class="scrape-btn" type="button">Scrape Modules &amp; Upload</button>
-        <button id="retryScrapeBtn" class="retry-btn hidden" type="button">Retry</button>
-      </div>
-      <div class="scrape-summary">
-        <p id="scrapeStatusText" class="scrape-status-text">Idle</p>
-        <div class="scrape-counters">
-          <span class="counter-pill">Discovered: <strong id="countDiscovered">0</strong></span>
-          <span class="counter-pill">Uploaded: <strong id="countUploaded">0</strong></span>
-          <span class="counter-pill">Ingest Started: <strong id="countIngestStarted">0</strong></span>
-          <span class="counter-pill">Skipped: <strong id="countSkipped">0</strong></span>
-          <span class="counter-pill">Failed: <strong id="countFailed">0</strong></span>
+    <section class="scrape-panel collapsed" aria-label="Scrape workflow">
+      <button id="scrapeToggle" class="scrape-toggle" type="button" aria-expanded="false">
+        <span class="scrape-toggle-label">Scrape &amp; Upload</span>
+        <svg class="scrape-toggle-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </button>
+      <div class="scrape-drawer">
+        <div class="scrape-actions">
+          <button id="scrapeBtn" class="scrape-btn" type="button">Scrape Modules &amp; Upload</button>
+          <button id="retryScrapeBtn" class="retry-btn hidden" type="button">Retry</button>
         </div>
-      </div>
-      <div class="scrape-files">
-        <div class="scrape-files-header">
-          <h2>Files</h2>
+        <div class="scrape-summary">
+          <p id="scrapeStatusText" class="scrape-status-text">Idle</p>
+          <div class="scrape-counters">
+            <span class="counter-pill">Discovered: <strong id="countDiscovered">0</strong></span>
+            <span class="counter-pill">Uploaded: <strong id="countUploaded">0</strong></span>
+            <span class="counter-pill">Ingest Started: <strong id="countIngestStarted">0</strong></span>
+            <span class="counter-pill">Skipped: <strong id="countSkipped">0</strong></span>
+            <span class="counter-pill">Failed: <strong id="countFailed">0</strong></span>
+          </div>
         </div>
-        <ul id="scrapeFileList" class="scrape-file-list" aria-live="polite" aria-label="Per-file scrape status"></ul>
+        <div class="scrape-files">
+          <div class="scrape-files-header">
+            <h2>Files</h2>
+          </div>
+          <ul id="scrapeFileList" class="scrape-file-list" aria-live="polite" aria-label="Per-file scrape status"></ul>
+        </div>
       </div>
     </section>
     <div id="messages" class="messages"></div>
