@@ -63,16 +63,14 @@ body {
   font-size: 12px;
   font-weight: 600;
   font-family: inherit;
-  cursor: pointer;
   white-space: nowrap;
   background: rgba(255, 255, 255, 0.12);
   color: rgba(255, 255, 255, 0.75);
   transition: background 0.15s, color 0.15s;
-}
-
-.course-tab:hover {
-  background: rgba(255, 255, 255, 0.22);
-  color: #fff;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .course-tab.active {
@@ -80,14 +78,65 @@ body {
   color: #2d3b45;
 }
 
+.course-color-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
 .scrape-panel {
-  padding: 12px 16px;
   background: #fff;
   border-bottom: 1px solid #e0e0e0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
   flex-shrink: 0;
+}
+
+/* Toggle bar — always visible */
+.scrape-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 16px;
+  border: none;
+  background: #f3f4f6;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  transition: background 0.15s;
+}
+
+.scrape-toggle:hover {
+  background: #e5e7eb;
+}
+
+.scrape-toggle-chevron {
+  transition: transform 0.2s ease;
+}
+
+.scrape-panel.collapsed .scrape-toggle-chevron {
+  transform: rotate(0deg);
+}
+
+.scrape-panel:not(.collapsed) .scrape-toggle-chevron {
+  transform: rotate(180deg);
+}
+
+/* Drawer — hidden when collapsed */
+.scrape-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px;
+  overflow: hidden;
+}
+
+.scrape-panel.collapsed .scrape-drawer {
+  display: none;
 }
 
 .scrape-actions {
@@ -303,6 +352,17 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  background: var(--course-bg, #f5f5f5);
+  opacity: 1;
+  transition: opacity 0.2s ease, background 0.35s ease;
+}
+
+.messages.fade-out {
+  opacity: 0;
+}
+
+.messages.fade-in {
+  opacity: 1;
 }
 
 .message {

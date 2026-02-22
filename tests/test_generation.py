@@ -225,7 +225,7 @@ class FormatCanvasItemsTests(unittest.TestCase):
 
 class ChatCanvasContextTests(unittest.TestCase):
     @patch.dict("os.environ", {"KNOWLEDGE_BASE_ID": "kb-test", "BEDROCK_MODEL_ARN": "us.anthropic.claude-sonnet-4-5-20250929-v1:0"}, clear=False)
-    def test_chat_answer_includes_canvas_context_in_prompt(self) -> None:
+    def test_chat_answer_includes_canvas_context_in_query(self) -> None:
         canvas_ctx = "exam | Midterm | due 2026-10-15T17:00:00Z | 100 pts"
         with patch(
             "backend.generation._retrieve_and_generate",
@@ -237,9 +237,9 @@ class ChatCanvasContextTests(unittest.TestCase):
             response = generation.chat_answer(course_id="170880", question="When is the midterm?", canvas_context=canvas_ctx)
 
         self.assertEqual(response["answer"], "The midterm is on October 15.")
-        call_kwargs = rag_mock.call_args.kwargs
-        self.assertIn("Canvas assignment data:", call_kwargs["query"])
-        self.assertIn("Midterm", call_kwargs["query"])
+        query_text = rag_mock.call_args.kwargs["query"]
+        self.assertIn("Canvas assignment data:", query_text)
+        self.assertIn("Midterm", query_text)
 
     @patch.dict("os.environ", {"KNOWLEDGE_BASE_ID": "kb-test", "BEDROCK_MODEL_ARN": "us.anthropic.claude-sonnet-4-5-20250929-v1:0"}, clear=False)
     def test_chat_answer_works_without_canvas_context(self) -> None:
@@ -253,13 +253,13 @@ class ChatCanvasContextTests(unittest.TestCase):
             response = generation.chat_answer(course_id="170880", question="What is this?")
 
         self.assertEqual(response["answer"], "Some answer.")
-        call_kwargs = rag_mock.call_args.kwargs
-        self.assertNotIn("Canvas assignment data:", call_kwargs["query"])
+        query_text = rag_mock.call_args.kwargs["query"]
+        self.assertNotIn("Canvas assignment data:", query_text)
 
 
 class ChatCitationTests(unittest.TestCase):
     @patch.dict("os.environ", {"KNOWLEDGE_BASE_ID": "kb-test", "BEDROCK_MODEL_ARN": "us.anthropic.claude-sonnet-4-5-20250929-v1:0"}, clear=False)
-    def test_chat_returns_empty_citations_when_rag_has_none(self) -> None:
+    def test_chat_returns_empty_citations_when_response_has_none(self) -> None:
         with patch(
             "backend.generation._retrieve_and_generate",
             return_value={
@@ -273,7 +273,7 @@ class ChatCitationTests(unittest.TestCase):
         self.assertEqual(response["citations"], [])
 
     @patch.dict("os.environ", {"KNOWLEDGE_BASE_ID": "kb-test", "BEDROCK_MODEL_ARN": "us.anthropic.claude-sonnet-4-5-20250929-v1:0"}, clear=False)
-    def test_chat_extracts_citations_from_rag_response(self) -> None:
+    def test_chat_extracts_citations_from_retrieve_and_generate_response(self) -> None:
         with patch(
             "backend.generation._retrieve_and_generate",
             return_value={
