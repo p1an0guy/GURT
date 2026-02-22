@@ -161,10 +161,13 @@ export default function ChatPage() {
   }
 
   return (
-    <main className="page chat-page">
-      <section className="hero">
-        <h1>Chat</h1>
-        <p>Ask grounded questions about one course at a time.</p>
+    <main className="page chat-page chat-modern">
+      <section className="hero chat-modern-hero">
+        <div className="chat-hero-content">
+          <p className="chat-kicker">Study Lab</p>
+          <h1>Chat</h1>
+          <p>Ask grounded questions about one course at a time.</p>
+        </div>
       </section>
 
       {isCoursePickerVisible ? (

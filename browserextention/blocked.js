@@ -1,4 +1,9 @@
 (() => {
+  const storedTheme = window.localStorage.getItem("gurt-theme");
+  if (storedTheme === "light" || storedTheme === "dark") {
+    document.documentElement.setAttribute("data-theme", storedTheme);
+  }
+
   const countdownEl = document.getElementById("countdown");
 
   function formatDuration(totalSeconds) {

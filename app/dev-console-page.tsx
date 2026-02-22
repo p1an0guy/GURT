@@ -333,13 +333,16 @@ export function DevConsolePage() {
           </div>
         </div>
       ) : null}
-      <main className="page">
-        <section className="hero">
-          <h1>StudyBuddy Demo Console</h1>
-          <p>
-            Browser shell for validating API routes, fixture mode, and calendar feed wiring.
-            Use this while CDK-backed infrastructure is being deployed.
-          </p>
+      <main className="page dev-tools-modern">
+        <section className="hero dev-tools-modern-hero">
+          <div className="dev-tools-hero-content">
+            <p className="dev-tools-kicker">Developer</p>
+            <h1>Demo Console</h1>
+            <p>
+              Browser shell for validating API routes, fixture mode, and calendar feed wiring.
+              Use this while CDK-backed infrastructure is being deployed.
+            </p>
+          </div>
         </section>
 
         <section className="panel-grid">
