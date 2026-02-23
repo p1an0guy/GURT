@@ -178,9 +178,9 @@ For full architecture details and diagram, see `/Users/jonahchan/dev/GURT/docs/A
 
 ## Support
 For queries or issues:
-- Jonah Chan - Lead Engineer, jchan332@calpoly.edu
-- Alexios Sideris - Product Manager, asideris@calpoly.edu
+- Jonah Chan - Tech Lead, jchan332@calpoly.edu
+- Mason Lewis - Product Lead, mlewis77@calpoly.edu
 - Katie Slobodsky - Ethics Lead, kslobods@calpoly.edu
-- Mason Lewis - Software Engineer, mlewis77@calpoly.edu
+- Alexios Sideris - Product Engineer, asideris@calpoly.edu
 - Isaac Tsai - Frontend Engineer, itsai01@calpoly.edu
 - Daniel Erazo - Software Engineer, daerazo@calpoly.edu
