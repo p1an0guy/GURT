@@ -1199,10 +1199,6 @@ def chat_answer_with_actions(
             "accept": "application/json",
             "body": json.dumps(body).encode("utf-8"),
         }
-        guardrail_id, guardrail_version = _guardrail_settings()
-        if guardrail_id and guardrail_version:
-            invoke_kwargs["guardrailIdentifier"] = guardrail_id
-            invoke_kwargs["guardrailVersion"] = guardrail_version
         response = client.invoke_model(**invoke_kwargs)
     except Exception as exc:
         raise GenerationError(f"chat model invocation failed: {exc}") from exc
@@ -1211,8 +1207,6 @@ def chat_answer_with_actions(
         payload = json.loads(response["body"].read().decode("utf-8"))
     except (json.JSONDecodeError, KeyError, AttributeError) as exc:
         raise GenerationError("model returned unreadable response") from exc
-
-    _raise_if_guardrail_intervened(payload)
 
     chunks = payload.get("content", [])
     if not isinstance(chunks, list) or not chunks:
