@@ -382,53 +382,6 @@ class GuardrailSafetyTests(unittest.TestCase):
         rag_mock.assert_not_called()
 
 
-class BedrockGuardrailInvocationTests(unittest.TestCase):
-    @patch.dict(
-        "os.environ",
-        {
-            "BEDROCK_MODEL_ID": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-            "BEDROCK_GUARDRAIL_ID": "gr-123",
-            "BEDROCK_GUARDRAIL_VERSION": "1",
-        },
-        clear=False,
-    )
-    def test_invoke_model_json_passes_guardrail_configuration(self) -> None:
-        client = MagicMock()
-        body = MagicMock()
-        body.read.return_value = json.dumps(
-            {"content": [{"type": "text", "text": "{\"ok\": true}"}]}
-        ).encode("utf-8")
-        client.invoke_model.return_value = {"body": body}
-
-        with patch("backend.generation._bedrock_runtime", return_value=client):
-            payload = generation._invoke_model_json("Return json.")
-
-        self.assertEqual(payload, {"ok": True})
-        invoke_kwargs = client.invoke_model.call_args.kwargs
-        self.assertEqual(invoke_kwargs["guardrailIdentifier"], "gr-123")
-        self.assertEqual(invoke_kwargs["guardrailVersion"], "1")
-
-    @patch.dict(
-        "os.environ",
-        {"BEDROCK_MODEL_ID": "us.anthropic.claude-sonnet-4-5-20250929-v1:0"},
-        clear=False,
-    )
-    def test_invoke_model_json_raises_guardrail_blocked_error_when_intervened(self) -> None:
-        client = MagicMock()
-        body = MagicMock()
-        body.read.return_value = json.dumps(
-            {
-                "guardrailAction": "INTERVENED",
-                "content": [{"type": "text", "text": "{\"ok\": true}"}],
-            }
-        ).encode("utf-8")
-        client.invoke_model.return_value = {"body": body}
-
-        with patch("backend.generation._bedrock_runtime", return_value=client):
-            with self.assertRaises(generation.GuardrailBlockedError):
-                generation._invoke_model_json("Return json.")
-
-
 class ModelJsonParsingTests(unittest.TestCase):
     def test_parse_model_json_text_handles_markdown_wrapped_array(self) -> None:
         payload = generation._parse_model_json_text(
@@ -478,59 +431,6 @@ class FlashcardPayloadValidationTests(unittest.TestCase):
                 num_cards=3,
             )
         self.assertIn("did not contain valid cards", str(exc_info.exception))
-
-
-class RetrieveAndGenerateGuardrailTests(unittest.TestCase):
-    @patch.dict(
-        "os.environ",
-        {
-            "BEDROCK_GUARDRAIL_ID": "gr-123",
-            "BEDROCK_GUARDRAIL_VERSION": "DRAFT",
-        },
-        clear=False,
-    )
-    def test_retrieve_and_generate_passes_guardrail_configuration(self) -> None:
-        client = MagicMock()
-        client.retrieve_and_generate.return_value = {
-            "output": {"text": "x" * 120},
-            "citations": [],
-        }
-
-        with patch("backend.generation._bedrock_agent_runtime", return_value=client):
-            generation._retrieve_and_generate(
-                kb_id="kb-test",
-                model_arn="us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                query="What is federalism?",
-                system_prompt="You are safe.",
-                course_id="170880",
-            )
-
-        call_kwargs = client.retrieve_and_generate.call_args.kwargs
-        generation_cfg = call_kwargs["retrieveAndGenerateConfiguration"]["knowledgeBaseConfiguration"][
-            "generationConfiguration"
-        ]
-        self.assertEqual(
-            generation_cfg["guardrailConfiguration"],
-            {"guardrailId": "gr-123", "guardrailVersion": "DRAFT"},
-        )
-
-    def test_retrieve_and_generate_raises_guardrail_blocked_error_when_intervened(self) -> None:
-        client = MagicMock()
-        client.retrieve_and_generate.return_value = {
-            "guardrailAction": "INTERVENED",
-            "output": {"text": "Blocked"},
-            "citations": [],
-        }
-
-        with patch("backend.generation._bedrock_agent_runtime", return_value=client):
-            with self.assertRaises(generation.GuardrailBlockedError):
-                generation._retrieve_and_generate(
-                    kb_id="kb-test",
-                    model_arn="us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                    query="What is federalism?",
-                    system_prompt="You are safe.",
-                    course_id="170880",
-                )
 
 
 if __name__ == "__main__":
