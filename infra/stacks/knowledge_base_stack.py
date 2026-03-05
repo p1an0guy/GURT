@@ -97,17 +97,6 @@ class KnowledgeBaseStack(Stack):
         if default_policy is not None:
             knowledge_base.add_dependency(default_policy.node.default_child)  # type: ignore[arg-type]
 
-        parsing_model_arn = (
-            f"arn:aws:bedrock:{self.region}::foundation-model/"
-            "anthropic.claude-3-5-haiku-20241022-v1:0"
-        )
-        kb_service_role.add_to_policy(
-            iam.PolicyStatement(
-                actions=["bedrock:InvokeModel"],
-                resources=[parsing_model_arn],
-            )
-        )
-
         data_source = bedrock.CfnDataSource(
             self,
             "KnowledgeBaseUploadsDataSource",
@@ -129,15 +118,6 @@ class KnowledgeBaseStack(Stack):
                             max_tokens=1000,
                             buffer_size=1,
                             breakpoint_percentile_threshold=90,
-                        )
-                    ),
-                ),
-                parsing_configuration=bedrock.CfnDataSource.ParsingConfigurationProperty(
-                    parsing_strategy="BEDROCK_FOUNDATION_MODEL",
-                    bedrock_foundation_model_configuration=(
-                        bedrock.CfnDataSource.BedrockFoundationModelConfigurationProperty(
-                            model_arn=parsing_model_arn,
-                            parsing_modality="MULTIMODAL",
                         )
                     ),
                 ),
