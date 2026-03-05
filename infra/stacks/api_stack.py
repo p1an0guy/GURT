@@ -40,6 +40,7 @@ class ApiStack(Stack):
         demo_mode: str,
         bedrock_model_id: str,
         bedrock_model_arn: str,
+        generation_model_id: str,
         bedrock_guardrail_id: str,
         bedrock_guardrail_version: str,
         knowledge_base_id: str,
@@ -225,6 +226,7 @@ class ApiStack(Stack):
         env = {
             "DEMO_MODE": demo_mode,
             "BEDROCK_MODEL_ID": bedrock_model_id,
+            "GENERATION_MODEL_ID": generation_model_id,
             "BEDROCK_GUARDRAIL_ID": configured_guardrail_id,
             "BEDROCK_GUARDRAIL_VERSION": configured_guardrail_version,
             "KNOWLEDGE_BASE_ID": knowledge_base_id,
@@ -236,7 +238,7 @@ class ApiStack(Stack):
             "DOCS_TABLE": data_stack.docs_table.table_name,
             "CARDS_TABLE": data_stack.cards_table.table_name,
             "UPLOADS_BUCKET": data_stack.uploads_bucket.bucket_name,
-            "FLASHCARD_MODEL_ID": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+            "FLASHCARD_MODEL_ID": generation_model_id,
             "CALENDAR_TOKEN": calendar_token,
             "CALENDAR_TOKEN_USER_ID": calendar_token_user_id,
             "CALENDAR_FIXTURE_FALLBACK": calendar_fixture_fallback,
@@ -337,7 +339,7 @@ class ApiStack(Stack):
                 "BEDROCK_MODEL_ID": bedrock_model_id,
                 "BEDROCK_GUARDRAIL_ID": configured_guardrail_id,
                 "BEDROCK_GUARDRAIL_VERSION": configured_guardrail_version,
-                "FLASHCARD_MODEL_ID": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+                "FLASHCARD_MODEL_ID": generation_model_id,
             },
         )
 
@@ -364,6 +366,7 @@ class ApiStack(Stack):
             memory_size=1024,
             environment={
                 "BEDROCK_MODEL_ID": bedrock_model_id,
+                "GENERATION_MODEL_ID": generation_model_id,
                 "BEDROCK_GUARDRAIL_ID": configured_guardrail_id,
                 "BEDROCK_GUARDRAIL_VERSION": configured_guardrail_version,
                 "KNOWLEDGE_BASE_ID": knowledge_base_id,

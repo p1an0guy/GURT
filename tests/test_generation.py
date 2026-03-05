@@ -382,6 +382,67 @@ class GuardrailSafetyTests(unittest.TestCase):
         rag_mock.assert_not_called()
 
 
+class PromptSafetyTests(unittest.TestCase):
+    def test_study_generation_prompt_explicitly_blocks_unethical_activity(self) -> None:
+        prompt = generation._study_generation_system_prompt()
+        self.assertIn("unethical", prompt.lower())
+        self.assertIn("cheating", prompt.lower())
+
+    def test_chat_prompt_explicitly_blocks_unethical_activity(self) -> None:
+        prompt = generation._build_gurt_system_prompt("170880")
+        self.assertIn("unethical", prompt.lower())
+        self.assertIn("cheating", prompt.lower())
+
+
+class GenerationModelSelectionTests(unittest.TestCase):
+    @patch.dict(
+        "os.environ",
+        {
+            "BEDROCK_MODEL_ID": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+            "GENERATION_MODEL_ID": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+        },
+        clear=False,
+    )
+    def test_invoke_model_json_prefers_generation_model_id(self) -> None:
+        client = MagicMock()
+        body = MagicMock()
+        body.read.return_value = json.dumps(
+            {"content": [{"type": "text", "text": '{"ok": true}'}]}
+        ).encode("utf-8")
+        client.invoke_model.return_value = {"body": body}
+
+        with patch("backend.generation._bedrock_runtime", return_value=client):
+            generation._invoke_model_json("Return json.")
+
+        invoke_kwargs = client.invoke_model.call_args.kwargs
+        self.assertEqual(
+            invoke_kwargs["modelId"],
+            "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+        )
+
+    @patch.dict(
+        "os.environ",
+        {"BEDROCK_MODEL_ID": "us.anthropic.claude-sonnet-4-5-20250929-v1:0"},
+        clear=False,
+    )
+    def test_invoke_model_json_falls_back_to_bedrock_model_id(self) -> None:
+        client = MagicMock()
+        body = MagicMock()
+        body.read.return_value = json.dumps(
+            {"content": [{"type": "text", "text": '{"ok": true}'}]}
+        ).encode("utf-8")
+        client.invoke_model.return_value = {"body": body}
+
+        with patch("backend.generation._bedrock_runtime", return_value=client):
+            generation._invoke_model_json("Return json.")
+
+        invoke_kwargs = client.invoke_model.call_args.kwargs
+        self.assertEqual(
+            invoke_kwargs["modelId"],
+            "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+        )
+
+
 class ModelJsonParsingTests(unittest.TestCase):
     def test_parse_model_json_text_handles_markdown_wrapped_array(self) -> None:
         payload = generation._parse_model_json_text(
